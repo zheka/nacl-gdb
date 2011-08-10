@@ -24,6 +24,26 @@
 #include "solib-svr4.h"
 #include "solist.h"
 
+#include "command.h"
+#include "readline/readline.h"
+
+
+/* Native Client executable file name.
+   Intentional memory leak, freed at exit.  */
+
+static char* nacl_filename;
+
+
+static void
+nacl_file_command (char *args, int from_tty)
+{
+  if (args)
+    {
+      xfree (nacl_filename);
+      nacl_filename = tilde_expand (args);
+    }
+}
+
 
 /* Native Client loader calls "_ovly_debug_event" right after the program
    is loaded into memory.  Report this as a solib event.  */
@@ -71,4 +91,12 @@ set_nacl_solib_ops (struct gdbarch *gdbarch)
     }
 
   set_solib_ops (gdbarch, &nacl_so_ops);
+}
+
+
+void
+_initialize_nacl_solib (void)
+{
+  add_com ("nacl-file", class_files, nacl_file_command,
+	   _("Use FILE as Native Client program to be debugged."));
 }
