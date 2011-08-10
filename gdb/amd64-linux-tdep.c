@@ -38,6 +38,7 @@
 
 #include "amd64-tdep.h"
 #include "solib-svr4.h"
+#include "solib-nacl.h"
 #include "xml-syscall.h"
 
 #include "features/i386/amd64-linux.c"
@@ -1531,6 +1532,8 @@ amd64_linux_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
   amd64_linux_record_tdep.arg6 = AMD64_R9_REGNUM;
 
   tdep->i386_syscall_record = amd64_linux_syscall_record;
+
+  set_nacl_solib_ops (gdbarch);
 }
 
 
