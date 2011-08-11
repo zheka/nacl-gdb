@@ -20,6 +20,7 @@
 #include "defs.h"
 #include "breakpoint.h"
 #include "gdbcore.h"
+#include "nacl-tdep.h"
 #include "objfiles.h"
 #include "solib.h"
 #include "solib-svr4.h"
@@ -70,18 +71,6 @@ nacl_file_command (char *args, int from_tty)
       xfree (nacl_filename);
       nacl_filename = tilde_expand (args);
     }
-}
-
-
-static int
-nacl_addr_p (CORE_ADDR addr)
-{
-  if (nacl_sandbox_addr &&
-      addr >= nacl_sandbox_addr &&
-      addr < nacl_sandbox_addr + 4ULL * 1024ULL * 1024ULL * 1024ULL)
-    return 1;
-
-  return 0;
 }
 
 
@@ -168,9 +157,9 @@ nacl_lookup_lib_symbol (const struct objfile *objfile,
 		        const char *name,
 		        const domain_enum domain)
 {
-  /* Distinguish Native Client objects by objfile->addr_low.
-     TODO: any way to use objfile->obfd instead?  */
-  if (nacl_addr_p (objfile->addr_low))
+  /* Use bfd to distinguish nacl objfiles.
+     Another way is to check that objfile->addr_low is nacl address.  */
+  if (nacl_bfd_p (objfile->obfd))
     return lookup_global_symbol_from_objfile (objfile, name, domain);
 
   return svr4_so_ops.lookup_lib_global_symbol (objfile, name, domain);
