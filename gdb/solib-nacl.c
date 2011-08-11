@@ -28,10 +28,37 @@
 #include "readline/readline.h"
 
 
+/* Link map info to include in an allocated so_list entry.
+   ATTENTION: copy-paste from solib-svr4.c!  */
+
+struct lm_info
+  {
+    /* Pointer to copy of link map from inferior.  The type is char *
+       rather than void *, so that we may use byte offsets to find the
+       various fields without the need for a cast.  */
+    gdb_byte *lm;
+
+    /* Amount by which addresses in the binary should be relocated to
+       match the inferior.  This could most often be taken directly
+       from lm, but when prelinking is involved and the prelink base
+       address changes, we may need a different offset, we want to
+       warn about the difference and compute it only once.  */
+    CORE_ADDR l_addr;
+
+    /* The target location of lm.  */
+    CORE_ADDR lm_addr;
+  };
+
+
 /* Native Client executable file name.
    Intentional memory leak, freed at exit.  */
 
 static char* nacl_filename;
+
+
+/* Start address of Native Client sandbox.  */
+
+static CORE_ADDR nacl_sandbox_addr;
 
 
 static void
@@ -42,6 +69,62 @@ nacl_file_command (char *args, int from_tty)
       xfree (nacl_filename);
       nacl_filename = tilde_expand (args);
     }
+}
+
+
+static CORE_ADDR
+nacl_update_sandbox_addr (void)
+{
+  struct minimal_symbol *addr_sym;
+
+  addr_sym = lookup_minimal_symbol ("nacl_global_xlate_base", NULL, NULL);
+  if (addr_sym)
+    {
+      nacl_sandbox_addr
+        = read_memory_unsigned_integer (SYMBOL_VALUE_ADDRESS (addr_sym),
+                                        8,
+                                        BFD_ENDIAN_LITTLE);
+    }
+  else
+    {
+      nacl_sandbox_addr = 0;
+    }
+
+  return nacl_sandbox_addr;
+}
+
+
+static struct so_list *
+nacl_current_sos (void)
+{
+  struct so_list *head;
+  struct so_list **link_ptr;
+
+  /* First, retrieve the SVR4 shared library list.  */
+  head = svr4_so_ops.current_sos ();
+
+  /* Append our libraries to the end of the list.  */
+  for (link_ptr = &head; *link_ptr; link_ptr = &(*link_ptr)->next)
+    ;
+
+  if (nacl_filename && nacl_update_sandbox_addr ())
+    {
+      struct so_list *so;
+
+      so = XZALLOC (struct so_list);
+
+      strcpy (so->so_name, nacl_filename);
+      strcpy (so->so_original_name, so->so_name);
+
+      so->lm_info = XZALLOC (struct lm_info);
+
+      so->lm_info->l_addr = nacl_sandbox_addr;
+
+      *link_ptr = so;
+      link_ptr = &so->next;
+    }
+
+  return head;
 }
 
 
@@ -88,6 +171,7 @@ set_nacl_solib_ops (struct gdbarch *gdbarch)
     {
       nacl_so_ops = svr4_so_ops;
       nacl_so_ops.solib_create_inferior_hook = nacl_solib_create_inferior_hook;
+      nacl_so_ops.current_sos = nacl_current_sos;
     }
 
   set_solib_ops (gdbarch, &nacl_so_ops);
