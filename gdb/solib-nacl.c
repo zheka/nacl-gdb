@@ -20,6 +20,7 @@
 #include "defs.h"
 #include "breakpoint.h"
 #include "gdbcore.h"
+#include "objfiles.h"
 #include "solib.h"
 #include "solib-svr4.h"
 #include "solist.h"
@@ -69,6 +70,18 @@ nacl_file_command (char *args, int from_tty)
       xfree (nacl_filename);
       nacl_filename = tilde_expand (args);
     }
+}
+
+
+static int
+nacl_addr_p (CORE_ADDR addr)
+{
+  if (nacl_sandbox_addr &&
+      addr >= nacl_sandbox_addr &&
+      addr < nacl_sandbox_addr + 4ULL * 1024ULL * 1024ULL * 1024ULL)
+    return 1;
+
+  return 0;
 }
 
 
@@ -150,6 +163,20 @@ nacl_enable_break (void)
 }
 
 
+static struct symbol *
+nacl_lookup_lib_symbol (const struct objfile *objfile,
+		        const char *name,
+		        const domain_enum domain)
+{
+  /* Distinguish Native Client objects by objfile->addr_low.
+     TODO: any way to use objfile->obfd instead?  */
+  if (nacl_addr_p (objfile->addr_low))
+    return lookup_global_symbol_from_objfile (objfile, name, domain);
+
+  return svr4_so_ops.lookup_lib_global_symbol (objfile, name, domain);
+}
+
+
 static void
 nacl_solib_create_inferior_hook (int from_tty)
 {
@@ -172,6 +199,7 @@ set_nacl_solib_ops (struct gdbarch *gdbarch)
       nacl_so_ops = svr4_so_ops;
       nacl_so_ops.solib_create_inferior_hook = nacl_solib_create_inferior_hook;
       nacl_so_ops.current_sos = nacl_current_sos;
+      nacl_so_ops.lookup_lib_global_symbol = nacl_lookup_lib_symbol;
     }
 
   set_solib_ops (gdbarch, &nacl_so_ops);
