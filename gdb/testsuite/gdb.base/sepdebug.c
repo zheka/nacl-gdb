@@ -1,4 +1,4 @@
-/* Copyright 1994, 1995, 1999, 2002, 2003, 2004, 2007, 2008
+/* Copyright 1994, 1995, 1999, 2002, 2003, 2004, 2007, 2008, 2009, 2010, 2011
 Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify
@@ -12,10 +12,7 @@ Free Software Foundation, Inc.
    GNU General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
-   Please email any bugs, comments, and/or additions to this file to:
-   bug-gdb@prep.ai.mit.edu  */
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #ifdef vxworks
 

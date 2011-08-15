@@ -82,7 +82,7 @@ extern int era;
 int
 run_sim(sregs, icount, dis)
     struct pstate  *sregs;
-    unsigned int    icount;
+    uint64          icount;
     int             dis;
 {
     int             irq, mexc, deb, asi;
@@ -177,7 +177,7 @@ main(argc, argv)
     cfile = 0;
     for (i = 0; i < 64; i++)
 	cmdq[i] = 0;
-    printf("\n SIS - SPARC intruction simulator %s,  copyright Jiri Gaisler 1995\n", sis_version);
+    printf("\n SIS - SPARC instruction simulator %s,  copyright Jiri Gaisler 1995\n", sis_version);
     printf(" Bug-reports to jgais@wd.estec.esa.nl\n\n");
     while (stat < argc) {
 	if (argv[stat][0] == '-') {

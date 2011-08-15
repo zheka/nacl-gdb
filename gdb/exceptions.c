@@ -1,8 +1,8 @@
 /* Exception (throw catch) mechanism, for GDB, the GNU debugger.
 
    Copyright (C) 1986, 1988, 1989, 1990, 1991, 1992, 1993, 1994, 1995, 1996,
-   1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
-   Free Software Foundation, Inc.
+   1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008,
+   2009, 2010, 2011 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -29,6 +29,7 @@
 #include "gdb_assert.h"
 #include "gdb_string.h"
 #include "serial.h"
+#include "gdbthread.h"
 
 const struct gdb_exception exception_none = { 0, GDB_NO_ERROR, NULL };
 
@@ -88,7 +89,7 @@ exceptions_state_mc_init (struct ui_out *func_uiout,
   uiout = func_uiout;
 
   /* Prevent error/quit during FUNC from calling cleanups established
-     prior to here. */
+     prior to here.  */
   new_catcher->saved_cleanup_chain = save_cleanups ();
 
   /* Push this new catcher on the top.  */
@@ -103,10 +104,11 @@ static void
 catcher_pop (void)
 {
   struct catcher *old_catcher = current_catcher;
+
   current_catcher = old_catcher->prev;
 
   /* Restore the cleanup chain, the error/quit messages, and the uiout
-     builder, to their original states. */
+     builder, to their original states.  */
 
   restore_cleanups (old_catcher->saved_cleanup_chain);
 
@@ -173,6 +175,7 @@ exceptions_state_mc (enum catcher_action action)
 	case CATCH_ITER:
 	  {
 	    struct gdb_exception exception = *current_catcher->exception;
+
 	    if (current_catcher->mask & RETURN_MASK (exception.reason))
 	      {
 		/* Exit normally if this catcher can handle this
@@ -183,7 +186,7 @@ exceptions_state_mc (enum catcher_action action)
 	      }
 	    /* The caller didn't request that the event be caught,
 	       relay the event to the next containing
-	       catch_errors(). */
+	       catch_errors().  */
 	    catcher_pop ();
 	    throw_exception (exception);
 	  }
@@ -209,26 +212,31 @@ exceptions_state_mc_action_iter_1 (void)
 
 /* Return EXCEPTION to the nearest containing catch_errors().  */
 
-NORETURN void
+void
 throw_exception (struct gdb_exception exception)
 {
+  struct thread_info *tp = NULL;
+
   quit_flag = 0;
   immediate_quit = 0;
 
+  if (!ptid_equal (inferior_ptid, null_ptid))
+    tp = find_thread_ptid (inferior_ptid);
+
   /* Perhaps it would be cleaner to do this via the cleanup chain (not sure
      I can think of a reason why that is vital, though).  */
-  bpstat_clear_actions (stop_bpstat);	/* Clear queued breakpoint commands */
+  if (tp != NULL)
+    {
+      /* Clear queued breakpoint commands.  */
+      bpstat_clear_actions (tp->control.stop_bpstat);
+    }
 
   disable_current_display ();
   do_cleanups (ALL_CLEANUPS);
-  if (target_can_async_p () && !target_executing)
-    do_exec_cleanups (ALL_CLEANUPS);
-  if (sync_execution)
-    do_exec_error_cleanups (ALL_CLEANUPS);
 
   /* Jump to the containing catch_errors() call, communicating REASON
      to that call via setjmp's return value.  Note that REASON can't
-     be zero, by definition in defs.h. */
+     be zero, by definition in defs.h.  */
   exceptions_state_mc (CATCH_THROWING);
   *current_catcher->exception = exception;
   EXCEPTIONS_SIGLONGJMP (current_catcher->buf, exception.reason);
@@ -236,10 +244,11 @@ throw_exception (struct gdb_exception exception)
 
 static char *last_message;
 
-NORETURN void
+void
 deprecated_throw_reason (enum return_reason reason)
 {
   struct gdb_exception exception;
+
   memset (&exception, 0, sizeof exception);
 
   exception.reason = reason;
@@ -296,6 +305,7 @@ print_exception (struct ui_file *file, struct gdb_exception e)
      as that way the MI's behavior is preserved.  */
   const char *start;
   const char *end;
+
   for (start = e.message; start != NULL; start = end)
     {
       end = strchr (start, '\n');
@@ -353,14 +363,14 @@ exception_fprintf (struct ui_file *file, struct gdb_exception e,
     }
 }
 
-void
+static void
 print_any_exception (struct ui_file *file, const char *prefix,
 		     struct gdb_exception e)
 {
   if (e.reason < 0 && e.message != NULL)
     {
       target_terminal_ours ();
-      wrap_here ("");		/* Force out any buffered output */
+      wrap_here ("");		/* Force out any buffered output.  */
       gdb_flush (gdb_stdout);
       annotate_error_begin ();
 
@@ -371,7 +381,7 @@ print_any_exception (struct ui_file *file, const char *prefix,
     }
 }
 
-NORETURN static void ATTR_NORETURN ATTR_FORMAT (printf, 3, 0)
+static void ATTRIBUTE_NORETURN ATTRIBUTE_PRINTF (3, 0)
 throw_it (enum return_reason reason, enum errors error, const char *fmt,
 	  va_list ap)
 {
@@ -393,58 +403,51 @@ throw_it (enum return_reason reason, enum errors error, const char *fmt,
   throw_exception (e);
 }
 
-NORETURN void
+void
 throw_verror (enum errors error, const char *fmt, va_list ap)
 {
   throw_it (RETURN_ERROR, error, fmt, ap);
 }
 
-NORETURN void
+void
 throw_vfatal (const char *fmt, va_list ap)
 {
   throw_it (RETURN_QUIT, GDB_NO_ERROR, fmt, ap);
 }
 
-NORETURN void
+void
 throw_error (enum errors error, const char *fmt, ...)
 {
   va_list args;
+
   va_start (args, fmt);
   throw_it (RETURN_ERROR, error, fmt, args);
   va_end (args);
 }
 
-/* Call FUNC() with args FUNC_UIOUT and FUNC_ARGS, catching any
-   errors.  Set FUNC_CAUGHT to an ``enum return_reason'' if the
-   function is aborted (using throw_exception() or zero if the
-   function returns normally.  Set FUNC_VAL to the value returned by
-   the function or 0 if the function was aborted.
+/* Call FUNC(UIOUT, FUNC_ARGS) but wrapped within an exception
+   handler.  If an exception (enum return_reason) is thrown using
+   throw_exception() than all cleanups installed since
+   catch_exceptions() was entered are invoked, the (-ve) exception
+   value is then returned by catch_exceptions.  If FUNC() returns
+   normally (with a positive or zero return value) then that value is
+   returned by catch_exceptions().  It is an internal_error() for
+   FUNC() to return a negative value.
+
+   See exceptions.h for further usage details.
 
    Must not be called with immediate_quit in effect (bad things might
    happen, say we got a signal in the middle of a memcpy to quit_return).
    This is an OK restriction; with very few exceptions immediate_quit can
-   be replaced by judicious use of QUIT.
-
-   MASK specifies what to catch; it is normally set to
-   RETURN_MASK_ALL, if for no other reason than that the code which
-   calls catch_errors might not be set up to deal with a quit which
-   isn't caught.  But if the code can deal with it, it generally
-   should be RETURN_MASK_ERROR, unless for some reason it is more
-   useful to abort only the portion of the operation inside the
-   catch_errors.  Note that quit should return to the command line
-   fairly quickly, even if some further processing is being done.  */
+   be replaced by judicious use of QUIT.  */
 
 /* MAYBE: cagney/1999-11-05: catch_errors() in conjunction with
-   error() et.al. could maintain a set of flags that indicate the the
+   error() et al. could maintain a set of flags that indicate the the
    current state of each of the longjmp buffers.  This would give the
    longjmp code the chance to detect a longjmp botch (before it gets
    to longjmperror()).  Prior to 1999-11-05 this wasn't possible as
    code also randomly used a SET_TOP_LEVEL macro that directly
-   initialize the longjmp buffers. */
-
-/* MAYBE: cagney/1999-11-05: Should the catch_errors and cleanups code
-   be consolidated into a single file instead of being distributed
-   between utils.c and top.c? */
+   initialized the longjmp buffers.  */
 
 int
 catch_exceptions (struct ui_out *uiout,
@@ -462,6 +465,7 @@ catch_exception (struct ui_out *uiout,
 		 return_mask mask)
 {
   volatile struct gdb_exception exception;
+
   TRY_CATCH (exception, mask)
     {
       (*func) (uiout, func_args);
@@ -478,6 +482,7 @@ catch_exceptions_with_msg (struct ui_out *uiout,
 {
   volatile struct gdb_exception exception;
   volatile int val = 0;
+
   TRY_CATCH (exception, mask)
     {
       val = (*func) (uiout, func_args);
@@ -502,12 +507,15 @@ catch_exceptions_with_msg (struct ui_out *uiout,
   return val;
 }
 
+/* This function is superseded by catch_exceptions().  */
+
 int
 catch_errors (catch_errors_ftype *func, void *func_args, char *errstring,
 	      return_mask mask)
 {
   volatile int val = 0;
   volatile struct gdb_exception exception;
+
   TRY_CATCH (exception, mask)
     {
       val = func (func_args);
@@ -523,6 +531,7 @@ catch_command_errors (catch_command_errors_ftype * command,
 		      char *arg, int from_tty, return_mask mask)
 {
   volatile struct gdb_exception e;
+
   TRY_CATCH (e, mask)
     {
       command (arg, from_tty);

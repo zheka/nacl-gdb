@@ -1,6 +1,7 @@
 /* Native-dependent code for FreeBSD.
 
-   Copyright (C) 2002, 2003, 2004, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2002, 2003, 2004, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -22,6 +23,7 @@
 #include "inferior.h"
 #include "regcache.h"
 #include "regset.h"
+#include "gdbthread.h"
 
 #include "gdb_assert.h"
 #include "gdb_string.h"
@@ -32,7 +34,7 @@
 #include "elf-bfd.h"
 #include "fbsd-nat.h"
 
-/* Return a the name of file that can be opened to get the symbols for
+/* Return the name of a file that can be opened to get the symbols for
    the child process identified by PID.  */
 
 char *
@@ -90,9 +92,7 @@ fbsd_read_mapping (FILE *mapfile, unsigned long *start, unsigned long *end,
    argument to FUNC.  */
 
 int
-fbsd_find_memory_regions (int (*func) (CORE_ADDR, unsigned long,
-				       int, int, int, void *),
-			  void *obfd)
+fbsd_find_memory_regions (find_memory_region_ftype func, void *obfd)
 {
   pid_t pid = ptid_get_pid (inferior_ptid);
   char *mapfilename;
@@ -100,11 +100,14 @@ fbsd_find_memory_regions (int (*func) (CORE_ADDR, unsigned long,
   unsigned long start, end, size;
   char protection[4];
   int read, write, exec;
+  struct cleanup *cleanup;
 
   mapfilename = xstrprintf ("/proc/%ld/map", (long) pid);
+  cleanup = make_cleanup (xfree, mapfilename);
   mapfile = fopen (mapfilename, "r");
   if (mapfile == NULL)
     error (_("Couldn't open %s."), mapfilename);
+  make_cleanup_fclose (mapfile);
 
   if (info_verbose)
     fprintf_filtered (gdb_stdout, 
@@ -122,19 +125,41 @@ fbsd_find_memory_regions (int (*func) (CORE_ADDR, unsigned long,
       if (info_verbose)
 	{
 	  fprintf_filtered (gdb_stdout, 
-			    "Save segment, %ld bytes at 0x%s (%c%c%c)\n", 
-			    size, paddr_nz (start),
+			    "Save segment, %ld bytes at %s (%c%c%c)\n",
+			    size, paddress (target_gdbarch, start),
 			    read ? 'r' : '-',
 			    write ? 'w' : '-',
 			    exec ? 'x' : '-');
 	}
 
-      /* Invoke the callback function to create the corefile segment. */
+      /* Invoke the callback function to create the corefile segment.  */
       func (start, size, read, write, exec, obfd);
     }
 
-  fclose (mapfile);
+  do_cleanups (cleanup);
   return 0;
+}
+
+static int
+find_signalled_thread (struct thread_info *info, void *data)
+{
+  if (info->suspend.stop_signal != TARGET_SIGNAL_0
+      && ptid_get_pid (info->ptid) == ptid_get_pid (inferior_ptid))
+    return 1;
+
+  return 0;
+}
+
+static enum target_signal
+find_stop_signal (void)
+{
+  struct thread_info *info =
+    iterate_over_threads (find_signalled_thread, NULL);
+
+  if (info)
+    return info->suspend.stop_signal;
+  else
+    return TARGET_SIGNAL_0;
 }
 
 /* Create appropriate note sections for a corefile, returning them in
@@ -165,7 +190,7 @@ fbsd_make_corefile_notes (bfd *obfd, int *note_size)
 
   note_data = elfcore_write_prstatus (obfd, note_data, note_size,
 				      ptid_get_pid (inferior_ptid),
-				      stop_signal, &gregs);
+				      find_stop_signal (), &gregs);
 
   size = sizeof fpregs;
   regset = gdbarch_regset_from_core_section (gdbarch, ".reg2", size);
@@ -177,11 +202,12 @@ fbsd_make_corefile_notes (bfd *obfd, int *note_size)
 
   if (get_exec_file (0))
     {
-      char *fname = strrchr (get_exec_file (0), '/') + 1;
+      const char *fname = lbasename (get_exec_file (0));
       char *psargs = xstrdup (fname);
 
       if (get_inferior_args ())
-	psargs = reconcat (psargs, psargs, " ", get_inferior_args (), NULL);
+	psargs = reconcat (psargs, psargs, " ", get_inferior_args (),
+			   (char *) NULL);
 
       note_data = elfcore_write_prpsinfo (obfd, note_data, note_size,
 					  fname, psargs);

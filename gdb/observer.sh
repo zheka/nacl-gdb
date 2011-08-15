@@ -2,8 +2,8 @@
 
 # Make certain that the script is not running in an internationalized
 # environment.
-LANG=c ; export LANG
-LC_ALL=c ; export LC_ALL
+LANG=C ; export LANG
+LC_ALL=C ; export LC_ALL
 
 if test $# -ne 3
 then
@@ -29,7 +29,8 @@ rm -f ${otmp}
 cat <<EOF >>${otmp}
 /* GDB Notifications to Observers.
 
-   Copyright (C) 2004, 2005, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -62,6 +63,7 @@ struct observer;
 struct bpstats;
 struct so_list;
 struct objfile;
+struct thread_info;
 EOF
         ;;
 esac
@@ -122,8 +124,14 @@ EOF
 
 static struct observer_list *${event}_subject = NULL;
 
+EOF
+	if test "$formal" != "void"; then
+	    cat<<EOF >>${otmp}
 struct ${event}_args { `echo "${formal}" | sed -e 's/,/;/g'`; };
 
+EOF
+	fi
+	cat <<EOF >>${otmp}
 static void
 observer_${event}_notification_stub (const void *data, const void *args_data)
 {
@@ -149,8 +157,17 @@ observer_detach_${event} (struct observer *observer)
 void
 observer_notify_${event} (${formal})
 {
+EOF
+	if test "$formal" != "void"; then
+	    cat<<EOF >>${otmp}
   struct ${event}_args args;
   `echo ${actual} | sed -e 's/\([a-z0-9_][a-z0-9_]*\)/args.\1 = \1/g'`;
+
+EOF
+	else
+	    echo "char *args = NULL;" >> ${otmp}
+	fi
+	cat<<EOF >>${otmp}
   if (observer_debug)
     fprintf_unfiltered (gdb_stdlog, "observer_notify_${event}() called\n");
   generic_observer_notify (${event}_subject, &args);

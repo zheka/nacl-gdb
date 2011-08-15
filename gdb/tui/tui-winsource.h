@@ -1,7 +1,7 @@
 /* TUI display source/assembly window.
 
-   Copyright (C) 1998, 1999, 2000, 2001, 2002, 2004, 2007, 2008
-   Free Software Foundation, Inc.
+   Copyright (C) 1998, 1999, 2000, 2001, 2002, 2004, 2007, 2008, 2009, 2010,
+   2011 Free Software Foundation, Inc.
 
    Contributed by Hewlett-Packard Company.
 
@@ -41,14 +41,14 @@ extern int tui_update_breakpoint_info (struct tui_win_info *win,
 /* Function to display the "main" routine.  */
 extern void tui_display_main (void);
 extern void tui_update_source_window (struct tui_win_info *, 
-				      struct symtab *,
+				      struct gdbarch *, struct symtab *,
 				      struct tui_line_or_address, 
 				      int);
 extern void tui_update_source_window_as_is (struct tui_win_info *,
-					    struct symtab *,
+					    struct gdbarch *, struct symtab *,
 					    struct tui_line_or_address, 
 					    int);
-extern void tui_update_source_windows_with_addr (CORE_ADDR);
+extern void tui_update_source_windows_with_addr (struct gdbarch *, CORE_ADDR);
 extern void tui_update_source_windows_with_line (struct symtab *, 
 						 int);
 extern void tui_clear_source_content (struct tui_win_info *, int);

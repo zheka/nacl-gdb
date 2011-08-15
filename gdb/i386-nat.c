@@ -1,6 +1,7 @@
 /* Native-dependent code for the i386.
 
-   Copyright (C) 2001, 2004, 2005, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2001, 2004, 2005, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -17,10 +18,13 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
+#include "i386-nat.h"
 #include "defs.h"
 #include "breakpoint.h"
 #include "command.h"
 #include "gdbcmd.h"
+#include "target.h"
+#include "gdb_assert.h"
 
 /* Support for hardware watchpoints and breakpoints using the i386
    debug registers.
@@ -30,43 +34,19 @@
    more of the watchpoints triggered and at what address, checking
    whether a given region can be watched, etc.
 
-   A target which wants to use these functions should define several
-   macros, such as `target_insert_watchpoint' and
-   `target_stopped_data_address', listed in target.h, to call the
-   appropriate functions below.  It should also define
-   I386_USE_GENERIC_WATCHPOINTS in its tm.h file.
-
-   In addition, each target should provide several low-level macros
-   that will be called to insert watchpoints and hardware breakpoints
-   into the inferior, remove them, and check their status.  These
-   macros are:
-
-      I386_DR_LOW_SET_CONTROL  -- set the debug control (DR7)
-				  register to a given value
-
-      I386_DR_LOW_SET_ADDR     -- put an address into one debug
-				  register
-
-      I386_DR_LOW_RESET_ADDR   -- reset the address stored in
-				  one debug register
-
-      I386_DR_LOW_GET_STATUS   -- return the value of the debug
-				  status (DR6) register.
-
    The functions below implement debug registers sharing by reference
    counts, and allow to watch regions up to 16 bytes long.  */
 
-#ifdef I386_USE_GENERIC_WATCHPOINTS
+struct i386_dr_low_type i386_dr_low;
+
 
 /* Support for 8-byte wide hw watchpoints.  */
-#ifndef TARGET_HAS_DR_LEN_8
-#define TARGET_HAS_DR_LEN_8	0
-#endif
+#define TARGET_HAS_DR_LEN_8 (i386_dr_low.debug_register_length == 8)
 
 /* Debug registers' indices.  */
 #define DR_NADDR	4	/* The number of debug address registers.  */
 #define DR_STATUS	6	/* Index of debug status register (DR6).  */
-#define DR_CONTROL	7	/* Index of debug control register (DR7). */
+#define DR_CONTROL	7	/* Index of debug control register (DR7).  */
 
 /* DR7 Debug Control register fields.  */
 
@@ -157,8 +137,11 @@
 #define I386_DR_GET_RW_LEN(i) \
   ((dr_control_mirror >> (DR_CONTROL_SHIFT + DR_CONTROL_SIZE * (i))) & 0x0f)
 
+/* Mask that this I'th watchpoint has triggered.  */
+#define I386_DR_WATCH_MASK(i)	(1 << (i))
+
 /* Did the watchpoint whose address is in the I'th register break?  */
-#define I386_DR_WATCH_HIT(i)	(dr_status_mirror & (1 << (i)))
+#define I386_DR_WATCH_HIT(i)	(dr_status_mirror & I386_DR_WATCH_MASK (i))
 
 /* A macro to loop over all debug registers.  */
 #define ALL_DEBUG_REGISTERS(i)	for (i = 0; i < DR_NADDR; i++)
@@ -166,7 +149,7 @@
 /* Mirror the inferior's DRi registers.  We keep the status and
    control registers separated because they don't hold addresses.  */
 static CORE_ADDR dr_mirror[DR_NADDR];
-static unsigned dr_status_mirror, dr_control_mirror;
+static unsigned long dr_status_mirror, dr_control_mirror;
 
 /* Reference counts for each debug register.  */
 static int dr_ref_count[DR_NADDR];
@@ -229,15 +212,6 @@ i386_cleanup_dregs (void)
   dr_status_mirror  = 0;
 }
 
-/* Reset all debug registers at each new startup to avoid missing
-   watchpoints after restart.  */
-
-void
-child_post_startup_inferior (ptid_t ptid)
-{
-  i386_cleanup_dregs ();
-}
-
 /* Print the values of the mirrored debug registers.  This is called
    when maint_show_dr is non-zero.  To set that up, type "maint
    show-debug-regs" at GDB's prompt.  */
@@ -246,6 +220,7 @@ static void
 i386_show_dr (const char *func, CORE_ADDR addr,
 	      int len, enum target_hw_bp_type type)
 {
+  int addr_size = gdbarch_addr_bit (target_gdbarch) / 8;
   int i;
 
   puts_unfiltered (func);
@@ -263,14 +238,14 @@ i386_show_dr (const char *func, CORE_ADDR addr,
 				   here.  */
 				: "??unknown??"))));
   puts_unfiltered (":\n");
-  printf_unfiltered ("\tCONTROL (DR7): %08x          STATUS (DR6): %08x\n",
-		     dr_control_mirror, dr_status_mirror);
+  printf_unfiltered ("\tCONTROL (DR7): %s          STATUS (DR6): %s\n",
+		     phex (dr_control_mirror, 8), phex (dr_status_mirror, 8));
   ALL_DEBUG_REGISTERS(i)
     {
       printf_unfiltered ("\
 \tDR%d: addr=0x%s, ref.count=%d  DR%d: addr=0x%s, ref.count=%d\n",
-			 i, paddr(dr_mirror[i]), dr_ref_count[i],
-			 i+1, paddr(dr_mirror[i+1]), dr_ref_count[i+1]);
+		 i, phex (dr_mirror[i], addr_size), dr_ref_count[i],
+		 i+1, phex (dr_mirror[i+1], addr_size), dr_ref_count[i+1]);
       i++;
     }
 }
@@ -293,7 +268,9 @@ i386_length_and_rw_bits (int len, enum target_hw_bp_type type)
 	rw = DR_RW_WRITE;
 	break;
       case hw_read:
-	/* The i386 doesn't support data-read watchpoints.  */
+	internal_error (__FILE__, __LINE__,
+			_("The i386 doesn't support "
+			  "data-read watchpoints.\n"));
       case hw_access:
 	rw = DR_RW_READ;
 	break;
@@ -320,6 +297,7 @@ Invalid hardware breakpoint type %d in i386_length_and_rw_bits.\n"),
       case 8:
         if (TARGET_HAS_DR_LEN_8)
  	  return (DR_LEN_8 | rw);
+	/* ELSE FALL THROUGH */
       default:
 	internal_error (__FILE__, __LINE__, _("\
 Invalid hardware breakpoint length %d in i386_length_and_rw_bits.\n"), len);
@@ -336,6 +314,9 @@ static int
 i386_insert_aligned_watchpoint (CORE_ADDR addr, unsigned len_rw_bits)
 {
   int i;
+
+  if (!i386_dr_low.set_addr || !i386_dr_low.set_control)
+    return -1;
 
   /* First, look for an occupied debug register with the same address
      and the same RW and LEN definitions.  If we find one, we can
@@ -380,8 +361,12 @@ i386_insert_aligned_watchpoint (CORE_ADDR addr, unsigned len_rw_bits)
   dr_control_mirror &= I386_DR_CONTROL_MASK;
 
   /* Finally, actually pass the info to the inferior.  */
-  I386_DR_LOW_SET_ADDR (i, addr);
-  I386_DR_LOW_SET_CONTROL (dr_control_mirror);
+  i386_dr_low.set_addr (i, addr);
+  i386_dr_low.set_control (dr_control_mirror);
+
+  /* Only a sanity check for leftover bits (set possibly only by inferior).  */
+  if (i386_dr_low.unset_status)
+    i386_dr_low.unset_status (I386_DR_WATCH_MASK (i));
 
   return 0;
 }
@@ -403,14 +388,15 @@ i386_remove_aligned_watchpoint (CORE_ADDR addr, unsigned len_rw_bits)
 	  && dr_mirror[i] == addr
 	  && I386_DR_GET_RW_LEN (i) == len_rw_bits)
 	{
-	  if (--dr_ref_count[i] == 0) /* no longer in use? */
+	  if (--dr_ref_count[i] == 0) /* no longer in use?  */
 	    {
 	      /* Reset our mirror.  */
 	      dr_mirror[i] = 0;
 	      I386_DR_DISABLE (i);
 	      /* Reset it in the inferior.  */
-	      I386_DR_LOW_SET_CONTROL (dr_control_mirror);
-	      I386_DR_LOW_RESET_ADDR (i);
+	      i386_dr_low.set_control (dr_control_mirror);
+	      if (i386_dr_low.reset_addr)
+		i386_dr_low.reset_addr (i);
 	    }
 	  retval = 0;
 	}
@@ -499,10 +485,14 @@ Invalid value %d of operation in i386_handle_nonaligned_watchpoint.\n"),
    address ADDR and whose length is LEN bytes.  Watch memory accesses
    of the type TYPE.  Return 0 on success, -1 on failure.  */
 
-int
-i386_insert_watchpoint (CORE_ADDR addr, int len, int type)
+static int
+i386_insert_watchpoint (CORE_ADDR addr, int len, int type,
+			struct expression *cond)
 {
   int retval;
+
+  if (type == hw_read)
+    return 1; /* unsupported */
 
   if (((len != 1 && len !=2 && len !=4) && !(TARGET_HAS_DR_LEN_8 && len == 8))
       || addr % len != 0)
@@ -523,8 +513,9 @@ i386_insert_watchpoint (CORE_ADDR addr, int len, int type)
 /* Remove a watchpoint that watched the memory region which starts at
    address ADDR, whose length is LEN bytes, and for accesses of the
    type TYPE.  Return 0 on success, -1 on failure.  */
-int
-i386_remove_watchpoint (CORE_ADDR addr, int len, int type)
+static int
+i386_remove_watchpoint (CORE_ADDR addr, int len, int type,
+			struct expression *cond)
 {
   int retval;
 
@@ -547,7 +538,7 @@ i386_remove_watchpoint (CORE_ADDR addr, int len, int type)
 /* Return non-zero if we can watch a memory region that starts at
    address ADDR and whose length is LEN bytes.  */
 
-int
+static int
 i386_region_ok_for_watchpoint (CORE_ADDR addr, int len)
 {
   int nregs;
@@ -559,17 +550,17 @@ i386_region_ok_for_watchpoint (CORE_ADDR addr, int len)
 }
 
 /* If the inferior has some watchpoint that triggered, set the
-   address associated with that watchpoint and return non-zero.  
+   address associated with that watchpoint and return non-zero.
    Otherwise, return zero.  */
 
-int
-i386_stopped_data_address (CORE_ADDR *addr_p)
+static int
+i386_stopped_data_address (struct target_ops *ops, CORE_ADDR *addr_p)
 {
   CORE_ADDR addr = 0;
   int i;
   int rc = 0;
 
-  dr_status_mirror = I386_DR_LOW_GET_STATUS ();
+  dr_status_mirror = i386_dr_low.get_status ();
 
   ALL_DEBUG_REGISTERS(i)
     {
@@ -579,7 +570,10 @@ i386_stopped_data_address (CORE_ADDR *addr_p)
 	     that GDB doesn't call the target_stopped_data_address
 	     method except for data watchpoints.  In other words, I'm
 	     being paranoiac.  */
-	  && I386_DR_GET_RW_LEN (i) != 0)
+	  && I386_DR_GET_RW_LEN (i) != 0
+	  /* This third condition makes sure DRi is not vacant, this
+	     avoids false positives in windows-nat.c.  */
+	  && !I386_DR_VACANT (i))
 	{
 	  addr = dr_mirror[i];
 	  rc = 1;
@@ -595,38 +589,18 @@ i386_stopped_data_address (CORE_ADDR *addr_p)
   return rc;
 }
 
-int
+static int
 i386_stopped_by_watchpoint (void)
 {
   CORE_ADDR addr = 0;
-  return i386_stopped_data_address (&addr);
-}
-
-/* Return non-zero if the inferior has some break/watchpoint that
-   triggered.  */
-
-int
-i386_stopped_by_hwbp (void)
-{
-  int i;
-
-  dr_status_mirror = I386_DR_LOW_GET_STATUS ();
-  if (maint_show_dr)
-    i386_show_dr ("stopped_by_hwbp", 0, 0, hw_execute);
-
-  ALL_DEBUG_REGISTERS(i)
-    {
-      if (I386_DR_WATCH_HIT (i))
-	return 1;
-    }
-
-  return 0;
+  return i386_stopped_data_address (&current_target, &addr);
 }
 
 /* Insert a hardware-assisted breakpoint at BP_TGT->placed_address.
    Return 0 on success, EBUSY on failure.  */
-int
-i386_insert_hw_breakpoint (struct bp_target_info *bp_tgt)
+static int
+i386_insert_hw_breakpoint (struct gdbarch *gdbarch,
+			   struct bp_target_info *bp_tgt)
 {
   unsigned len_rw = i386_length_and_rw_bits (1, hw_execute);
   CORE_ADDR addr = bp_tgt->placed_address;
@@ -641,8 +615,9 @@ i386_insert_hw_breakpoint (struct bp_target_info *bp_tgt)
 /* Remove a hardware-assisted breakpoint at BP_TGT->placed_address.
    Return 0 on success, -1 on failure.  */
 
-int
-i386_remove_hw_breakpoint (struct bp_target_info *bp_tgt)
+static int
+i386_remove_hw_breakpoint (struct gdbarch *gdbarch,
+			   struct bp_target_info *bp_tgt)
 {
   unsigned len_rw = i386_length_and_rw_bits (1, hw_execute);
   CORE_ADDR addr = bp_tgt->placed_address;
@@ -654,25 +629,74 @@ i386_remove_hw_breakpoint (struct bp_target_info *bp_tgt)
   return retval;
 }
 
-#endif /* I386_USE_GENERIC_WATCHPOINTS */
-
+/* Returns the number of hardware watchpoints of type TYPE that we can
+   set.  Value is positive if we can set CNT watchpoints, zero if
+   setting watchpoints of type TYPE is not supported, and negative if
+   CNT is more than the maximum number of watchpoints of type TYPE
+   that we can support.  TYPE is one of bp_hardware_watchpoint,
+   bp_read_watchpoint, bp_write_watchpoint, or bp_hardware_breakpoint.
+   CNT is the number of such watchpoints used so far (including this
+   one).  OTHERTYPE is non-zero if other types of watchpoints are
+   currently enabled.
 
-/* Provide a prototype to silence -Wmissing-prototypes.  */
-void _initialize_i386_nat (void);
+   We always return 1 here because we don't have enough information
+   about possible overlap of addresses that they want to watch.  As an
+   extreme example, consider the case where all the watchpoints watch
+   the same address and the same region length: then we can handle a
+   virtually unlimited number of watchpoints, due to debug register
+   sharing implemented via reference counts in i386-nat.c.  */
 
-void
-_initialize_i386_nat (void)
+static int
+i386_can_use_hw_breakpoint (int type, int cnt, int othertype)
 {
-#ifdef I386_USE_GENERIC_WATCHPOINTS
+  return 1;
+}
+
+static void
+add_show_debug_regs_command (void)
+{
   /* A maintenance command to enable printing the internal DRi mirror
      variables.  */
-  deprecated_add_set_cmd ("show-debug-regs", class_maintenance,
-			  var_boolean, (char *) &maint_show_dr, _("\
-Set whether to show variables that mirror the x86 debug registers.\n\
+  add_setshow_boolean_cmd ("show-debug-regs", class_maintenance,
+			   &maint_show_dr, _("\
+Set whether to show variables that mirror the x86 debug registers."), _("\
+Show whether to show variables that mirror the x86 debug registers."), _("\
 Use \"on\" to enable, \"off\" to disable.\n\
 If enabled, the debug registers values are shown when GDB inserts\n\
 or removes a hardware breakpoint or watchpoint, and when the inferior\n\
 triggers a breakpoint or watchpoint."),
-			  &maintenancelist);
-#endif
+			   NULL,
+			   NULL,
+			   &maintenance_set_cmdlist,
+			   &maintenance_show_cmdlist);
+}
+
+/* There are only two global functions left.  */
+
+void
+i386_use_watchpoints (struct target_ops *t)
+{
+  /* After a watchpoint trap, the PC points to the instruction after the
+     one that caused the trap.  Therefore we don't need to step over it.
+     But we do need to reset the status register to avoid another trap.  */
+  t->to_have_continuable_watchpoint = 1;
+
+  t->to_can_use_hw_breakpoint = i386_can_use_hw_breakpoint;
+  t->to_region_ok_for_hw_watchpoint = i386_region_ok_for_watchpoint;
+  t->to_stopped_by_watchpoint = i386_stopped_by_watchpoint;
+  t->to_stopped_data_address = i386_stopped_data_address;
+  t->to_insert_watchpoint = i386_insert_watchpoint;
+  t->to_remove_watchpoint = i386_remove_watchpoint;
+  t->to_insert_hw_breakpoint = i386_insert_hw_breakpoint;
+  t->to_remove_hw_breakpoint = i386_remove_hw_breakpoint;
+}
+
+void
+i386_set_debug_register_length (int len)
+{
+  /* This function should be called only once for each native target.  */
+  gdb_assert (i386_dr_low.debug_register_length == 0);
+  gdb_assert (len == 4 || len == 8);
+  i386_dr_low.debug_register_length = len;
+  add_show_debug_regs_command ();
 }

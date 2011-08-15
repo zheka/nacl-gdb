@@ -1,6 +1,7 @@
 /* Target-dependent code for Motorola 68000 BSD's.
 
-   Copyright (C) 2004, 2005, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -42,9 +43,9 @@
 #define M68KBSD_SIZEOF_FPREGS	(((8 * 3) + 3) * 4)
 
 int
-m68kbsd_fpreg_offset (int regnum)
+m68kbsd_fpreg_offset (struct gdbarch *gdbarch, int regnum)
 {
-  int fp_len = TYPE_LENGTH (gdbarch_register_type (current_gdbarch, regnum));
+  int fp_len = TYPE_LENGTH (gdbarch_register_type (gdbarch, regnum));
   
   if (regnum >= M68K_FPC_REGNUM)
     return 8 * fp_len + (regnum - M68K_FPC_REGNUM) * 4;
@@ -61,6 +62,7 @@ m68kbsd_supply_fpregset (const struct regset *regset,
 			 struct regcache *regcache,
 			 int regnum, const void *fpregs, size_t len)
 {
+  struct gdbarch *gdbarch = get_regcache_arch (regcache);
   const gdb_byte *regs = fpregs;
   int i;
 
@@ -69,7 +71,8 @@ m68kbsd_supply_fpregset (const struct regset *regset,
   for (i = M68K_FP0_REGNUM; i <= M68K_PC_REGNUM; i++)
     {
       if (regnum == i || regnum == -1)
-	regcache_raw_supply (regcache, i, regs + m68kbsd_fpreg_offset (i));
+	regcache_raw_supply (regcache, i,
+			     regs + m68kbsd_fpreg_offset (gdbarch, i));
     }
 }
 
@@ -136,24 +139,24 @@ m68kbsd_regset_from_core_section (struct gdbarch *gdbarch,
 
 static void
 m68kobsd_sigtramp_cache_init (const struct tramp_frame *self,
-			      struct frame_info *next_frame,
+			      struct frame_info *this_frame,
 			      struct trad_frame_cache *this_cache,
 			      CORE_ADDR func)
 {
   CORE_ADDR addr, base, pc;
   int regnum;
 
-  base = frame_unwind_register_unsigned (next_frame, M68K_SP_REGNUM);
+  base = get_frame_register_unsigned (this_frame, M68K_SP_REGNUM);
 
   /* The 'addql #4,%sp' instruction at offset 8 adjusts the stack
      pointer.  Adjust the frame base accordingly.  */
-  pc = frame_unwind_register_unsigned (next_frame, M68K_PC_REGNUM);
+  pc = get_frame_register_unsigned (this_frame, M68K_PC_REGNUM);
   if ((pc - func) > 8)
     base -= 4;
 
   /* Get frame pointer, stack pointer, program counter and processor
      state from `struct sigcontext'.  */
-  addr = get_frame_memory_unsigned (next_frame, base + 8, 4);
+  addr = get_frame_memory_unsigned (this_frame, base + 8, 4);
   trad_frame_set_reg_addr (this_cache, M68K_FP_REGNUM, addr + 8);
   trad_frame_set_reg_addr (this_cache, M68K_SP_REGNUM, addr + 12);
   trad_frame_set_reg_addr (this_cache, M68K_PC_REGNUM, addr + 20);
@@ -161,7 +164,7 @@ m68kobsd_sigtramp_cache_init (const struct tramp_frame *self,
 
   /* The sc_ap member of `struct sigcontext' points to additional
      hardware state.  Here we find the missing registers.  */
-  addr = get_frame_memory_unsigned (next_frame, addr + 16, 4) + 4;
+  addr = get_frame_memory_unsigned (this_frame, addr + 16, 4) + 4;
   for (regnum = M68K_D0_REGNUM; regnum < M68K_FP_REGNUM; regnum++, addr += 4)
     trad_frame_set_reg_addr (this_cache, regnum, addr);
 

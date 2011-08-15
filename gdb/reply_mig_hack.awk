@@ -1,12 +1,13 @@
 # Reply server mig-output massager
 #
-#   Copyright (C) 1995, 1996, 1999, 2007, 2008 Free Software Foundation, Inc.
+#   Copyright (C) 1995, 1996, 1999, 2007, 2008, 2009, 2010, 2011
+#   Free Software Foundation, Inc.
 #
 #   Written by Miles Bader <miles@gnu.ai.mit.edu>
 #
 #   This program is free software; you can redistribute it and/or
 #   modify it under the terms of the GNU General Public License as
-#   published by the Free Software Foundation; either version 2, or (at
+#   published by the Free Software Foundation; either version 3, or (at
 #   your option) any later version.
 #
 #   This program is distributed in the hope that it will be useful, but
@@ -15,9 +16,7 @@
 #   General Public License for more details.
 #
 #   You should have received a copy of the GNU General Public License
-#   along with this program; if not, write to the Free Software
-#   Foundation, Inc., 51 Franklin Street, Fifth Floor,
-#   Boston, MA 02110-1301, USA.
+#   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 # This awk script hacks the output of mig-generated reply server code
 # so that it allows replies with just the error-code in them (as this is
@@ -101,7 +100,7 @@ parse_phase == 5 && /^#if[ \t]TypeCheck/ {
   # structure that we want to check for.
   print "\tif (In0P->Head.msgh_size == sizeof (Reply)";
   print "\t    && ! (In0P->Head.msgh_bits & MACH_MSGH_BITS_COMPLEX)";
-  print "\t    && *(int *)&In0P->" arg_type_code_name[0] " == *(int *)&" arg_check_name[0];
+  print "\t    && ! BAD_TYPECHECK(&In0P->" arg_type_code_name[0] ", &" arg_check_name[0] ")";
   print "\t    && In0P->" arg_name[0] " != 0)";
   print "\t  /* Error return, only the error code argument is passed.  */";
   print "\t  {";

@@ -1,6 +1,7 @@
 /* Code dealing with blocks for GDB.
 
-   Copyright (C) 2003, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -65,7 +66,7 @@ struct block
   CORE_ADDR endaddr;
 
   /* The symbol that names this block, if the block is the body of a
-     function; otherwise, zero.  */
+     function (real or inlined); otherwise, zero.  */
 
   struct symbol *function;
 
@@ -132,19 +133,22 @@ struct blockvector
 
 enum { GLOBAL_BLOCK = 0, STATIC_BLOCK = 1, FIRST_LOCAL_BLOCK = 2 };
 
-extern struct symbol *block_function (const struct block *);
+extern struct symbol *block_linkage_function (const struct block *);
+
+extern int block_inlined_p (const struct block *block);
 
 extern int contained_in (const struct block *, const struct block *);
 
 extern struct blockvector *blockvector_for_pc (CORE_ADDR, struct block **);
 
-extern struct blockvector *blockvector_for_pc_sect (CORE_ADDR, asection *,
+extern struct blockvector *blockvector_for_pc_sect (CORE_ADDR, 
+						    struct obj_section *,
 						    struct block **,
                                                     struct symtab *);
 
 extern struct block *block_for_pc (CORE_ADDR);
 
-extern struct block *block_for_pc_sect (CORE_ADDR, asection *);
+extern struct block *block_for_pc_sect (CORE_ADDR, struct obj_section *);
 
 extern const char *block_scope (const struct block *block);
 

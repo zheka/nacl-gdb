@@ -1,5 +1,6 @@
 /* Miscellaneous simulator utilities.
-   Copyright (C) 1997, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 1997, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
    Contributed by Cygnus Support.
 
 This file is part of GDB, the GNU debugger.
@@ -26,8 +27,6 @@ void *zalloc (unsigned long size);
 
 #define ZALLOC(TYPE) (TYPE*)zalloc(sizeof (TYPE))
 #define NZALLOC(TYPE,N) (TYPE*)zalloc(sizeof (TYPE) * (N))
-
-void zfree(void*);
 
 /* Turn VALUE into a string with commas.  */
 char *sim_add_commas (char *, int, unsigned long);
@@ -63,7 +62,7 @@ SIM_RC sim_analyze_program (SIM_DESC sd, char *prog_name,
    This is still accommodated for backward compatibility reasons. */
 
 typedef int sim_write_fn PARAMS ((SIM_DESC sd, SIM_ADDR mem,
-				      unsigned char *buf, int length));
+				      const unsigned char *buf, int length));
 struct bfd *sim_load_file (SIM_DESC sd, const char *myname,
 			   host_callback *callback, char *prog,
 			   struct bfd *prog_bfd, int verbose_p,

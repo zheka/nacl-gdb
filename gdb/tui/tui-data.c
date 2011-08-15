@@ -1,7 +1,7 @@
 /* TUI data manipulation routines.
 
-   Copyright (C) 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2006, 2007, 2008
-   Free Software Foundation, Inc.
+   Copyright (C) 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2006, 2007, 2008,
+   2009, 2010, 2011 Free Software Foundation, Inc.
 
    Contributed by Hewlett-Packard Company.
 
@@ -211,6 +211,7 @@ tui_clear_win_detail (struct tui_win_info *win_info)
 	{
 	case SRC_WIN:
 	case DISASSEM_WIN:
+	  win_info->detail.source_info.gdbarch = NULL;
 	  win_info->detail.source_info.start_line_or_addr.loa = LOA_ADDRESS;
 	  win_info->detail.source_info.start_line_or_addr.u.addr = 0;
 	  win_info->detail.source_info.horizontal_offset = 0;
@@ -401,6 +402,7 @@ tui_partial_win_by_name (char *name)
           if (tui_win_list[i] != 0)
             {
               char *cur_name = tui_win_name (&tui_win_list[i]->generic);
+
               if (strlen (name) <= strlen (cur_name)
 		  && strncmp (name, cur_name, strlen (name)) == 0)
                 win_info = tui_win_list[i];
@@ -483,7 +485,7 @@ tui_init_generic_part (struct tui_gen_win_info *win)
 
 /* init_content_element().
  */
-void
+static void
 init_content_element (struct tui_win_element *element, 
 		      enum tui_win_type type)
 {
@@ -501,7 +503,8 @@ init_content_element (struct tui_win_element *element,
     case DATA_WIN:
       tui_init_generic_part (&element->which_element.data_window);
       element->which_element.data_window.type = DATA_ITEM_WIN;
-      ((struct tui_gen_win_info *) & element->which_element.data_window)->content =
+      ((struct tui_gen_win_info *)
+       &element->which_element.data_window)->content =
 	(void **) tui_alloc_content (1, DATA_ITEM_WIN);
       ((struct tui_gen_win_info *)
        & element->which_element.data_window)->content_size = 1;
@@ -532,7 +535,7 @@ init_content_element (struct tui_win_element *element,
     }
 }
 
-void
+static void
 init_win_info (struct tui_win_info *win_info)
 {
   tui_init_generic_part (&win_info->generic);
@@ -542,9 +545,11 @@ init_win_info (struct tui_win_info *win_info)
     {
     case SRC_WIN:
     case DISASSEM_WIN:
-      win_info->detail.source_info.execution_info = (struct tui_gen_win_info *) NULL;
+      win_info->detail.source_info.execution_info
+	= (struct tui_gen_win_info *) NULL;
       win_info->detail.source_info.has_locator = FALSE;
       win_info->detail.source_info.horizontal_offset = 0;
+      win_info->detail.source_info.gdbarch = NULL;
       win_info->detail.source_info.start_line_or_addr.loa = LOA_ADDRESS;
       win_info->detail.source_info.start_line_or_addr.u.addr = 0;
       win_info->detail.source_info.filename = 0;
@@ -643,7 +648,8 @@ tui_add_content_elements (struct tui_gen_win_info *win_info,
 
   if (win_info->content == NULL)
     {
-      win_info->content = (void **) tui_alloc_content (num_elements, win_info->type);
+      win_info->content = (void **) tui_alloc_content (num_elements,
+						       win_info->type);
       index_start = 0;
     }
   else
@@ -828,7 +834,8 @@ tui_del_data_windows (tui_win_content content,
      element.  */
   for (i = 0; i < content_size; i++)
     {
-      struct tui_gen_win_info *generic_win = &content[i]->which_element.data_window;
+      struct tui_gen_win_info *generic_win
+	= &content[i]->which_element.data_window;
 
       if (generic_win != (struct tui_gen_win_info *) NULL)
 	{
@@ -851,7 +858,8 @@ tui_free_data_content (tui_win_content content,
      element.  */
   for (i = 0; i < content_size; i++)
     {
-      struct tui_gen_win_info *generic_win = &content[i]->which_element.data_window;
+      struct tui_gen_win_info *generic_win
+	= &content[i]->which_element.data_window;
 
       if (generic_win != (struct tui_gen_win_info *) NULL)
 	{

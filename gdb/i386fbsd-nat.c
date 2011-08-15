@@ -1,6 +1,6 @@
 /* Native-dependent code for FreeBSD/i386.
 
-   Copyright (C) 2001, 2002, 2003, 2004, 2007, 2008
+   Copyright (C) 2001, 2002, 2003, 2004, 2007, 2008, 2009, 2010, 2011
    Free Software Foundation, Inc.
 
    This file is part of GDB.
@@ -29,13 +29,15 @@
 
 #include "fbsd-nat.h"
 #include "i386-tdep.h"
+#include "i386-nat.h"
 #include "i386bsd-nat.h"
 
 /* Resume execution of the inferior process.  If STEP is nonzero,
    single-step it.  If SIGNAL is nonzero, give it that signal.  */
 
 static void
-i386fbsd_resume (ptid_t ptid, int step, enum target_signal signal)
+i386fbsd_resume (struct target_ops *ops,
+		 ptid_t ptid, int step, enum target_signal signal)
 {
   pid_t pid = ptid_get_pid (ptid);
   int request = PT_STEP;
@@ -125,6 +127,20 @@ _initialize_i386fbsd_nat (void)
 
   /* Add some extra features to the common *BSD/i386 target.  */
   t = i386bsd_target ();
+
+#ifdef HAVE_PT_GETDBREGS
+
+  i386_use_watchpoints (t);
+
+  i386_dr_low.set_control = i386bsd_dr_set_control;
+  i386_dr_low.set_addr = i386bsd_dr_set_addr;
+  i386_dr_low.reset_addr = i386bsd_dr_reset_addr;
+  i386_dr_low.get_status = i386bsd_dr_get_status;
+  i386_set_debug_register_length (4);
+
+#endif /* HAVE_PT_GETDBREGS */
+
+
   t->to_resume = i386fbsd_resume;
   t->to_pid_to_exec_file = fbsd_pid_to_exec_file;
   t->to_find_memory_regions = fbsd_find_memory_regions;

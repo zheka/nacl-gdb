@@ -1,6 +1,7 @@
 /* Native-dependent code for OpenBSD/powerpc.
 
-   Copyright (C) 2004, 2005, 2006, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -72,7 +73,8 @@ getfpregs_supplies (struct gdbarch *gdbarch, int regnum)
    for all registers.  */
 
 static void
-ppcobsd_fetch_registers (struct regcache *regcache, int regnum)
+ppcobsd_fetch_registers (struct target_ops *ops,
+			 struct regcache *regcache, int regnum)
 {
   struct reg regs;
 
@@ -107,7 +109,8 @@ ppcobsd_fetch_registers (struct regcache *regcache, int regnum)
    this for all registers.  */
 
 static void
-ppcobsd_store_registers (struct regcache *regcache, int regnum)
+ppcobsd_store_registers (struct target_ops *ops,
+			 struct regcache *regcache, int regnum)
 {
   struct reg regs;
 

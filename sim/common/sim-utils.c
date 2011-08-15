@@ -1,5 +1,6 @@
 /* Miscellaneous simulator utilities.
-   Copyright (C) 1997, 1998, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 1997, 1998, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
    Contributed by Cygnus Support.
 
 This file is part of GDB, the GNU debugger.
@@ -52,21 +53,13 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
    Set by sim_resume.  */
 struct sim_state *current_state;
 
-/* Allocate zero filled memory with xmalloc - xmalloc aborts of the
+/* Allocate zero filled memory with xcalloc - xcalloc aborts if the
    allocation fails.  */
 
 void *
 zalloc (unsigned long size)
 {
-  void *memory = (void *) xmalloc (size);
-  memset (memory, 0, size);
-  return memory;
-}
-
-void
-zfree (void *data)
-{
-  free (data);
+  return xcalloc (1, size);
 }
 
 /* Allocate a sim_state struct.  */
@@ -119,7 +112,7 @@ sim_state_free (SIM_DESC sd)
   SIM_STATE_FREE (sd);
 #endif
 
-  zfree (sd);
+  free (sd);
 }
 
 /* Return a pointer to the cpu data for CPU_NAME, or NULL if not found.  */
@@ -171,7 +164,7 @@ sim_io_eprintf_cpu (sim_cpu *cpu, const char *fmt, ...)
   va_list ap;
 
   va_start (ap, fmt);
-  sim_io_eprintf (sd, sim_cpu_msg_prefix (cpu));
+  sim_io_eprintf (sd, "%s", sim_cpu_msg_prefix (cpu));
   sim_io_evprintf (sd, fmt, ap);
   va_end (ap);
 }
@@ -219,10 +212,7 @@ sim_add_commas (char *buf, int sizeof_buf, unsigned long value)
    bfd open.  */
 
 SIM_RC
-sim_analyze_program (sd, prog_name, prog_bfd)
-     SIM_DESC sd;
-     char *prog_name;
-     bfd *prog_bfd;
+sim_analyze_program (SIM_DESC sd, char *prog_name, bfd *prog_bfd)
 {
   asection *s;
   SIM_ASSERT (STATE_MAGIC (sd) == SIM_MAGIC_NUMBER);
@@ -245,13 +235,13 @@ sim_analyze_program (sd, prog_name, prog_bfd)
   prog_bfd = bfd_openr (prog_name, STATE_TARGET (sd));
   if (prog_bfd == NULL)
     {
-      sim_io_eprintf (sd, "%s: can't open \"%s\": %s\n", 
+      sim_io_eprintf (sd, "%s: can't open \"%s\": %s\n",
 		      STATE_MY_NAME (sd),
 		      prog_name,
 		      bfd_errmsg (bfd_get_error ()));
       return SIM_RC_FAIL;
     }
-  if (!bfd_check_format (prog_bfd, bfd_object)) 
+  if (!bfd_check_format (prog_bfd, bfd_object))
     {
       sim_io_eprintf (sd, "%s: \"%s\" is not an object file: %s\n",
 		      STATE_MY_NAME (sd),
@@ -296,7 +286,7 @@ sim_analyze_program (sd, prog_name, prog_bfd)
 /* Called before sim_elapsed_time_since to get a reference point.  */
 
 SIM_ELAPSED_TIME
-sim_elapsed_time_get ()
+sim_elapsed_time_get (void)
 {
 #ifdef HAVE_GETRUSAGE
   struct rusage mytime;
@@ -316,8 +306,7 @@ sim_elapsed_time_get ()
    The actual time may be cpu usage (preferred) or wall clock.  */
 
 unsigned long
-sim_elapsed_time_since (start)
-     SIM_ELAPSED_TIME start;
+sim_elapsed_time_since (SIM_ELAPSED_TIME start)
 {
 #ifdef HAVE_GETRUSAGE
   return sim_elapsed_time_get () - start;
@@ -341,7 +330,12 @@ sim_do_commandf (SIM_DESC sd,
   va_list ap;
   char *buf;
   va_start (ap, fmt);
-  vasprintf (&buf, fmt, ap);
+  if (vasprintf (&buf, fmt, ap) < 0)
+    {
+      sim_io_eprintf (sd, "%s: asprintf failed for `%s'\n",
+		      STATE_MY_NAME (sd), fmt);
+      return;
+    }
   sim_do_command (sd, buf);
   va_end (ap);
   free (buf);
@@ -408,5 +402,3 @@ transfer_to_str (unsigned transfer)
     default: return "(error)";
     }
 }
-
-

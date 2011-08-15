@@ -1,3 +1,59 @@
+2011-01-11  Andrew Burgess  <aburgess@broadcom.com>
+
+	* interf.c (sim_store_register): Update return value to
+	match new API.
+
+2010-05-20  Joel Brobecker  <brobecker@adacore.com>
+
+	* sis.h: Remove #include <stdint.h>.
+	(uint64, int64): Redefine without using stdint.h.
+	(UINT64_MAX): Define.
+
+2010-04-20  Tiemen Schut    <T.Schut@sron.nl>
+
+	* erc32.c (sis_memory_write): Change prototype to const unsigned char *.
+	* func.c (exec_cmd, event, advance_time, wait_for_irq): Use uint64
+	for counts.
+	* interf.c (run_sim): Change icount to uint64_t. Use strtol directly.
+	(sim_resume): Specify maximum run time as uint64.
+	* sis.c (run_sim): Change icount to uint64_t.
+	* sis.h: Define uint64 as uint64_t. Change various fields and
+	prototypes to uint64 to support longer simulations.
+
+2010-04-14  Mike Frysinger  <vapier@gentoo.org>
+
+	* interp.c (sim_write): Add const to buf arg.
+
+2010-01-09  Ralf Wildenhues  <Ralf.Wildenhues@gmx.de>
+
+	* configure: Regenerate.
+
+2009-08-22  Ralf Wildenhues  <Ralf.Wildenhues@gmx.de>
+
+	* config.in: Regenerate.
+	* configure: Likewise.
+
+	* configure: Regenerate.
+
+2008-11-10  Joel Sherrill <joel.sherrill@oarcorp.com>
+
+	* erc32.c, exec.c: Fix warnings.
+
+2008-07-11  Hans-Peter Nilsson  <hp@axis.com>
+
+	* configure: Regenerate to track ../common/common.m4 changes.
+	* config.in: Ditto.
+
+2008-06-09  Joel Sherrill <joel.sherrill@oarcorp.com>
+
+	* sis.c: Correct spelling error.
+
+2008-06-06  Vladimir Prus  <vladimir@codesourcery.com>
+            Daniel Jacobowitz  <dan@codesourcery.com>
+            Joseph Myers  <joseph@codesourcery.com>
+
+	* configure: Regenerate.
+
 2006-12-21  Hans-Peter Nilsson  <hp@axis.com>
 
 	* acconfig.h: Remove.

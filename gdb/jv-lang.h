@@ -1,6 +1,6 @@
 /* Java language support definitions for GDB, the GNU debugger.
 
-   Copyright (C) 1997, 1998, 1999, 2000, 2005, 2007, 2008
+   Copyright (C) 1997, 1998, 1999, 2000, 2005, 2007, 2008, 2009, 2010, 2011
    Free Software Foundation, Inc.
 
    This file is part of GDB.
@@ -23,50 +23,54 @@
 
 struct value;
 
-extern int java_parse (void);	/* Defined in jv-exp.y */
+extern int java_parse (void);		/* Defined in jv-exp.y */
 
 extern void java_error (char *);	/* Defined in jv-exp.y */
 
-/* sizeof (struct Object) */
-#define JAVA_OBJECT_SIZE (get_java_object_header_size ())
+struct builtin_java_type
+{
+  struct type *builtin_int;
+  struct type *builtin_byte;
+  struct type *builtin_short;
+  struct type *builtin_long;
+  struct type *builtin_boolean;
+  struct type *builtin_char;
+  struct type *builtin_float;
+  struct type *builtin_double;
+  struct type *builtin_void;
+};
 
-extern struct type *java_int_type;
-extern struct type *java_byte_type;
-extern struct type *java_short_type;
-extern struct type *java_long_type;
-extern struct type *java_boolean_type;
-extern struct type *java_char_type;
-extern struct type *java_float_type;
-extern struct type *java_double_type;
-extern struct type *java_void_type;
+extern const struct builtin_java_type *builtin_java_type (struct gdbarch *);
 
 extern int java_val_print (struct type *, const gdb_byte *, int, CORE_ADDR,
-			   struct ui_file *, int, int, int,
-			   enum val_prettyprint);
+			   struct ui_file *, int,
+			   const struct value *,
+			   const struct value_print_options *);
 
-extern int java_value_print (struct value *, struct ui_file *, int,
-			     enum val_prettyprint);
+extern int java_value_print (struct value *, struct ui_file *,
+			     const struct value_print_options *);
 
 extern struct value *java_class_from_object (struct value *);
 
-extern struct type *type_from_class (struct value *);
+extern struct type *type_from_class (struct gdbarch *, struct value *);
 
-extern struct type *java_primitive_type (int signature);
+extern struct type *java_primitive_type (struct gdbarch *, int signature);
 
-extern struct type *java_primitive_type_from_name (char *, int);
+extern struct type *java_primitive_type_from_name (struct gdbarch *,
+						   char *, int);
 
 extern struct type *java_array_type (struct type *, int);
 
 extern struct type *get_java_object_type (void);
-extern int get_java_object_header_size (void);
+extern int get_java_object_header_size (struct gdbarch *);
 
 extern struct type *java_lookup_class (char *);
 
 extern int is_object_type (struct type *);
 
 /* Defined in jv-typeprint.c */
-extern void java_print_type (struct type *, char *, struct ui_file *, int,
-			     int);
+extern void java_print_type (struct type *, const char *,
+			     struct ui_file *, int, int);
 
 extern char *java_demangle_type_signature (char *);
 

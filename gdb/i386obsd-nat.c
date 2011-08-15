@@ -1,6 +1,6 @@
 /* Native-dependent code for OpenBSD/i386.
 
-   Copyright (C) 2002, 2003, 2004, 2006, 2007, 2008
+   Copyright (C) 2002, 2003, 2004, 2006, 2007, 2008, 2009, 2010, 2011
    Free Software Foundation, Inc.
 
    This file is part of GDB.
@@ -35,6 +35,8 @@
 static int
 i386obsd_supply_pcb (struct regcache *regcache, struct pcb *pcb)
 {
+  struct gdbarch *gdbarch = get_regcache_arch (regcache);
+  enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
   struct switchframe sf;
 
   /* The following is true for OpenBSD 3.6:
@@ -60,10 +62,11 @@ i386obsd_supply_pcb (struct regcache *regcache, struct pcb *pcb)
   /* Read the stack frame, and check its validity.  We do this by
      checking if the saved interrupt priority level in the stack frame
      looks reasonable..  */
-  read_memory (pcb->pcb_esp, (char *) &sf, sizeof sf);
-  if ((unsigned int) sf.sf_ppl < 0x100 && (sf.sf_ppl & 0xf) == 0)
+#ifdef PCB_SAVECTX
+  if ((pcb->pcb_flags & PCB_SAVECTX) == 0)
     {
       /* Yes, we have a frame that matches cpu_switch().  */
+      read_memory (pcb->pcb_esp, (char *) &sf, sizeof sf);
       pcb->pcb_esp += sizeof (struct switchframe);
       regcache_raw_supply (regcache, I386_EDI_REGNUM, &sf.sf_edi);
       regcache_raw_supply (regcache, I386_ESI_REGNUM, &sf.sf_esi);
@@ -71,10 +74,13 @@ i386obsd_supply_pcb (struct regcache *regcache, struct pcb *pcb)
       regcache_raw_supply (regcache, I386_EIP_REGNUM, &sf.sf_eip);
     }
   else
+#endif
     {
       /* No, the pcb must have been last updated by savectx().  */
-      pcb->pcb_esp += 4;
-      regcache_raw_supply (regcache, I386_EIP_REGNUM, &sf);
+      pcb->pcb_esp = pcb->pcb_ebp;
+      pcb->pcb_ebp = read_memory_integer(pcb->pcb_esp, 4, byte_order);
+      sf.sf_eip = read_memory_integer(pcb->pcb_esp + 4, 4, byte_order);
+      regcache_raw_supply (regcache, I386_EIP_REGNUM, &sf.sf_eip);
     }
 
   regcache_raw_supply (regcache, I386_EBP_REGNUM, &pcb->pcb_ebp);

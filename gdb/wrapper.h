@@ -1,6 +1,7 @@
 /* Longjump free calls to GDB internal routines.
 
-   Copyright (C) 1999, 2000, 2005, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 1999, 2000, 2005, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -35,8 +36,7 @@ extern int gdb_value_equal (struct value *, struct value *, int *);
 
 extern int gdb_value_assign (struct value *, struct value *, struct value **);
 
-extern int gdb_value_subscript (struct value *, struct value *,
-				struct value **);
+extern int gdb_value_subscript (struct value *, LONGEST, struct value **);
 
 extern enum gdb_rc gdb_value_struct_elt (struct ui_out *uiout,
 					 struct value **result_ptr,

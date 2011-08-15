@@ -1,6 +1,7 @@
 /* Main interface for GDB, the GNU debugger.
 
-   Copyright (C) 2002, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2002, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -33,5 +34,7 @@ extern int gdb_main (struct captured_main_args *);
 /* From main.c.  */
 extern int return_child_result;
 extern int return_child_result_value;
+extern int batch_silent;
+extern int batch_flag;
 
 #endif

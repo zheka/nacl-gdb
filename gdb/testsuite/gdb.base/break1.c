@@ -1,7 +1,7 @@
 /* This testcase is part of GDB, the GNU debugger.
 
-   Copyright 1992, 1993, 1994, 1995, 1999, 2002, 2003, 2007, 2008
-   Free Software Foundation, Inc.
+   Copyright 1992, 1993, 1994, 1995, 1999, 2002, 2003, 2007, 2008, 2009, 2010,
+   2011 Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -14,13 +14,20 @@
    GNU General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
-   Please email any bugs, comments, and/or additions to this file to:
-   bug-gdb@prep.ai.mit.edu  */
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 /* The code for this file was extracted from the gdb testsuite
    testcase "break.c". */
+
+/* A structure we use for field name completion tests.  */
+struct some_struct
+{
+  int a_field;
+  int b_field;
+  union { int z_field; };
+};
+
+struct some_struct values[50];
 
 /* The following functions do nothing useful.  They are included
    simply as places to try setting breakpoints at.  They are
@@ -34,10 +41,10 @@
 int marker1 (void) { return (0); }	/* set breakpoint 15 here */
 int marker2 (int a) { return (1); }	/* set breakpoint 8 here */
 void marker3 (char *a, char *b) {}	/* set breakpoint 17 here */
-void marker4 (long d) {}		/* set breakpoint 14 here */
+void marker4 (long d) { values[0].a_field = d; }	/* set breakpoint 14 here */
 #else
 int marker1 () { return (0); }		/* set breakpoint 16 here */
 int marker2 (a) int a; { return (1); }	/* set breakpoint 9 here */
 void marker3 (a, b) char *a, *b; {}	/* set breakpoint 18 here */
-void marker4 (d) long d; {}		/* set breakpoint 13 here */
+void marker4 (d) long d; { values[0].a_field = d; }	/* set breakpoint 13 here */
 #endif

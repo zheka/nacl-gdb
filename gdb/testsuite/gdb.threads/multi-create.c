@@ -1,5 +1,5 @@
 /* Create threads from multiple threads in parallel.
-   Copyright 2007, 2008 Free Software Foundation, Inc.
+   Copyright 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -43,7 +43,7 @@ create_function (void *arg)
   int j;
 
   pthread_attr_init (&attr); /* set breakpoint 1 here.  */
-  pthread_attr_setstacksize (&attr, PTHREAD_STACK_MIN);
+  pthread_attr_setstacksize (&attr, 2*PTHREAD_STACK_MIN);
 
   /* Create a ton of quick-executing threads, then wait for them to
      complete.  */
@@ -70,7 +70,7 @@ main (int argc, char **argv)
   int n, i;
 
   pthread_attr_init (&attr);
-  pthread_attr_setstacksize (&attr, PTHREAD_STACK_MIN);
+  pthread_attr_setstacksize (&attr, 2*PTHREAD_STACK_MIN);
 
   for (n = 0; n < 100; ++n)
     {

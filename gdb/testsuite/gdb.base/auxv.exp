@@ -1,6 +1,7 @@
 # Test `info auxv' and related functionality.
 
-# Copyright 1992,1993,1994,1995,1996,1997,1998,1999,2000,2004,2007,2008
+# Copyright
+#	1992,1993,1994,1995,1996,1997,1998,1999,2000,2004,2007,2008,2009,2010
 #	Free Software Foundation, Inc.
 
 # This program is free software; you can redistribute it and/or modify
@@ -16,9 +17,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-# Please email any bugs, comments, and/or additions to this file to:
-# bug-gdb@prep.ai.mit.edu
-
 # This file is based on corefile.exp which was written by Fred
 # Fish. (fnf@cygnus.com)
 
@@ -31,8 +29,6 @@ if $tracelevel then {
 	strace $tracelevel
 }
 
-set prms_id 0
-set bug_id 0
 
 set testfile "auxv"
 set srcfile ${testfile}.c
@@ -57,10 +53,8 @@ gdb_exit
 gdb_start
 gdb_reinitialize_dir $srcdir/$subdir
 gdb_load ${binfile}
-gdb_test "set print sevenbit-strings" "" \
-	"set print sevenbit-strings; ${testfile}"
-gdb_test "set width 0" "" \
-	"set width 0; ${testfile}"
+gdb_test_no_output "set print sevenbit-strings"
+gdb_test_no_output "set width 0"
 
 if {$core_works} {
     if {[gdb_test "cd $coredir" ".*Working directory .*" \
@@ -81,8 +75,10 @@ proc fetch_auxv {test} {
 
     set auxv_lines {}
     set bad -1
+    # Former trailing `\[\r\n\]+' may eat just \r leaving \n in the buffer
+    # corrupting the next matches.
     if {[gdb_test_multiple "info auxv" $test {
-	-re "info auxv\[\r\n\]+" {
+	-re "info auxv\r\n" {
 	    exp_continue
 	}
 	-ex "The program has no auxiliary information now" {
@@ -97,20 +93,20 @@ proc fetch_auxv {test} {
 	    set bad 1
 	    exp_continue
 	}
-	-re "^\[0-9\]+\[ \t\]+(AT_\[^ \t\]+)\[^\r\n\]+\[\r\n\]+" {
+	-re "^\[0-9\]+\[ \t\]+(AT_\[^ \t\]+)\[^\r\n\]+\r\n" {
 	    lappend auxv_lines $expect_out(0,string)
 	    exp_continue
 	}
-	-re "^\[0-9\]+\[ \t\]+\\?\\?\\?\[^\r\n\]+\[\r\n\]+" {
+	-re "^\[0-9\]+\[ \t\]+\\?\\?\\?\[^\r\n\]+\r\n" {
 	    warning "Unrecognized tag value: $expect_out(0,string)"
 	    set bad 1
 	    lappend auxv_lines $expect_out(0,string)
 	    exp_continue
 	}
-	-re ".*$gdb_prompt $" {
+	-re "$gdb_prompt $" {
 	    incr bad
 	}
-	-re "^\[^\r\n\]+\[\r\n\]+" {
+	-re "^\[^\r\n\]+\r\n" {
 	    if {!$bad} {
 		warning "Unrecognized output: $expect_out(0,string)"
 		set bad 1

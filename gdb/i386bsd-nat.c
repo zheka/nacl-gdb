@@ -1,7 +1,7 @@
 /* Native-dependent code for modern i386 BSD's.
 
-   Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2007, 2008
-   Free Software Foundation, Inc.
+   Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2007, 2008, 2009, 2010,
+   2011 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -130,7 +130,8 @@ i386bsd_collect_gregset (const struct regcache *regcache,
    for all registers (including the floating point registers).  */
 
 static void
-i386bsd_fetch_inferior_registers (struct regcache *regcache, int regnum)
+i386bsd_fetch_inferior_registers (struct target_ops *ops,
+				  struct regcache *regcache, int regnum)
 {
   if (regnum == -1 || GETREGS_SUPPLIES (regnum))
     {
@@ -180,7 +181,8 @@ i386bsd_fetch_inferior_registers (struct regcache *regcache, int regnum)
    this for all registers (including the floating point registers).  */
 
 static void
-i386bsd_store_inferior_registers (struct regcache *regcache, int regnum)
+i386bsd_store_inferior_registers (struct target_ops *ops,
+				  struct regcache *regcache, int regnum)
 {
   if (regnum == -1 || GETREGS_SUPPLIES (regnum))
     {

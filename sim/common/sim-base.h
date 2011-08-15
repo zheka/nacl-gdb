@@ -1,6 +1,7 @@
 /* Simulator pseudo baseclass.
 
-   Copyright 1997, 1998, 2003, 2007, 2008 Free Software Foundation, Inc.
+   Copyright 1997, 1998, 2003, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    Contributed by Cygnus Support.
 
@@ -33,7 +34,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
          CIA_ADDR to return the integral value.  *-/
      /-* #define CIA_ADDR(cia) (...) *-/
      #include "sim-base.h"
-   
+
    finally, two data types `struct _sim_cpu' and `struct sim_state'
    are defined:
 
@@ -43,11 +44,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
      };
 
      struct sim_state {
-       sim_cpu cpu[MAX_NR_PROCESSORS];
+       sim_cpu *cpu[MAX_NR_PROCESSORS];
      #if (WITH_SMP)
-     #define STATE_CPU(sd,n) (&(sd)->cpu[n])
+     #define STATE_CPU(sd,n) ((sd)->cpu[n])
      #else
-     #define STATE_CPU(sd,n) (&(sd)->cpu[0])
+     #define STATE_CPU(sd,n) ((sd)->cpu[0])
      #endif
        ... simulator specific members ...
        sim_state_base base;

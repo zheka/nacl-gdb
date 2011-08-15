@@ -1,5 +1,6 @@
 /* Target operations for the remote server for GDB.
-   Copyright (C) 2002, 2004, 2005, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2002, 2004, 2005, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    Contributed by MontaVista Software.
 
@@ -28,10 +29,7 @@ set_desired_inferior (int use_general)
   struct thread_info *found;
 
   if (use_general == 1)
-    {
-      found = (struct thread_info *) find_inferior_id (&all_threads,
-						       general_thread);
-    }
+    found = find_thread_ptid (general_thread);
   else
     {
       found = NULL;
@@ -39,14 +37,14 @@ set_desired_inferior (int use_general)
       /* If we are continuing any (all) thread(s), use step_thread
 	 to decide which thread to step and/or send the specified
 	 signal to.  */
-      if ((step_thread != 0 && step_thread != -1)
-	  && (cont_thread == 0 || cont_thread == -1))
-	found = (struct thread_info *) find_inferior_id (&all_threads,
-							 step_thread);
+      if ((!ptid_equal (step_thread, null_ptid)
+	   && !ptid_equal (step_thread, minus_one_ptid))
+	  && (ptid_equal (cont_thread, null_ptid)
+	      || ptid_equal (cont_thread, minus_one_ptid)))
+	found = find_thread_ptid (step_thread);
 
       if (found == NULL)
-	found = (struct thread_info *) find_inferior_id (&all_threads,
-							 cont_thread);
+	found = find_thread_ptid (cont_thread);
     }
 
   if (found == NULL)
@@ -77,7 +75,7 @@ write_inferior_memory (CORE_ADDR memaddr, const unsigned char *myaddr,
   if (buffer != NULL)
     free (buffer);
 
-  buffer = malloc (len);
+  buffer = xmalloc (len);
   memcpy (buffer, myaddr, len);
   check_mem_write (memaddr, buffer, len);
   res = (*the_target->write_memory) (memaddr, buffer, len);
@@ -87,15 +85,24 @@ write_inferior_memory (CORE_ADDR memaddr, const unsigned char *myaddr,
   return res;
 }
 
-unsigned char
-mywait (char *statusp, int connected_wait)
+ptid_t
+mywait (ptid_t ptid, struct target_waitstatus *ourstatus, int options,
+	int connected_wait)
 {
-  unsigned char ret;
+  ptid_t ret;
 
   if (connected_wait)
     server_waiting = 1;
 
-  ret = (*the_target->wait) (statusp);
+  ret = (*the_target->wait) (ptid, ourstatus, options);
+
+  if (ourstatus->kind == TARGET_WAITKIND_EXITED)
+    fprintf (stderr,
+	     "\nChild exited with status %d\n", ourstatus->value.integer);
+  else if (ourstatus->kind == TARGET_WAITKIND_SIGNALLED)
+    fprintf (stderr, "\nChild terminated with signal = 0x%x (%s)\n",
+	     target_signal_to_host (ourstatus->value.sig),
+	     target_signal_to_name (ourstatus->value.sig));
 
   if (connected_wait)
     server_waiting = 0;
@@ -103,9 +110,89 @@ mywait (char *statusp, int connected_wait)
   return ret;
 }
 
+int
+start_non_stop (int nonstop)
+{
+  if (the_target->start_non_stop == NULL)
+    {
+      if (nonstop)
+	return -1;
+      else
+	return 0;
+    }
+
+  return (*the_target->start_non_stop) (nonstop);
+}
+
 void
 set_target_ops (struct target_ops *target)
 {
-  the_target = (struct target_ops *) malloc (sizeof (*the_target));
+  the_target = (struct target_ops *) xmalloc (sizeof (*the_target));
   memcpy (the_target, target, sizeof (*the_target));
+}
+
+/* Convert pid to printable format.  */
+
+const char *
+target_pid_to_str (ptid_t ptid)
+{
+  static char buf[80];
+
+  if (ptid_equal (ptid, minus_one_ptid))
+    xsnprintf (buf, sizeof (buf), "<all threads>");
+  else if (ptid_equal (ptid, null_ptid))
+    xsnprintf (buf, sizeof (buf), "<null thread>");
+  else if (ptid_get_tid (ptid) != 0)
+    xsnprintf (buf, sizeof (buf), "Thread %d.0x%lx",
+	       ptid_get_pid (ptid), ptid_get_tid (ptid));
+  else if (ptid_get_lwp (ptid) != 0)
+    xsnprintf (buf, sizeof (buf), "LWP %d.%ld",
+	       ptid_get_pid (ptid), ptid_get_lwp (ptid));
+  else
+    xsnprintf (buf, sizeof (buf), "Process %d",
+	       ptid_get_pid (ptid));
+
+  return buf;
+}
+
+/* Return a pretty printed form of target_waitstatus.  */
+
+const char *
+target_waitstatus_to_string (const struct target_waitstatus *ws)
+{
+  static char buf[200];
+  const char *kind_str = "status->kind = ";
+
+  switch (ws->kind)
+    {
+    case TARGET_WAITKIND_EXITED:
+      sprintf (buf, "%sexited, status = %d",
+	       kind_str, ws->value.integer);
+      break;
+    case TARGET_WAITKIND_STOPPED:
+      sprintf (buf, "%sstopped, signal = %s",
+	       kind_str, target_signal_to_name (ws->value.sig));
+      break;
+    case TARGET_WAITKIND_SIGNALLED:
+      sprintf (buf, "%ssignalled, signal = %s",
+	       kind_str, target_signal_to_name (ws->value.sig));
+      break;
+    case TARGET_WAITKIND_LOADED:
+      sprintf (buf, "%sloaded", kind_str);
+      break;
+    case TARGET_WAITKIND_EXECD:
+      sprintf (buf, "%sexecd", kind_str);
+      break;
+    case TARGET_WAITKIND_SPURIOUS:
+      sprintf (buf, "%sspurious", kind_str);
+      break;
+    case TARGET_WAITKIND_IGNORE:
+      sprintf (buf, "%signore", kind_str);
+      break;
+    default:
+      sprintf (buf, "%sunknown???", kind_str);
+      break;
+    }
+
+  return buf;
 }

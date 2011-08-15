@@ -1,6 +1,7 @@
 /* Target-dependent code for OpenBSD/arm.
 
-   Copyright (C) 2006, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2006, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -32,7 +33,7 @@
 
 static void
 armobsd_sigframe_init (const struct tramp_frame *self,
-		       struct frame_info *next_frame,
+		       struct frame_info *this_frame,
 		       struct trad_frame_cache *cache,
 		       CORE_ADDR func)
 {
@@ -41,7 +42,7 @@ armobsd_sigframe_init (const struct tramp_frame *self,
 
   /* We find the appropriate instance of `struct sigcontext' at a
      fixed offset in the signal frame.  */
-  sp = frame_unwind_register_signed (next_frame, ARM_SP_REGNUM);
+  sp = get_frame_register_signed (this_frame, ARM_SP_REGNUM);
   sigcontext_addr = sp + 16;
 
   /* PC.  */
@@ -126,6 +127,9 @@ armobsd_core_osabi_sniffer (bfd *abfd)
 
   return GDB_OSABI_UNKNOWN;
 }
+
+/* Provide a prototype to silence -Wmissing-prototypes.  */
+extern initialize_file_ftype _initialize_armobsd_tdep;
 
 void
 _initialize_armobsd_tdep (void)

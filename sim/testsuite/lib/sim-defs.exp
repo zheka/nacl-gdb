@@ -88,6 +88,15 @@ proc sim_run { prog sim_opts prog_opts redir options } {
     verbose "testcase timeout is set to $testcase_timeout" 1
 
     set sim [board_info target sim]
+    if [string equal "" $sim] {
+	# Special case the simulator.  These tests are designed to
+	# be run inside of the simulator, not on the native host.
+	# So if the sim target isn't set, default to the target run.
+	# These global variables come from generated site.exp.
+	global objdir
+	global arch
+	set sim "$objdir/../$arch/run"
+    }
 
     if [is_remote host] {
 	set prog [remote_download host $prog]
@@ -161,6 +170,7 @@ proc sim_run { prog sim_opts prog_opts redir options } {
 # as[(mach-list)]: <assembler options>
 # ld[(mach-list)]: <linker options>
 # sim[(mach-list)]: <simulator options>
+# progopts: <arguments to the program being simulated>
 # output: program output pattern to match with string-match
 # xerror: program is expected to return with a "failure" exit code
 # xfail: <PRMS-opt> <target-triplets-where-test-fails>
@@ -197,6 +207,7 @@ proc run_sim_test { name requested_machs } {
     # Clear default options
     set opts(as) ""
     set opts(ld) ""
+    set opts(progopts) ""
     set opts(sim) ""
     set opts(output) ""
     set opts(mach) ""
@@ -330,7 +341,7 @@ proc run_sim_test { name requested_machs } {
 	    set options "$options timeout=$opts(timeout)"
 	}
 
-	set result [sim_run ${name}.x "$opts(sim,$mach) $global_sim_options" "" "" "$options"]
+	set result [sim_run ${name}.x "$opts(sim,$mach) $global_sim_options" "$opts(progopts)" "" "$options"]
 	set status [lindex $result 0]
 	set output [lindex $result 1]
 

@@ -25,7 +25,7 @@
 #include <fcntl.h>
 #include <ctype.h>
 
-#include "config.h"
+#include "build-config.h"
 #include "misc.h"
 #include "lf.h"
 #include "table.h"
@@ -102,7 +102,7 @@ table_push (table *root,
       fd = open (dup_name, O_RDONLY, 0);
       if (fd >= 0)
 	break;
-      /* zfree (dup_name); */
+      /* free (dup_name); */
       if (include->next == NULL)
 	{
 	  error ("Problem opening file `%s'\n", file_name);

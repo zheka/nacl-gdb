@@ -1,4 +1,4 @@
---  Copyright 2008 Free Software Foundation, Inc.
+--  Copyright 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
 --
 --  This program is free software; you can redistribute it and/or modify
 --  it under the terms of the GNU General Public License as published by
@@ -18,7 +18,14 @@ with Pck; use Pck;
 procedure Foo is
    type Table is array (Integer range <>) of Integer;
 
+   type Matrix is array (1 .. 10, 1 .. 0) of Character;
+   type Wrapper is record
+      M : Matrix;
+   end record;
+
    My_Table : Table (Ident (10) .. Ident (1));
+   My_Matrix : Wrapper := (M => (others => (others => 'a')));
 begin
    Do_Nothing (My_Table'Address);  -- START
+   Do_Nothing (My_Matrix'Address);
 end Foo;

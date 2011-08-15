@@ -1,6 +1,6 @@
 /* Replay a remote debug session logfile for GDB.
-   Copyright (C) 1996, 1998, 1999, 2000, 2002, 2003, 2005, 2006, 2007, 2008
-   Free Software Foundation, Inc.
+   Copyright (C) 1996, 1998, 1999, 2000, 2002, 2003, 2005, 2006, 2007, 2008,
+   2009, 2010, 2011 Free Software Foundation, Inc.
    Written by Fred Fish (fnf@cygnus.com) from pieces of gdbserver.
 
    This file is part of GDB.
@@ -54,12 +54,14 @@
 #if HAVE_NETINET_TCP_H
 #include <netinet/tcp.h>
 #endif
+#if HAVE_ALLOCA_H
+#include <alloca.h>
+#endif
 #if HAVE_MALLOC_H
 #include <malloc.h>
 #endif
-
 #if USE_WIN32API
-#include <winsock.h>
+#include <winsock2.h>
 #endif
 
 #ifndef HAVE_SOCKLEN_T
@@ -68,6 +70,10 @@ typedef int socklen_t;
 
 /* Sort of a hack... */
 #define EOL (EOF - 1)
+
+/* Version information, from version.c.  */
+extern const char version[];
+extern const char host_name[];
 
 static int remote_desc;
 
@@ -127,7 +133,7 @@ strerror (DWORD error)
    Then return to command level.  */
 
 static void
-perror_with_name (char *string)
+perror_with_name (const char *string)
 {
 #ifndef STDC_HEADERS
   extern int errno;
@@ -154,6 +160,14 @@ sync_error (FILE *fp, char *desc, int expect, int got)
   fprintf (stderr, "\n%s\n", desc);
   fprintf (stderr, "At logfile offset %ld, expected '0x%x' got '0x%x'\n",
 	   ftell (fp), expect, got);
+  fflush (stderr);
+  exit (1);
+}
+
+static void
+remote_error (const char *desc)
+{
+  fprintf (stderr, "\n%s\n", desc);
   fflush (stderr);
   exit (1);
 }
@@ -206,7 +220,7 @@ remote_open (char *name)
 #endif
 
       tmp_desc = socket (PF_INET, SOCK_STREAM, 0);
-      if (tmp_desc < 0)
+      if (tmp_desc == -1)
 	perror_with_name ("Can't open socket");
 
       /* Allow rapid reuse of this port. */
@@ -229,10 +243,11 @@ remote_open (char *name)
 
       /* Enable TCP keep alive process. */
       tmp = 1;
-      setsockopt (tmp_desc, SOL_SOCKET, SO_KEEPALIVE, (char *) &tmp, sizeof (tmp));
+      setsockopt (tmp_desc, SOL_SOCKET, SO_KEEPALIVE,
+		  (char *) &tmp, sizeof (tmp));
 
       /* Tell TCP not to delay small packets.  This greatly speeds up
-         interactive response. */
+	 interactive response. */
       tmp = 1;
       setsockopt (remote_desc, IPPROTO_TCP, TCP_NODELAY,
 		  (char *) &tmp, sizeof (tmp));
@@ -240,8 +255,9 @@ remote_open (char *name)
 #ifndef USE_WIN32API
       close (tmp_desc);		/* No longer need this */
 
-      signal (SIGPIPE, SIG_IGN);	/* If we don't do this, then gdbreplay simply
-					   exits when the remote side dies.  */
+      signal (SIGPIPE, SIG_IGN);	/* If we don't do this, then
+					   gdbreplay simply exits when
+					   the remote side dies.  */
 #else
       closesocket (tmp_desc);	/* No longer need this */
 #endif
@@ -335,6 +351,17 @@ logchar (FILE *fp)
   return (ch);
 }
 
+static int
+gdbchar (int desc)
+{
+  unsigned char fromgdb;
+
+  if (read (desc, &fromgdb, 1) != 1)
+    return -1;
+  else
+    return fromgdb;
+}
+
 /* Accept input from gdb and match with chars from fp (after skipping one
    blank) up until a \n is read from fp (which is not matched) */
 
@@ -342,7 +369,7 @@ static void
 expect (FILE *fp)
 {
   int fromlog;
-  unsigned char fromgdb;
+  int fromgdb;
 
   if ((fromlog = logchar (fp)) != ' ')
     {
@@ -353,15 +380,16 @@ expect (FILE *fp)
     {
       fromlog = logchar (fp);
       if (fromlog == EOL)
-	{
-	  break;
-	}
-      read (remote_desc, &fromgdb, 1);
+	break;
+      fromgdb = gdbchar (remote_desc);
+      if (fromgdb < 0)
+	remote_error ("Error during read from gdb");
     }
   while (fromlog == fromgdb);
+
   if (fromlog != EOL)
     {
-      sync_error (fp, "Sync error during read of gdb packet", fromlog,
+      sync_error (fp, "Sync error during read of gdb packet from log", fromlog,
 		  fromgdb);
     }
 }
@@ -383,8 +411,28 @@ play (FILE *fp)
   while ((fromlog = logchar (fp)) != EOL)
     {
       ch = fromlog;
-      write (remote_desc, &ch, 1);
+      if (write (remote_desc, &ch, 1) != 1)
+	remote_error ("Error during write to gdb");
     }
+}
+
+static void
+gdbreplay_version (void)
+{
+  printf ("GNU gdbreplay %s%s\n"
+	  "Copyright (C) 2011 Free Software Foundation, Inc.\n"
+	  "gdbreplay is free software, covered by "
+	  "the GNU General Public License.\n"
+	  "This gdbreplay was configured as \"%s\"\n",
+	  PKGVERSION, version, host_name);
+}
+
+static void
+gdbreplay_usage (FILE *stream)
+{
+  fprintf (stream, "Usage:\tgdbreplay <logfile> <host:port>\n");
+  if (REPORT_BUGS_TO[0] && stream == stdout)
+    fprintf (stream, "Report bugs to \"%s\".\n", REPORT_BUGS_TO);
 }
 
 int
@@ -393,10 +441,20 @@ main (int argc, char *argv[])
   FILE *fp;
   int ch;
 
+  if (argc >= 2 && strcmp (argv[1], "--version") == 0)
+    {
+      gdbreplay_version ();
+      exit (0);
+    }
+  if (argc >= 2 && strcmp (argv[1], "--help") == 0)
+    {
+      gdbreplay_usage (stdout);
+      exit (0);
+    }
+
   if (argc < 3)
     {
-      fprintf (stderr, "Usage: gdbreplay <logfile> <host:port>\n");
-      fflush (stderr);
+      gdbreplay_usage (stderr);
       exit (1);
     }
   fp = fopen (argv[1], "r");

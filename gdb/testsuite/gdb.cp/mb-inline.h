@@ -4,7 +4,7 @@
 
    This testcase is part of GDB, the GNU debugger.
 
-   Copyright 2008 Free Software Foundation, Inc.
+   Copyright 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -24,6 +24,13 @@ static int
 foo (int i)
 {
   return i; // set breakpoint here
+}
+
+static int
+multi_line_foo (int i)
+{
+  return // set multi-line breakpoint here
+    i;
 }
 
 extern int afn ();

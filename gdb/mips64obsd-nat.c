@@ -1,6 +1,7 @@
 /* Native-dependent code for OpenBSD/mips64.
 
-   Copyright (C) 2004, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -77,7 +78,8 @@ mips64obsd_collect_gregset (const struct regcache *regcache,
    for all registers.  */
 
 static void
-mips64obsd_fetch_inferior_registers (struct regcache *regcache, int regnum)
+mips64obsd_fetch_inferior_registers (struct target_ops *ops,
+				     struct regcache *regcache, int regnum)
 {
   struct reg regs;
 
@@ -92,7 +94,8 @@ mips64obsd_fetch_inferior_registers (struct regcache *regcache, int regnum)
    this for all registers.  */
 
 static void
-mips64obsd_store_inferior_registers (struct regcache *regcache, int regnum)
+mips64obsd_store_inferior_registers (struct target_ops *ops,
+				     struct regcache *regcache, int regnum)
 {
   struct reg regs;
 

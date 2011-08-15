@@ -1,6 +1,7 @@
 /* Native-dependent code for GNU/Linux m32r.
 
-   Copyright (C) 2004, 2005, 2006, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -55,8 +56,9 @@ static int regmap[] = {
 #define SPU_REGMAP 23
 #define SPI_REGMAP 26
 
-/* Doee apply to the corresponding SET requests as well.  */
-#define GETREGS_SUPPLIES(regno) (0 <= (regno) && (regno) <= M32R_LINUX_NUM_REGS)
+/* Doee (??) apply to the corresponding SET requests as well.  */
+#define GETREGS_SUPPLIES(regno) (0 <= (regno) \
+				 && (regno) <= M32R_LINUX_NUM_REGS)
 
 
 
@@ -193,7 +195,8 @@ fill_fpregset (const struct regcache *regcache,
    registers).  */
 
 static void
-m32r_linux_fetch_inferior_registers (struct regcache *regcache, int regno)
+m32r_linux_fetch_inferior_registers (struct target_ops *ops,
+				     struct regcache *regcache, int regno)
 {
   int tid;
 
@@ -219,7 +222,8 @@ m32r_linux_fetch_inferior_registers (struct regcache *regcache, int regno)
    do this for all registers (including the floating point and SSE
    registers).  */
 static void
-m32r_linux_store_inferior_registers (struct regcache *regcache, int regno)
+m32r_linux_store_inferior_registers (struct target_ops *ops,
+				     struct regcache *regcache, int regno)
 {
   int tid;
 

@@ -1,6 +1,6 @@
 /* Target-dependent code for Solaris x86.
 
-   Copyright (C) 2002, 2003, 2004, 2006, 2007, 2008
+   Copyright (C) 2002, 2003, 2004, 2006, 2007, 2008, 2009, 2010, 2011
    Free Software Foundation, Inc.
 
    This file is part of GDB.
@@ -49,13 +49,13 @@ static int i386_sol2_gregset_reg_offset[] =
   0 * 4				/* %gs */
 };
 
-/* Return whether the frame preceding NEXT_FRAME corresponds to a
-   Solaris sigtramp routine.  */
+/* Return whether THIS_FRAME corresponds to a Solaris sigtramp
+   routine.  */
 
 static int
-i386_sol2_sigtramp_p (struct frame_info *next_frame)
+i386_sol2_sigtramp_p (struct frame_info *this_frame)
 {
-  CORE_ADDR pc = frame_pc_unwind (next_frame);
+  CORE_ADDR pc = get_frame_pc (this_frame);
   char *name;
 
   find_pc_partial_function (pc, &name, NULL, NULL);
@@ -67,12 +67,12 @@ i386_sol2_sigtramp_p (struct frame_info *next_frame)
    `mcontext_t' that contains the saved set of machine registers.  */
 
 static CORE_ADDR
-i386_sol2_mcontext_addr (struct frame_info *next_frame)
+i386_sol2_mcontext_addr (struct frame_info *this_frame)
 {
   CORE_ADDR sp, ucontext_addr;
 
-  sp = frame_unwind_register_unsigned (next_frame, I386_ESP_REGNUM);
-  ucontext_addr = get_frame_memory_unsigned (next_frame, sp + 8, 4);
+  sp = get_frame_register_unsigned (this_frame, I386_ESP_REGNUM);
+  ucontext_addr = get_frame_memory_unsigned (this_frame, sp + 8, 4);
 
   return ucontext_addr + 36;
 }
@@ -135,6 +135,9 @@ i386_sol2_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
   set_gdbarch_skip_solib_resolver (gdbarch, sol2_skip_solib_resolver);
   set_solib_svr4_fetch_link_map_offsets
     (gdbarch, svr4_ilp32_fetch_link_map_offsets);
+
+  /* How to print LWP PTIDs from core files.  */
+  set_gdbarch_core_pid_to_str (gdbarch, sol2_core_pid_to_str);
 }
 
 

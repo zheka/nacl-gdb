@@ -1,6 +1,7 @@
 /* Native-dependent code for SPARC.
 
-   Copyright (C) 2003, 2004, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2004, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -29,18 +30,20 @@ extern void (*sparc_collect_gregset) (const struct sparc_gregset *,
 				      const struct regcache *, int, void *);
 extern void (*sparc_supply_fpregset) (struct regcache *, int , const void *);
 extern void (*sparc_collect_fpregset) (const struct regcache *, int , void *);
-extern int (*sparc_gregset_supplies_p) (int);
-extern int (*sparc_fpregset_supplies_p) (int);
+extern int (*sparc_gregset_supplies_p) (struct gdbarch *gdbarch, int);
+extern int (*sparc_fpregset_supplies_p) (struct gdbarch *gdbarch, int);
 
-extern int sparc32_gregset_supplies_p (int regnum);
-extern int sparc32_fpregset_supplies_p (int regnum);
+extern int sparc32_gregset_supplies_p (struct gdbarch *gdbarch, int regnum);
+extern int sparc32_fpregset_supplies_p (struct gdbarch *gdbarch, int regnum);
 
 /* Create a prototype generic SPARC target.  The client can override
    it with local methods.  */
 
 extern struct target_ops *sparc_target (void);
 
-extern void sparc_fetch_inferior_registers (struct regcache *, int);
-extern void sparc_store_inferior_registers (struct regcache *, int);
+extern void sparc_fetch_inferior_registers (struct target_ops *,
+					    struct regcache *, int);
+extern void sparc_store_inferior_registers (struct target_ops *,
+					    struct regcache *, int);
 
 #endif /* sparc-nat.h */

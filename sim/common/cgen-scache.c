@@ -1,5 +1,6 @@
 /* Simulator cache routines for CGEN simulators (and maybe others).
-   Copyright (C) 1996, 1997, 1998, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 1996, 1997, 1998, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
    Contributed by Cygnus Support.
 
 This file is part of GDB, the GNU debugger.
@@ -465,7 +466,7 @@ scache_print_profile (SIM_CPU *cpu, int verbose)
 			 i,
 			 max_val < 10000 ? 5 : 10,
 			 sim_add_commas (buf, sizeof (buf), lengths[i]));
-	  sim_profile_print_bar (sd, PROFILE_HISTOGRAM_WIDTH,
+	  sim_profile_print_bar (sd, cpu, PROFILE_HISTOGRAM_WIDTH,
 				 lengths[i], max_val);
 	  sim_io_printf (sd, "\n");
 	}

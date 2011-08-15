@@ -1,4 +1,5 @@
-#   Copyright 1998, 1999, 2007, 2008 Free Software Foundation, Inc.
+#   Copyright 1998, 1999, 2007, 2008, 2009, 2010, 2011
+#   Free Software Foundation, Inc.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -13,9 +14,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-# Please email any bugs, comments, and/or additions to this file to:
-# bug-gdb@prep.ai.mit.edu
-
 # This file was written by Michael Snyder (msnyder@cygnus.com)
 
 load_lib "trace-support.exp";
@@ -24,24 +22,17 @@ if $tracelevel then {
     strace $tracelevel
 }
 
-set prms_id 0
-set bug_id 0
 
 gdb_exit
 gdb_start
 
-if [istarget "m68k-*-elf"] then {
-    set srcfile gdb_c_test.c
-    set binfile [board_info target d490_binfile];
-} else {
-    set testfile "actions"
-    set srcfile ${testfile}.c
-    set binfile $objdir/$subdir/$testfile
-    if { [gdb_compile "$srcdir/$subdir/$srcfile" $binfile \
-	    executable {debug nowarnings}] != "" } {
-	untested deltrace.exp
-	return -1
-    }
+set testfile "actions"
+set srcfile ${testfile}.c
+set binfile $objdir/$subdir/deltrace
+if { [gdb_compile "$srcdir/$subdir/$srcfile" $binfile \
+	  executable {debug nowarnings}] != "" } {
+    untested deltrace.exp
+    return -1
 }
 gdb_reinitialize_dir $srcdir/$subdir
 
@@ -70,25 +61,18 @@ gdb_test "trace gdb_asm_test" "Tracepoint \[0-9\]+ at .*" "set tracepoint 2"
 gdb_test "trace $testline1"   "Tracepoint \[0-9\]+ at .*" "set tracepoint 3"
 
 gdb_test "info tracepoints" \
-    "Num Enb Address\[ \]+PassC StepC What.*\[0-9\]+\[\t \]+y\[\t \]+0x\[0-9a-fA-F\]+.*in gdb_c_test.*\[0-9\]+\[\t \]+y\[\t \]+0x\[0-9a-fA-F\]+.*gdb_asm_test.*\[0-9\]+\[\t \]+y\[\t \]+0x\[0-9a-fA-F\]+.*in gdb_recursion_test.*" \
+    "Num     Type\[ \]+Disp Enb Address\[ \]+What.*
+\[0-9\]+\[\t \]+tracepoint     keep y.* in gdb_c_test at .*$srcfile:\[0-9\]+.
+\[0-9\]+\[\t \]+tracepoint     keep y.* in gdb_asm_test at .*$srcfile:\[0-9\]+.
+\[0-9\]+\[\t \]+tracepoint     keep y.* in gdb_recursion_test at .*$srcfile:\[0-9\]+" \
 			"3.1a: set three tracepoints"
 
-send_gdb "delete tracepoints\n"
-gdb_expect 30 {
-    -re "Delete all tracepoints.*y or n.*$" {
-	send_gdb "y\n"
-	gdb_expect 30 {
-	    -re "$gdb_prompt $" {
-		pass "3.1b: delete all tracepoints"
-	    }
-	    timeout { fail "3.1b: delete all tracepoints (timeout)" }
-	}
-    }
-    -re "$gdb_prompt $" { # This should only happen if there are no tracepoints
-	fail "3.1b: delete all tracepoints (no tracepoints?)"
-    }
-    timeout { fail "3.1b: delete all tracepoints (timeout)" }
-}
+gdb_test "delete tracepoints" \
+    "" \
+    "3.1b: delete all tracepoints" \
+    "Delete all tracepoints.*y or n.*$" \
+    "y"
+
 
 # 3.2 delete tracepoint <n>
 gdb_delete_tracepoints
@@ -101,12 +85,14 @@ if { $trcpt1 <= 0 || $trcpt2 <= 0 || $trcpt3 <= 0 } then {
 }
 
 gdb_test "info tracepoints" \
-    "Num Enb Address\[ \]+PassC StepC What.*$trcpt1\[\t \]+y\[\t \]+0x\[0-9a-fA-F\]+.*in.*gdb_c_test.*$trcpt2\[\t \]+y\[\t \]+0x\[0-9a-fA-F\]+.*gdb_asm_test.*$trcpt3\[\t \]+y\[\t \]+0x\[0-9a-fA-F\]+.*in.*gdb_recursion_test.*" \
+    "Num     Type\[ \]+Disp Enb Address\[ \]+What.*
+\[0-9\]+\[\t \]+tracepoint     keep y.* in gdb_c_test at .*$srcfile:\[0-9\]+.
+\[0-9\]+\[\t \]+tracepoint     keep y.* in gdb_asm_test at .*$srcfile:\[0-9\]+.
+\[0-9\]+\[\t \]+tracepoint     keep y.* in gdb_recursion_test at .*$srcfile:\[0-9\]+" \
 			"3.2a: set three tracepoints"
 
-#gdb_test "delete tracepoint $trcpt1" "" ""
-send_gdb "delete tracepoint $trcpt1\n"
-gdb_expect {
+#gdb_test_no_output "delete tracepoint $trcpt1" ""
+gdb_test_multiple "delete tracepoint $trcpt1" "3.2b: delete first tracepoint" {
     -re "No tracepoint number.*$gdb_prompt $" {
 	fail "3.2b: delete first tracepoint"
     }
@@ -116,30 +102,16 @@ gdb_expect {
     -re "$gdb_prompt $" {
 	pass "3.2b: delete first tracepoint"
     }
-    timeout {
-	fail "3.2b: delete first tracepoint (timeout)"
-    }
 }
 
-send_gdb "info tracepoints\n"
-gdb_expect {
-    -re "$trcpt1\[\t \]+y\[\t \]+0x.*in.*gdb_c_test.*$gdb_prompt $" {
-	fail "3.2c: verify delete first tracepoint (argh)"
-    }
-    -re "$trcpt2\[\t \]+y.*gdb_asm_test.*\[\r\n\t ]+$trcpt3\[\t \]+y.* in gdb_recursion_test at .*$gdb_prompt $" {
-	pass "3.2c: verify delete first tracepoint"
-    }
-    -re ".*$gdb_prompt $" {
-	fail "3.2c: verify delete first tracepoint (mumble)" 
-    }
-    timeout {
-	fail "3.2c: verify delete first tracepoint (timeout)"
-    }
-}
+gdb_test "info tracepoints" \
+    "Num     Type\[ \]+Disp Enb Address\[ \]+What.*
+\[0-9\]+\[\t \]+tracepoint     keep y.* in gdb_asm_test at .*$srcfile:\[0-9\]+.
+\[0-9\]+\[\t \]+tracepoint     keep y.* in gdb_recursion_test at .*$srcfile:\[0-9\]+" \
+			"3.2c: verify delete first tracepoint"
 
-#gdb_test "delete tracepoint $trcpt2" "" ""
-send_gdb "delete tracepoint $trcpt2\n"
-gdb_expect {
+#gdb_test_no_output "delete tracepoint $trcpt2" ""
+gdb_test_multiple "delete tracepoint $trcpt2" "3.2d: delete second tracepoint" {
     -re "No tracepoint number.*$gdb_prompt $" {
 	fail "3.2d: delete second tracepoint"
     }
@@ -149,33 +121,15 @@ gdb_expect {
     -re "$gdb_prompt $" {
 	pass "3.2d: delete second tracepoint"
     }
-    timeout {
-	fail "3.2d: delete second tracepoint (timeout)"
-    }
 }
 
-send_gdb "info tracepoints\n"
-gdb_expect {
-    -re "$trcpt1\[\t \]+y\[\t \]+0x.*in.*gdb_c_test.*$gdb_prompt $" {
-	fail "3.2e: verify delete second tracepoint"
-    }
-    -re "$trcpt2\[\t \]+y\[\t \]+0x.*in gdb_asm_test.*$gdb_prompt $" {
-	fail "3.2e: verify delete second tracepoint"
-    }
-    -re "$trcpt3\[\t \]+y\[\t \]+0x.*in gdb_recursion_test.*$gdb_prompt $" {
-	pass "3.2e: verify delete second tracepoint"
-    }
-    -re "$gdb_prompt $" {
-	fail "3.2e: verify delete second tracepoint" 
-    }
-    timeout {
-	fail "3.2e: verify delete second tracepoint (timeout)"
-    }
-}
+gdb_test "info tracepoints" \
+    "Num     Type\[ \]+Disp Enb Address\[ \]+What.*
+\[0-9\]+\[\t \]+tracepoint     keep y.* in gdb_recursion_test at .*$srcfile:\[0-9\]+" \
+			"3.2e: verify delete second tracepoint"
 
-#gdb_test "delete tracepoint $trcpt3" "" ""
-send_gdb "delete tracepoint $trcpt3\n"
-gdb_expect {
+#gdb_test_no_output "delete tracepoint $trcpt3" ""
+gdb_test_multiple "delete tracepoint $trcpt3" "3.2f: delete third tracepoint" {
     -re "No tracepoint number.*$gdb_prompt $" {
 	fail "3.2f: delete third tracepoint"
     }
@@ -185,24 +139,12 @@ gdb_expect {
     -re "$gdb_prompt $" {
 	pass "3.2f: delete third tracepoint"
     }
-    timeout {
-	fail "3.2f: delete third tracepoint (timeout)"
-    }
 }
 
 # send_gdb "ARF! \\n\n"
-send_gdb "info tracepoints\n"
-gdb_expect {
-    -re "$trcpt3\[\t \]+y\[\t \]+0x.*in gdb_recursion_test.*$gdb_prompt $" {
-	fail "3.2g: verify delete third tracepoint"
-    }
-    -re "$gdb_prompt $" {
-	pass "3.2g: verify delete third tracepoint"
-    }
-    timeout {
-	fail "3.2g: verify delete third tracepoint (timeout)" 
-    }
-}
+gdb_test "info tracepoints" \
+    "No tracepoints." \
+			"3.2g: verify delete third tracepoint"
 
 # 3.3 delete three tracepoints at once
 gdb_delete_tracepoints
@@ -215,52 +157,37 @@ if { $trcpt1 <= 0 || $trcpt2 <= 0 || $trcpt3 <= 0 } then {
 }
 
 gdb_test "info tracepoints" \
-    "Num Enb Address\[ \]+PassC StepC What.*$trcpt1\[\t \]+y\[\t \]+0x\[0-9a-fA-F\]+.*in gdb_c_test.*$trcpt2\[\t \]+y\[\t \]+0x\[0-9a-fA-F\]+.*gdb_asm_test.*$trcpt3\[\t \]+y\[\t \]+0x\[0-9a-fA-F\]+.*in gdb_recursion_test.*" \
+    "Num     Type\[ \]+Disp Enb Address\[ \]+What.*
+\[0-9\]+\[\t \]+tracepoint     keep y.* in gdb_c_test at .*$srcfile:\[0-9\]+.
+\[0-9\]+\[\t \]+tracepoint     keep y.* in gdb_asm_test at .*$srcfile:\[0-9\]+.
+\[0-9\]+\[\t \]+tracepoint     keep y.* in gdb_recursion_test at .*$srcfile:\[0-9\]+" \
 			"3.3a: set three tracepoints"
 
-#gdb_test "delete tracepoint $trcpt1 $trcpt2 $trcpt3" "" ""
-send_gdb "delete tracepoint $trcpt1 $trcpt2 $trcpt3\n"
-gdb_expect {
-    -re "No tracepoint number.*$gdb_prompt $" {
-	fail "3.3b: delete three tracepoints"
+#gdb_test_no_output "delete tracepoint $trcpt1 $trcpt2 $trcpt3" ""
+gdb_test_multiple "delete tracepoint $trcpt1 $trcpt2 $trcpt3" \
+    "3.3b: delete three tracepoints" {
+	-re "No tracepoint number.*$gdb_prompt $" {
+	    fail "3.3b: delete three tracepoints"
+	}
+	-re ".*\[Ee\]rror.*$gdb_prompt $" {
+	    fail "3.3b: delete three tracepoints"
+	}
+	-re "$gdb_prompt $" {
+	    pass "3.3b: delete three tracepoints"
+	}
     }
-    -re ".*\[Ee\]rror.*$gdb_prompt $" {
-	fail "3.3b: delete three tracepoints"
-    }
-    -re "$gdb_prompt $" {
-	pass "3.3b: delete three tracepoints"
-    }
-    timeout {
-	fail "3.3b: delete three tracepoint (timeout)"
-    }
-}
 
-send_gdb "info tracepoints\n"
-gdb_expect {
-    -re "$trcpt1\[\t \]+y\[\t \]+0x.*in gdb_c_test.*$gdb_prompt $" {
-	fail "3.3c: verify delete three tracepoints (first one persists)"
-    }
-    -re "$trcpt2\[\t \]+y\[\t \]+0x.*in gdb_asm_test.*$gdb_prompt $" {
-	fail "3.3c: verify delete three tracepoints (second one persists)"
-    }
-    -re "$trcpt3\[\t \]+y\[\t \]+0x.*in gdb_recursion_test.*$gdb_prompt $" {
-	fail "3.3c: verify delete three tracepoints (third one persists)"
-    }
-    -re "$gdb_prompt $" {
-	pass "3.3c: verify delete three tracepoints" 
-    }
-    timeout { 
-	fail "3.3c: verify delete three tracepoints (timeout)"
-    }
-}
+gdb_test "info tracepoints" \
+    "No tracepoints." \
+			"3.3c: verify delete three tracepoints" 
 
 # 3.4 delete invalid tracepoint number
 gdb_test "delete tracepoint [expr $trcpt2 + $trcpt3]" \
-    "No tracepoint number [expr $trcpt2 + $trcpt3]." \
+    "No breakpoint number [expr $trcpt2 + $trcpt3]." \
 			"3.4: delete invalid tracepoint number"
 
 # 3.5 delete tracepoint number zero
-gdb_test "delete tracepoint 0" "bad tracepoint number at or near '0'" \
+gdb_test "delete tracepoint 0" "bad breakpoint number at or near '0'" \
 			"3.5: delete tracepoint number zero"
 
 # 3.6 help delete tracepoints

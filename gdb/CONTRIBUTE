@@ -49,7 +49,8 @@ o	Copyright Assignment
 	taking care of your contributions) to obtain the relevant
 	forms.
 
-	Small changes can be accepted without a copyright assignment form on file.
+        Small changes can be accepted without a copyright assignment form
+        on file.
 
 	Ref: http://www.gnu.org/prep/maintain.html#SEC6
 
@@ -115,19 +116,19 @@ o	Please read your patch before submitting it.
 	to re-formatting / split it.
 
 
-o	If ``gdb/configure.in'' is modified then you don't
+o	If ``gdb/configure.ac'' is modified then you don't
 	need to include patches to the regenerated file
 	``configure''.
 
 	The maintainer will re-generate those files
-	using autoconf (2.13 as of 2000-02-29).
+	using autoconf (2.64 as of 2009-08-22).
 
 
 o	If ``gdb/gdbarch.sh'' is modified, you don't
 	need to include patches to the generated files
 	``gdbarch.h'' and ``gdbarch.c''.
 
-	See ``gdb/configure.in'' above.
+	See ``gdb/configure.ac'' above.
 
 
 o	When submitting a patch that fixes a bug

@@ -1,7 +1,7 @@
 /* Target-dependent code for the Matsushita MN10300 for GDB, the GNU debugger.
 
    Copyright (C) 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005,
-   2007, 2008 Free Software Foundation, Inc.
+   2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -25,23 +25,62 @@
 #include "regcache.h"
 #include "gdb_string.h"
 #include "gdb_assert.h"
-#include "gdbcore.h"	/* for write_memory_unsigned_integer */
+#include "gdbcore.h"	/* For write_memory_unsigned_integer.  */
 #include "value.h"
 #include "gdbtypes.h"
 #include "frame.h"
 #include "frame-unwind.h"
 #include "frame-base.h"
-#include "trad-frame.h"
 #include "symtab.h"
 #include "dwarf2-frame.h"
 #include "osabi.h"
 #include "infcall.h"
+#include "prologue-value.h"
+#include "target.h"
 
 #include "mn10300-tdep.h"
 
-/* Forward decl.  */
-extern struct trad_frame_cache *mn10300_frame_unwind_cache (struct frame_info*,
-							    void **);
+
+/* The am33-2 has 64 registers.  */
+#define MN10300_MAX_NUM_REGS 64
+
+/* This structure holds the results of a prologue analysis.  */
+struct mn10300_prologue
+{
+  /* The architecture for which we generated this prologue info.  */
+  struct gdbarch *gdbarch;
+
+  /* The offset from the frame base to the stack pointer --- always
+     zero or negative.
+
+     Calling this a "size" is a bit misleading, but given that the
+     stack grows downwards, using offsets for everything keeps one
+     from going completely sign-crazy: you never change anything's
+     sign for an ADD instruction; always change the second operand's
+     sign for a SUB instruction; and everything takes care of
+     itself.  */
+  int frame_size;
+
+  /* Non-zero if this function has initialized the frame pointer from
+     the stack pointer, zero otherwise.  */
+  int has_frame_ptr;
+
+  /* If has_frame_ptr is non-zero, this is the offset from the frame
+     base to where the frame pointer points.  This is always zero or
+     negative.  */
+  int frame_ptr_offset;
+
+  /* The address of the first instruction at which the frame has been
+     set up and the arguments are where the debug info says they are
+     --- as best as we can tell.  */
+  CORE_ADDR prologue_end;
+
+  /* reg_offset[R] is the offset from the CFA at which register R is
+     saved, or 1 if register R has not been saved.  (Real values are
+     always zero or negative.)  */
+  int reg_offset[MN10300_MAX_NUM_REGS];
+};
+
 
 /* Compute the alignment required by a type.  */
 
@@ -195,9 +234,9 @@ mn10300_extract_return_value (struct gdbarch *gdbarch, struct type *type,
    from WRITEBUF into REGCACHE.  */
 
 static enum return_value_convention
-mn10300_return_value (struct gdbarch *gdbarch, struct type *type,
-		      struct regcache *regcache, gdb_byte *readbuf,
-		      const gdb_byte *writebuf)
+mn10300_return_value (struct gdbarch *gdbarch, struct type *func_type,
+		      struct type *type, struct regcache *regcache,
+		      gdb_byte *readbuf, const gdb_byte *writebuf)
 {
   if (mn10300_use_struct_convention (type))
     return RETURN_VALUE_STRUCT_CONVENTION;
@@ -264,7 +303,7 @@ am33_2_register_name (struct gdbarch *gdbarch, int reg)
 static struct type *
 mn10300_register_type (struct gdbarch *gdbarch, int reg)
 {
-  return builtin_type_int;
+  return builtin_type (gdbarch)->builtin_int;
 }
 
 static CORE_ADDR
@@ -297,538 +336,724 @@ mn10300_breakpoint_from_pc (struct gdbarch *gdbarch, CORE_ADDR *bp_addr,
   return breakpoint;
 }
 
-/* Set offsets of saved registers.
-   This is a helper function for mn10300_analyze_prologue.  */
-
+/* Model the semantics of pushing a register onto the stack.  This
+   is a helper function for mn10300_analyze_prologue, below.  */
 static void
-set_reg_offsets (struct frame_info *fi, 
-		  void **this_cache, 
-		  int movm_args,
-		  int fpregmask,
-		  int stack_extra_size,
-		  int frame_in_fp)
+push_reg (pv_t *regs, struct pv_area *stack, int regnum)
 {
-  struct gdbarch *gdbarch;
-  struct trad_frame_cache *cache;
-  int offset = 0;
-  CORE_ADDR base;
-
-  if (fi == NULL || this_cache == NULL)
-    return;
-
-  cache = mn10300_frame_unwind_cache (fi, this_cache);
-  if (cache == NULL)
-    return;
-  gdbarch = get_frame_arch (fi);
-
-  if (frame_in_fp)
-    {
-      base = frame_unwind_register_unsigned (fi, E_A3_REGNUM);
-    }
-  else
-    {
-      base = frame_unwind_register_unsigned (fi, E_SP_REGNUM)
-	       + stack_extra_size;
-    }
-
-  trad_frame_set_this_base (cache, base);
-
-  if (AM33_MODE (gdbarch) == 2)
-    {
-      /* If bit N is set in fpregmask, fsN is saved on the stack.
-	 The floating point registers are saved in ascending order.
-	 For example:  fs16 <- Frame Pointer
-	               fs17    Frame Pointer + 4 */
-      if (fpregmask != 0)
-	{
-	  int i;
-	  for (i = 0; i < 32; i++)
-	    {
-	      if (fpregmask & (1 << i))
-		{
-		  trad_frame_set_reg_addr (cache, E_FS0_REGNUM + i,
-					   base + offset);
-		  offset += 4;
-		}
-	    }
-	}
-    }
-
-
-  if (movm_args & movm_other_bit)
-    {
-      /* The `other' bit leaves a blank area of four bytes at the
-         beginning of its block of saved registers, making it 32 bytes
-         long in total.  */
-      trad_frame_set_reg_addr (cache, E_LAR_REGNUM,    base + offset + 4);
-      trad_frame_set_reg_addr (cache, E_LIR_REGNUM,    base + offset + 8);
-      trad_frame_set_reg_addr (cache, E_MDR_REGNUM,    base + offset + 12);
-      trad_frame_set_reg_addr (cache, E_A0_REGNUM + 1, base + offset + 16);
-      trad_frame_set_reg_addr (cache, E_A0_REGNUM,     base + offset + 20);
-      trad_frame_set_reg_addr (cache, E_D0_REGNUM + 1, base + offset + 24);
-      trad_frame_set_reg_addr (cache, E_D0_REGNUM,     base + offset + 28);
-      offset += 32;
-    }
-
-  if (movm_args & movm_a3_bit)
-    {
-      trad_frame_set_reg_addr (cache, E_A3_REGNUM, base + offset);
-      offset += 4;
-    }
-  if (movm_args & movm_a2_bit)
-    {
-      trad_frame_set_reg_addr (cache, E_A2_REGNUM, base + offset);
-      offset += 4;
-    }
-  if (movm_args & movm_d3_bit)
-    {
-      trad_frame_set_reg_addr (cache, E_D3_REGNUM, base + offset);
-      offset += 4;
-    }
-  if (movm_args & movm_d2_bit)
-    {
-      trad_frame_set_reg_addr (cache, E_D2_REGNUM, base + offset);
-      offset += 4;
-    }
-  if (AM33_MODE (gdbarch))
-    {
-      if (movm_args & movm_exother_bit)
-        {
-	  trad_frame_set_reg_addr (cache, E_MCVF_REGNUM, base + offset);
-	  trad_frame_set_reg_addr (cache, E_MCRL_REGNUM, base + offset + 4);
-	  trad_frame_set_reg_addr (cache, E_MCRH_REGNUM, base + offset + 8);
-	  trad_frame_set_reg_addr (cache, E_MDRQ_REGNUM, base + offset + 12);
-	  trad_frame_set_reg_addr (cache, E_E1_REGNUM,   base + offset + 16);
-	  trad_frame_set_reg_addr (cache, E_E0_REGNUM,   base + offset + 20);
-          offset += 24;
-        }
-      if (movm_args & movm_exreg1_bit)
-        {
-	  trad_frame_set_reg_addr (cache, E_E7_REGNUM, base + offset);
-	  trad_frame_set_reg_addr (cache, E_E6_REGNUM, base + offset + 4);
-	  trad_frame_set_reg_addr (cache, E_E5_REGNUM, base + offset + 8);
-	  trad_frame_set_reg_addr (cache, E_E4_REGNUM, base + offset + 12);
-          offset += 16;
-        }
-      if (movm_args & movm_exreg0_bit)
-        {
-	  trad_frame_set_reg_addr (cache, E_E3_REGNUM, base + offset);
-	  trad_frame_set_reg_addr (cache, E_E2_REGNUM, base + offset + 4);
-          offset += 8;
-        }
-    }
-  /* The last (or first) thing on the stack will be the PC.  */
-  trad_frame_set_reg_addr (cache, E_PC_REGNUM, base + offset);
-  /* Save the SP in the 'traditional' way.  
-     This will be the same location where the PC is saved.  */
-  trad_frame_set_reg_value (cache, E_SP_REGNUM, base + offset);
+  regs[E_SP_REGNUM] = pv_add_constant (regs[E_SP_REGNUM], -4);
+  pv_area_store (stack, regs[E_SP_REGNUM], 4, regs[regnum]);
 }
 
-/* The main purpose of this file is dealing with prologues to extract
-   information about stack frames and saved registers.
+/* Translate an "r" register number extracted from an instruction encoding
+   into a GDB register number.  Adapted from a simulator function
+   of the same name; see am33.igen.  */
+static int
+translate_rreg (int rreg)
+{
+ /* The higher register numbers actually correspond to the
+     basic machine's address and data registers.  */
+  if (rreg > 7 && rreg < 12)
+    return E_A0_REGNUM + rreg - 8;
+  else if (rreg > 11 && rreg < 16)
+    return E_D0_REGNUM + rreg - 12;
+  else
+    return E_E0_REGNUM + rreg;
+}
 
-   In gcc/config/mn13000/mn10300.c, the expand_prologue prologue
-   function is pretty readable, and has a nice explanation of how the
-   prologue is generated.  The prologues generated by that code will
-   have the following form (NOTE: the current code doesn't handle all
-   this!):
+/* Find saved registers in a 'struct pv_area'; we pass this to pv_area_scan.
 
-   + If this is an old-style varargs function, then its arguments
-     need to be flushed back to the stack:
-     
-        mov d0,(4,sp)
-        mov d1,(4,sp)
+   If VALUE is a saved register, ADDR says it was saved at a constant
+   offset from the frame base, and SIZE indicates that the whole
+   register was saved, record its offset in RESULT_UNTYPED.  */
+static void
+check_for_saved (void *result_untyped, pv_t addr, CORE_ADDR size, pv_t value)
+{
+  struct mn10300_prologue *result = (struct mn10300_prologue *) result_untyped;
 
-   + If we use any of the callee-saved registers, save them now.
-     
-        movm [some callee-saved registers],(sp)
-
-   + If we have any floating-point registers to save:
-
-     - Decrement the stack pointer to reserve space for the registers.
-       If the function doesn't need a frame pointer, we may combine
-       this with the adjustment that reserves space for the frame.
-
-        add -SIZE, sp
-
-     - Save the floating-point registers.  We have two possible
-       strategies:
-
-       . Save them at fixed offset from the SP:
-
-        fmov fsN,(OFFSETN,sp)
-        fmov fsM,(OFFSETM,sp)
-        ...
-
-       Note that, if OFFSETN happens to be zero, you'll get the
-       different opcode: fmov fsN,(sp)
-
-       . Or, set a0 to the start of the save area, and then use
-       post-increment addressing to save the FP registers.
-
-        mov sp, a0
-        add SIZE, a0
-        fmov fsN,(a0+)
-        fmov fsM,(a0+)
-        ...
-
-   + If the function needs a frame pointer, we set it here.
-
-        mov sp, a3
-
-   + Now we reserve space for the stack frame proper.  This could be
-     merged into the `add -SIZE, sp' instruction for FP saves up
-     above, unless we needed to set the frame pointer in the previous
-     step, or the frame is so large that allocating the whole thing at
-     once would put the FP register save slots out of reach of the
-     addressing mode (128 bytes).
-      
-        add -SIZE, sp        
-
-   One day we might keep the stack pointer constant, that won't
-   change the code for prologues, but it will make the frame
-   pointerless case much more common.  */
+  if (value.kind == pvk_register
+      && value.k == 0
+      && pv_is_register (addr, E_SP_REGNUM)
+      && size == register_size (result->gdbarch, value.reg))
+    result->reg_offset[value.reg] = addr.k;
+}
 
 /* Analyze the prologue to determine where registers are saved,
-   the end of the prologue, etc etc.  Return the end of the prologue
-   scanned.
-
-   We store into FI (if non-null) several tidbits of information:
-
-   * stack_size -- size of this stack frame.  Note that if we stop in
-   certain parts of the prologue/epilogue we may claim the size of the
-   current frame is zero.  This happens when the current frame has
-   not been allocated yet or has already been deallocated.
-
-   * fsr -- Addresses of registers saved in the stack by this frame.
-
-   * status -- A (relatively) generic status indicator.  It's a bitmask
-   with the following bits: 
-
-   MY_FRAME_IN_SP: The base of the current frame is actually in
-   the stack pointer.  This can happen for frame pointerless
-   functions, or cases where we're stopped in the prologue/epilogue
-   itself.  For these cases mn10300_analyze_prologue will need up
-   update fi->frame before returning or analyzing the register
-   save instructions.
-
-   MY_FRAME_IN_FP: The base of the current frame is in the
-   frame pointer register ($a3).
-
-   NO_MORE_FRAMES: Set this if the current frame is "start" or
-   if the first instruction looks like mov <imm>,sp.  This tells
-   frame chain to not bother trying to unwind past this frame.  */
-
-static CORE_ADDR
-mn10300_analyze_prologue (struct gdbarch *gdbarch, struct frame_info *fi, 
-			  void **this_cache, 
-			  CORE_ADDR pc)
+   the end of the prologue, etc.  The result of this analysis is
+   returned in RESULT.  See struct mn10300_prologue above for more
+   information.  */
+static void
+mn10300_analyze_prologue (struct gdbarch *gdbarch,
+                          CORE_ADDR start_pc, CORE_ADDR limit_pc,
+                          struct mn10300_prologue *result)
 {
-  CORE_ADDR func_addr, func_end, addr, stop;
-  long stack_extra_size = 0;
-  int imm_size;
-  unsigned char buf[4];
-  int status;
-  int movm_args = 0;
-  int fpregmask = 0;
-  char *name;
-  int frame_in_fp = 0;
+  enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
+  CORE_ADDR pc, next_pc;
+  int rn;
+  pv_t regs[MN10300_MAX_NUM_REGS];
+  struct pv_area *stack;
+  struct cleanup *back_to;
+  CORE_ADDR after_last_frame_setup_insn = start_pc;
+  int am33_mode = AM33_MODE (gdbarch);
 
-  /* Use the PC in the frame if it's provided to look up the
-     start of this function.
+  memset (result, 0, sizeof (*result));
+  result->gdbarch = gdbarch;
 
-     Note: kevinb/2003-07-16: We used to do the following here:
-	pc = (fi ? get_frame_pc (fi) : pc);
-     But this is (now) badly broken when called from analyze_dummy_frame().
-  */
-  if (fi)
+  for (rn = 0; rn < MN10300_MAX_NUM_REGS; rn++)
     {
-      pc = (pc ? pc : get_frame_pc (fi));
+      regs[rn] = pv_register (rn, 0);
+      result->reg_offset[rn] = 1;
     }
+  stack = make_pv_area (E_SP_REGNUM, gdbarch_addr_bit (gdbarch));
+  back_to = make_cleanup_free_pv_area (stack);
 
-  /* Find the start of this function.  */
-  status = find_pc_partial_function (pc, &name, &func_addr, &func_end);
+ /* The typical call instruction will have saved the return address on the
+    stack.  Space for the return address has already been preallocated in
+    the caller's frame.  It's possible, such as when using -mrelax with gcc
+    that other registers were saved as well.  If this happens, we really
+    have no chance of deciphering the frame.  DWARF info can save the day
+    when this happens.  */
+  pv_area_store (stack, regs[E_SP_REGNUM], 4, regs[E_PC_REGNUM]);
 
-  /* Do nothing if we couldn't find the start of this function 
-
-     MVS: comment went on to say "or if we're stopped at the first
-     instruction in the prologue" -- but code doesn't reflect that, 
-     and I don't want to do that anyway.  */
-  if (status == 0)
+  pc = start_pc;
+  while (pc < limit_pc)
     {
-      addr = pc;
-      goto finish_prologue;
-    }
+      int status;
+      gdb_byte instr[2];
 
-  /* If we're in start, then give up.  */
-  if (strcmp (name, "start") == 0)
-    {
-      addr = pc;
-      goto finish_prologue;
-    }
-
-  /* Figure out where to stop scanning.  */
-  stop = fi ? pc : func_end;
-
-  /* Don't walk off the end of the function.  */
-  stop = stop > func_end ? func_end : stop;
-
-  /* Start scanning on the first instruction of this function.  */
-  addr = func_addr;
-
-  /* Suck in two bytes.  */
-  if (addr + 2 > stop || !safe_frame_unwind_memory (fi, addr, buf, 2))
-    goto finish_prologue;
-
-  /* First see if this insn sets the stack pointer from a register; if
-     so, it's probably the initialization of the stack pointer in _start,
-     so mark this as the bottom-most frame.  */
-  if (buf[0] == 0xf2 && (buf[1] & 0xf3) == 0xf0)
-    {
-      goto finish_prologue;
-    }
-
-  /* Now look for movm [regs],sp, which saves the callee saved registers.
-
-     At this time we don't know if fi->frame is valid, so we only note
-     that we encountered a movm instruction.  Later, we'll set the entries
-     in fsr.regs as needed.  */
-  if (buf[0] == 0xcf)
-    {
-      /* Extract the register list for the movm instruction.  */
-      movm_args = buf[1];
-
-      addr += 2;
-
-      /* Quit now if we're beyond the stop point.  */
-      if (addr >= stop)
-	goto finish_prologue;
-
-      /* Get the next two bytes so the prologue scan can continue.  */
-      if (!safe_frame_unwind_memory (fi, addr, buf, 2))
-	goto finish_prologue;
-    }
-
-  /* Check for "mov pc, a2", an instruction found in optimized, position
-     independent code.  Skip it if found.  */
-  if (buf[0] == 0xf0 && buf[1] == 0x2e)
-    {
-      addr += 2;
-
-      /* Quit now if we're beyond the stop point.  */
-      if (addr >= stop)
-	goto finish_prologue;
-
-      /* Get the next two bytes so the prologue scan can continue.  */
-      status = read_memory_nobpt (addr, buf, 2);
+      /* Instructions can be as small as one byte; however, we usually
+         need at least two bytes to do the decoding, so fetch that many
+	 to begin with.  */
+      status = target_read_memory (pc, instr, 2);
       if (status != 0)
-	goto finish_prologue;
-    }
+	break;
 
-  if (AM33_MODE (gdbarch) == 2)
-    {
-      /* Determine if any floating point registers are to be saved.
-	 Look for one of the following three prologue formats:
-
-	[movm [regs],(sp)] [movm [regs],(sp)] [movm [regs],(sp)]
-
-	 add -SIZE,sp       add -SIZE,sp       add -SIZE,sp
-	 fmov fs#,(sp)      mov sp,a0/a1       mov sp,a0/a1
-	 fmov fs#,(#,sp)    fmov fs#,(a0/a1+)  add SIZE2,a0/a1
-	 ...                ...                fmov fs#,(a0/a1+)
-	 ...                ...                ...
-	 fmov fs#,(#,sp)    fmov fs#,(a0/a1+)  fmov fs#,(a0/a1+)
-
-	[mov sp,a3]        [mov sp,a3]
-	[add -SIZE2,sp]    [add -SIZE2,sp]                                 */
-
-      /* Remember the address at which we started in the event that we
-	 don't ultimately find an fmov instruction.  Once we're certain
-	 that we matched one of the above patterns, we'll set
-	 ``restore_addr'' to the appropriate value.  Note: At one time
-	 in the past, this code attempted to not adjust ``addr'' until
-	 there was a fair degree of certainty that the pattern would be
-	 matched.  However, that code did not wait until an fmov instruction
-	 was actually encountered.  As a consequence, ``addr'' would
-	 sometimes be advanced even when no fmov instructions were found.  */
-      CORE_ADDR restore_addr = addr;
-      int fmov_found = 0;
-
-      /* First, look for add -SIZE,sp (i.e. add imm8,sp  (0xf8feXX)
-                                         or add imm16,sp (0xfafeXXXX)
-                                         or add imm32,sp (0xfcfeXXXXXXXX)) */
-      imm_size = 0;
-      if (buf[0] == 0xf8 && buf[1] == 0xfe)
-	imm_size = 1;
-      else if (buf[0] == 0xfa && buf[1] == 0xfe)
-	imm_size = 2;
-      else if (buf[0] == 0xfc && buf[1] == 0xfe)
-	imm_size = 4;
-      if (imm_size != 0)
+      /* movm [regs], sp  */
+      if (instr[0] == 0xcf)
 	{
-	  /* An "add -#,sp" instruction has been found. "addr + 2 + imm_size"
-	     is the address of the next instruction. Don't modify "addr" until
-	     the next "floating point prologue" instruction is found. If this
-	     is not a prologue that saves floating point registers we need to
-	     be able to back out of this bit of code and continue with the
-	     prologue analysis. */
-	  if (addr + 2 + imm_size < stop)
+	  gdb_byte save_mask;
+
+	  save_mask = instr[1];
+
+	  if ((save_mask & movm_exreg0_bit) && am33_mode)
 	    {
-	      if (!safe_frame_unwind_memory (fi, addr + 2 + imm_size, buf, 3))
-		goto finish_prologue;
-	      if ((buf[0] & 0xfc) == 0x3c)
-		{
-		  /* Occasionally, especially with C++ code, the "fmov"
-		     instructions will be preceded by "mov sp,aN"
-		     (aN => a0, a1, a2, or a3).
-
-		     This is a one byte instruction:  mov sp,aN = 0011 11XX
-		     where XX is the register number.
-
-		     Skip this instruction by incrementing addr.  The "fmov"
-		     instructions will have the form "fmov fs#,(aN+)" in this
-		     case, but that will not necessitate a change in the
-		     "fmov" parsing logic below. */
-
-		  addr++;
-
-		  if ((buf[1] & 0xfc) == 0x20)
-		    {
-		      /* Occasionally, especially with C++ code compiled with
-			 the -fomit-frame-pointer or -O3 options, the
-			 "mov sp,aN" instruction will be followed by an
-			 "add #,aN" instruction. This indicates the
-			 "stack_size", the size of the portion of the stack
-			 containing the arguments. This instruction format is:
-			 add #,aN = 0010 00XX YYYY YYYY
-			 where XX        is the register number
-			       YYYY YYYY is the constant.
-			 Note the size of the stack (as a negative number) in
-			 the frame info structure. */
-		      if (fi)
-			stack_extra_size += -buf[2];
-
-		      addr += 2;
-		    }
-		}
-
-	      if ((buf[0] & 0xfc) == 0x3c ||
-		  buf[0] == 0xf9 || buf[0] == 0xfb)
-		{
-		  /* An "fmov" instruction has been found indicating that this
-		     prologue saves floating point registers (or, as described
-		     above, a "mov sp,aN" and possible "add #,aN" have been
-		     found and we will assume an "fmov" follows). Process the
-		     consecutive "fmov" instructions. */
-		  for (addr += 2 + imm_size;;addr += imm_size)
-		    {
-		      int regnum;
-
-		      /* Read the "fmov" instruction. */
-		      if (addr >= stop ||
-			  !safe_frame_unwind_memory (fi, addr, buf, 4))
-			goto finish_prologue;
-
-		      if (buf[0] != 0xf9 && buf[0] != 0xfb)
-			break;
-
-		      /* An fmov instruction has just been seen.  We can
-		         now really commit to the pattern match.  */
-
-		      fmov_found = 1;
-
-		      /* Get the floating point register number from the 
-			 2nd and 3rd bytes of the "fmov" instruction:
-			 Machine Code: 0000 00X0 YYYY 0000 =>
-			 Regnum: 000X YYYY */
-		      regnum = (buf[1] & 0x02) << 3;
-		      regnum |= ((buf[2] & 0xf0) >> 4) & 0x0f;
-
-		      /* Add this register number to the bit mask of floating
-			 point registers that have been saved. */
-		      fpregmask |= 1 << regnum;
-		  
-		      /* Determine the length of this "fmov" instruction.
-			 fmov fs#,(sp)   => 3 byte instruction
-			 fmov fs#,(#,sp) => 4 byte instruction */
-		      imm_size = (buf[0] == 0xf9) ? 3 : 4;
-		    }
-		}
+	      push_reg (regs, stack, E_E2_REGNUM);
+	      push_reg (regs, stack, E_E3_REGNUM);
 	    }
+	  if ((save_mask & movm_exreg1_bit) && am33_mode)
+	    {
+	      push_reg (regs, stack, E_E4_REGNUM);
+	      push_reg (regs, stack, E_E5_REGNUM);
+	      push_reg (regs, stack, E_E6_REGNUM);
+	      push_reg (regs, stack, E_E7_REGNUM);
+	    }
+	  if ((save_mask & movm_exother_bit) && am33_mode)
+	    {
+	      push_reg (regs, stack, E_E0_REGNUM);
+	      push_reg (regs, stack, E_E1_REGNUM);
+	      push_reg (regs, stack, E_MDRQ_REGNUM);
+	      push_reg (regs, stack, E_MCRH_REGNUM);
+	      push_reg (regs, stack, E_MCRL_REGNUM);
+	      push_reg (regs, stack, E_MCVF_REGNUM);
+	    }
+	  if (save_mask & movm_d2_bit)
+	    push_reg (regs, stack, E_D2_REGNUM);
+	  if (save_mask & movm_d3_bit)
+	    push_reg (regs, stack, E_D3_REGNUM);
+	  if (save_mask & movm_a2_bit)
+	    push_reg (regs, stack, E_A2_REGNUM);
+	  if (save_mask & movm_a3_bit)
+	    push_reg (regs, stack, E_A3_REGNUM);
+	  if (save_mask & movm_other_bit)
+	    {
+	      push_reg (regs, stack, E_D0_REGNUM);
+	      push_reg (regs, stack, E_D1_REGNUM);
+	      push_reg (regs, stack, E_A0_REGNUM);
+	      push_reg (regs, stack, E_A1_REGNUM);
+	      push_reg (regs, stack, E_MDR_REGNUM);
+	      push_reg (regs, stack, E_LIR_REGNUM);
+	      push_reg (regs, stack, E_LAR_REGNUM);
+	      /* The `other' bit leaves a blank area of four bytes at
+		 the beginning of its block of saved registers, making
+		 it 32 bytes long in total.  */
+	      regs[E_SP_REGNUM] = pv_add_constant (regs[E_SP_REGNUM], -4);
+	    }
+
+	  pc += 2;
+	  after_last_frame_setup_insn = pc;
 	}
-      /* If no fmov instructions were found by the above sequence, reset
-         the state and pretend that the above bit of code never happened.  */
-      if (!fmov_found)
+      /* mov sp, aN */
+      else if ((instr[0] & 0xfc) == 0x3c)
 	{
-	  addr = restore_addr;
-	  status = read_memory_nobpt (addr, buf, 2);
+	  int aN = instr[0] & 0x03;
+
+	  regs[E_A0_REGNUM + aN] = regs[E_SP_REGNUM];
+
+	  pc += 1;
+	  if (aN == 3)
+	    after_last_frame_setup_insn = pc;
+	}
+      /* mov aM, aN */
+      else if ((instr[0] & 0xf0) == 0x90
+               && (instr[0] & 0x03) != ((instr[0] & 0x0c) >> 2))
+	{
+	  int aN = instr[0] & 0x03;
+	  int aM = (instr[0] & 0x0c) >> 2;
+
+	  regs[E_A0_REGNUM + aN] = regs[E_A0_REGNUM + aM];
+
+	  pc += 1;
+	}
+      /* mov dM, dN */
+      else if ((instr[0] & 0xf0) == 0x80
+               && (instr[0] & 0x03) != ((instr[0] & 0x0c) >> 2))
+	{
+	  int dN = instr[0] & 0x03;
+	  int dM = (instr[0] & 0x0c) >> 2;
+
+	  regs[E_D0_REGNUM + dN] = regs[E_D0_REGNUM + dM];
+
+	  pc += 1;
+	}
+      /* mov aM, dN */
+      else if (instr[0] == 0xf1 && (instr[1] & 0xf0) == 0xd0)
+	{
+	  int dN = instr[1] & 0x03;
+	  int aM = (instr[1] & 0x0c) >> 2;
+
+	  regs[E_D0_REGNUM + dN] = regs[E_A0_REGNUM + aM];
+
+	  pc += 2;
+	}
+      /* mov dM, aN */
+      else if (instr[0] == 0xf1 && (instr[1] & 0xf0) == 0xe0)
+	{
+	  int aN = instr[1] & 0x03;
+	  int dM = (instr[1] & 0x0c) >> 2;
+
+	  regs[E_A0_REGNUM + aN] = regs[E_D0_REGNUM + dM];
+
+	  pc += 2;
+	}
+      /* add imm8, SP */
+      else if (instr[0] == 0xf8 && instr[1] == 0xfe)
+	{
+	  gdb_byte buf[1];
+	  LONGEST imm8;
+
+
+	  status = target_read_memory (pc + 2, buf, 1);
 	  if (status != 0)
-	    goto finish_prologue;
-	  stack_extra_size = 0;
+	    break;
+
+	  imm8 = extract_signed_integer (buf, 1, byte_order);
+	  regs[E_SP_REGNUM] = pv_add_constant (regs[E_SP_REGNUM], imm8);
+
+	  pc += 3;
+	  /* Stack pointer adjustments are frame related.  */
+	  after_last_frame_setup_insn = pc;
 	}
-    }
-
-  /* Now see if we set up a frame pointer via "mov sp,a3" */
-  if (buf[0] == 0x3f)
-    {
-      addr += 1;
-
-      /* The frame pointer is now valid.  */
-      if (fi)
+      /* add imm16, SP */
+      else if (instr[0] == 0xfa && instr[1] == 0xfe)
 	{
-	  frame_in_fp = 1;
+	  gdb_byte buf[2];
+	  LONGEST imm16;
+
+	  status = target_read_memory (pc + 2, buf, 2);
+	  if (status != 0)
+	    break;
+
+	  imm16 = extract_signed_integer (buf, 2, byte_order);
+	  regs[E_SP_REGNUM] = pv_add_constant (regs[E_SP_REGNUM], imm16);
+
+	  pc += 4;
+	  /* Stack pointer adjustments are frame related.  */
+	  after_last_frame_setup_insn = pc;
 	}
+      /* add imm32, SP */
+      else if (instr[0] == 0xfc && instr[1] == 0xfe)
+	{
+	  gdb_byte buf[4];
+	  LONGEST imm32;
 
-      /* Quit now if we're beyond the stop point.  */
-      if (addr >= stop)
-	goto finish_prologue;
+	  status = target_read_memory (pc + 2, buf, 4);
+	  if (status != 0)
+	    break;
 
-      /* Get two more bytes so scanning can continue.  */
-      if (!safe_frame_unwind_memory (fi, addr, buf, 2))
-	goto finish_prologue;
+
+	  imm32 = extract_signed_integer (buf, 4, byte_order);
+	  regs[E_SP_REGNUM] = pv_add_constant (regs[E_SP_REGNUM], imm32);
+
+	  pc += 6;
+	  /* Stack pointer adjustments are frame related.  */
+	  after_last_frame_setup_insn = pc;
+	}
+      /* add imm8, aN  */
+      else if ((instr[0] & 0xfc) == 0x20)
+	{
+	  int aN;
+	  LONGEST imm8;
+
+	  aN = instr[0] & 0x03;
+	  imm8 = extract_signed_integer (&instr[1], 1, byte_order);
+
+	  regs[E_A0_REGNUM + aN] = pv_add_constant (regs[E_A0_REGNUM + aN],
+	                                            imm8);
+
+	  pc += 2;
+	}
+      /* add imm16, aN  */
+      else if (instr[0] == 0xfa && (instr[1] & 0xfc) == 0xd0)
+	{
+	  int aN;
+	  LONGEST imm16;
+	  gdb_byte buf[2];
+
+	  aN = instr[1] & 0x03;
+
+	  status = target_read_memory (pc + 2, buf, 2);
+	  if (status != 0)
+	    break;
+
+
+	  imm16 = extract_signed_integer (buf, 2, byte_order);
+
+	  regs[E_A0_REGNUM + aN] = pv_add_constant (regs[E_A0_REGNUM + aN],
+	                                            imm16);
+
+	  pc += 4;
+	}
+      /* add imm32, aN  */
+      else if (instr[0] == 0xfc && (instr[1] & 0xfc) == 0xd0)
+	{
+	  int aN;
+	  LONGEST imm32;
+	  gdb_byte buf[4];
+
+	  aN = instr[1] & 0x03;
+
+	  status = target_read_memory (pc + 2, buf, 4);
+	  if (status != 0)
+	    break;
+
+	  imm32 = extract_signed_integer (buf, 2, byte_order);
+
+	  regs[E_A0_REGNUM + aN] = pv_add_constant (regs[E_A0_REGNUM + aN],
+	                                            imm32);
+	  pc += 6;
+	}
+      /* fmov fsM, (rN) */
+      else if (instr[0] == 0xf9 && (instr[1] & 0xfd) == 0x30)
+	{
+	  int fsM, sM, Y, rN;
+	  gdb_byte buf[1];
+
+	  Y = (instr[1] & 0x02) >> 1;
+
+	  status = target_read_memory (pc + 2, buf, 1);
+	  if (status != 0)
+	    break;
+
+	  sM = (buf[0] & 0xf0) >> 4;
+	  rN = buf[0] & 0x0f;
+	  fsM = (Y << 4) | sM;
+
+	  pv_area_store (stack, regs[translate_rreg (rN)], 4,
+	                 regs[E_FS0_REGNUM + fsM]);
+
+	  pc += 3;
+	}
+      /* fmov fsM, (sp) */
+      else if (instr[0] == 0xf9 && (instr[1] & 0xfd) == 0x34)
+	{
+	  int fsM, sM, Y;
+	  gdb_byte buf[1];
+
+	  Y = (instr[1] & 0x02) >> 1;
+
+	  status = target_read_memory (pc + 2, buf, 1);
+	  if (status != 0)
+	    break;
+
+	  sM = (buf[0] & 0xf0) >> 4;
+	  fsM = (Y << 4) | sM;
+
+	  pv_area_store (stack, regs[E_SP_REGNUM], 4,
+	                 regs[E_FS0_REGNUM + fsM]);
+
+	  pc += 3;
+	}
+      /* fmov fsM, (rN, rI) */
+      else if (instr[0] == 0xfb && instr[1] == 0x37)
+	{
+	  int fsM, sM, Z, rN, rI;
+	  gdb_byte buf[2];
+
+
+	  status = target_read_memory (pc + 2, buf, 2);
+	  if (status != 0)
+	    break;
+
+	  rI = (buf[0] & 0xf0) >> 4;
+	  rN = buf[0] & 0x0f;
+	  sM = (buf[1] & 0xf0) >> 4;
+	  Z = (buf[1] & 0x02) >> 1;
+	  fsM = (Z << 4) | sM;
+
+	  pv_area_store (stack,
+	                 pv_add (regs[translate_rreg (rN)],
+			         regs[translate_rreg (rI)]),
+			 4, regs[E_FS0_REGNUM + fsM]);
+
+	  pc += 4;
+	}
+      /* fmov fsM, (d8, rN) */
+      else if (instr[0] == 0xfb && (instr[1] & 0xfd) == 0x30)
+	{
+	  int fsM, sM, Y, rN;
+	  LONGEST d8;
+	  gdb_byte buf[2];
+
+	  Y = (instr[1] & 0x02) >> 1;
+
+	  status = target_read_memory (pc + 2, buf, 2);
+	  if (status != 0)
+	    break;
+
+	  sM = (buf[0] & 0xf0) >> 4;
+	  rN = buf[0] & 0x0f;
+	  fsM = (Y << 4) | sM;
+	  d8 = extract_signed_integer (&buf[1], 1, byte_order);
+
+	  pv_area_store (stack,
+	                 pv_add_constant (regs[translate_rreg (rN)], d8),
+	                 4, regs[E_FS0_REGNUM + fsM]);
+
+	  pc += 4;
+	}
+      /* fmov fsM, (d24, rN) */
+      else if (instr[0] == 0xfd && (instr[1] & 0xfd) == 0x30)
+	{
+	  int fsM, sM, Y, rN;
+	  LONGEST d24;
+	  gdb_byte buf[4];
+
+	  Y = (instr[1] & 0x02) >> 1;
+
+	  status = target_read_memory (pc + 2, buf, 4);
+	  if (status != 0)
+	    break;
+
+	  sM = (buf[0] & 0xf0) >> 4;
+	  rN = buf[0] & 0x0f;
+	  fsM = (Y << 4) | sM;
+	  d24 = extract_signed_integer (&buf[1], 3, byte_order);
+
+	  pv_area_store (stack,
+	                 pv_add_constant (regs[translate_rreg (rN)], d24),
+	                 4, regs[E_FS0_REGNUM + fsM]);
+
+	  pc += 6;
+	}
+      /* fmov fsM, (d32, rN) */
+      else if (instr[0] == 0xfe && (instr[1] & 0xfd) == 0x30)
+	{
+	  int fsM, sM, Y, rN;
+	  LONGEST d32;
+	  gdb_byte buf[5];
+
+	  Y = (instr[1] & 0x02) >> 1;
+
+	  status = target_read_memory (pc + 2, buf, 5);
+	  if (status != 0)
+	    break;
+
+	  sM = (buf[0] & 0xf0) >> 4;
+	  rN = buf[0] & 0x0f;
+	  fsM = (Y << 4) | sM;
+	  d32 = extract_signed_integer (&buf[1], 4, byte_order);
+
+	  pv_area_store (stack,
+	                 pv_add_constant (regs[translate_rreg (rN)], d32),
+	                 4, regs[E_FS0_REGNUM + fsM]);
+
+	  pc += 7;
+	}
+      /* fmov fsM, (d8, SP) */
+      else if (instr[0] == 0xfb && (instr[1] & 0xfd) == 0x34)
+	{
+	  int fsM, sM, Y;
+	  LONGEST d8;
+	  gdb_byte buf[2];
+
+	  Y = (instr[1] & 0x02) >> 1;
+
+	  status = target_read_memory (pc + 2, buf, 2);
+	  if (status != 0)
+	    break;
+
+	  sM = (buf[0] & 0xf0) >> 4;
+	  fsM = (Y << 4) | sM;
+	  d8 = extract_signed_integer (&buf[1], 1, byte_order);
+
+	  pv_area_store (stack,
+	                 pv_add_constant (regs[E_SP_REGNUM], d8),
+	                 4, regs[E_FS0_REGNUM + fsM]);
+
+	  pc += 4;
+	}
+      /* fmov fsM, (d24, SP) */
+      else if (instr[0] == 0xfd && (instr[1] & 0xfd) == 0x34)
+	{
+	  int fsM, sM, Y;
+	  LONGEST d24;
+	  gdb_byte buf[4];
+
+	  Y = (instr[1] & 0x02) >> 1;
+
+	  status = target_read_memory (pc + 2, buf, 4);
+	  if (status != 0)
+	    break;
+
+	  sM = (buf[0] & 0xf0) >> 4;
+	  fsM = (Y << 4) | sM;
+	  d24 = extract_signed_integer (&buf[1], 3, byte_order);
+
+	  pv_area_store (stack,
+	                 pv_add_constant (regs[E_SP_REGNUM], d24),
+	                 4, regs[E_FS0_REGNUM + fsM]);
+
+	  pc += 6;
+	}
+      /* fmov fsM, (d32, SP) */
+      else if (instr[0] == 0xfe && (instr[1] & 0xfd) == 0x34)
+	{
+	  int fsM, sM, Y;
+	  LONGEST d32;
+	  gdb_byte buf[5];
+
+	  Y = (instr[1] & 0x02) >> 1;
+
+	  status = target_read_memory (pc + 2, buf, 5);
+	  if (status != 0)
+	    break;
+
+	  sM = (buf[0] & 0xf0) >> 4;
+	  fsM = (Y << 4) | sM;
+	  d32 = extract_signed_integer (&buf[1], 4, byte_order);
+
+	  pv_area_store (stack,
+	                 pv_add_constant (regs[E_SP_REGNUM], d32),
+	                 4, regs[E_FS0_REGNUM + fsM]);
+
+	  pc += 7;
+	}
+      /* fmov fsM, (rN+) */
+      else if (instr[0] == 0xf9 && (instr[1] & 0xfd) == 0x31)
+	{
+	  int fsM, sM, Y, rN, rN_regnum;
+	  gdb_byte buf[1];
+
+	  Y = (instr[1] & 0x02) >> 1;
+
+	  status = target_read_memory (pc + 2, buf, 1);
+	  if (status != 0)
+	    break;
+
+	  sM = (buf[0] & 0xf0) >> 4;
+	  rN = buf[0] & 0x0f;
+	  fsM = (Y << 4) | sM;
+
+	  rN_regnum = translate_rreg (rN);
+
+	  pv_area_store (stack, regs[rN_regnum], 4,
+	                 regs[E_FS0_REGNUM + fsM]);
+	  regs[rN_regnum] = pv_add_constant (regs[rN_regnum], 4);
+
+	  pc += 3;
+	}
+      /* fmov fsM, (rN+, imm8) */
+      else if (instr[0] == 0xfb && (instr[1] & 0xfd) == 0x31)
+	{
+	  int fsM, sM, Y, rN, rN_regnum;
+	  LONGEST imm8;
+	  gdb_byte buf[2];
+
+	  Y = (instr[1] & 0x02) >> 1;
+
+	  status = target_read_memory (pc + 2, buf, 2);
+	  if (status != 0)
+	    break;
+
+	  sM = (buf[0] & 0xf0) >> 4;
+	  rN = buf[0] & 0x0f;
+	  fsM = (Y << 4) | sM;
+	  imm8 = extract_signed_integer (&buf[1], 1, byte_order);
+
+	  rN_regnum = translate_rreg (rN);
+
+	  pv_area_store (stack, regs[rN_regnum], 4, regs[E_FS0_REGNUM + fsM]);
+	  regs[rN_regnum] = pv_add_constant (regs[rN_regnum], imm8);
+
+	  pc += 4;
+	}
+      /* fmov fsM, (rN+, imm24) */
+      else if (instr[0] == 0xfd && (instr[1] & 0xfd) == 0x31)
+	{
+	  int fsM, sM, Y, rN, rN_regnum;
+	  LONGEST imm24;
+	  gdb_byte buf[4];
+
+	  Y = (instr[1] & 0x02) >> 1;
+
+	  status = target_read_memory (pc + 2, buf, 4);
+	  if (status != 0)
+	    break;
+
+	  sM = (buf[0] & 0xf0) >> 4;
+	  rN = buf[0] & 0x0f;
+	  fsM = (Y << 4) | sM;
+	  imm24 = extract_signed_integer (&buf[1], 3, byte_order);
+
+	  rN_regnum = translate_rreg (rN);
+
+	  pv_area_store (stack, regs[rN_regnum], 4, regs[E_FS0_REGNUM + fsM]);
+	  regs[rN_regnum] = pv_add_constant (regs[rN_regnum], imm24);
+
+	  pc += 6;
+	}
+      /* fmov fsM, (rN+, imm32) */
+      else if (instr[0] == 0xfe && (instr[1] & 0xfd) == 0x31)
+	{
+	  int fsM, sM, Y, rN, rN_regnum;
+	  LONGEST imm32;
+	  gdb_byte buf[5];
+
+	  Y = (instr[1] & 0x02) >> 1;
+
+	  status = target_read_memory (pc + 2, buf, 5);
+	  if (status != 0)
+	    break;
+
+	  sM = (buf[0] & 0xf0) >> 4;
+	  rN = buf[0] & 0x0f;
+	  fsM = (Y << 4) | sM;
+	  imm32 = extract_signed_integer (&buf[1], 4, byte_order);
+
+	  rN_regnum = translate_rreg (rN);
+
+	  pv_area_store (stack, regs[rN_regnum], 4, regs[E_FS0_REGNUM + fsM]);
+	  regs[rN_regnum] = pv_add_constant (regs[rN_regnum], imm32);
+
+	  pc += 7;
+	}
+      /* mov imm8, aN */
+      else if ((instr[0] & 0xf0) == 0x90)
+        {
+	  int aN = instr[0] & 0x03;
+	  LONGEST imm8;
+
+	  imm8 = extract_signed_integer (&instr[1], 1, byte_order);
+
+	  regs[E_A0_REGNUM + aN] = pv_constant (imm8);
+	  pc += 2;
+	}
+      /* mov imm16, aN */
+      else if ((instr[0] & 0xfc) == 0x24)
+        {
+	  int aN = instr[0] & 0x03;
+	  gdb_byte buf[2];
+	  LONGEST imm16;
+
+	  status = target_read_memory (pc + 1, buf, 2);
+	  if (status != 0)
+	    break;
+
+	  imm16 = extract_signed_integer (buf, 2, byte_order);
+	  regs[E_A0_REGNUM + aN] = pv_constant (imm16);
+	  pc += 3;
+	}
+      /* mov imm32, aN */
+      else if (instr[0] == 0xfc && ((instr[1] & 0xfc) == 0xdc))
+        {
+	  int aN = instr[1] & 0x03;
+	  gdb_byte buf[4];
+	  LONGEST imm32;
+
+	  status = target_read_memory (pc + 2, buf, 4);
+	  if (status != 0)
+	    break;
+
+	  imm32 = extract_signed_integer (buf, 4, byte_order);
+	  regs[E_A0_REGNUM + aN] = pv_constant (imm32);
+	  pc += 6;
+	}
+      /* mov imm8, dN */
+      else if ((instr[0] & 0xf0) == 0x80)
+        {
+	  int dN = instr[0] & 0x03;
+	  LONGEST imm8;
+
+	  imm8 = extract_signed_integer (&instr[1], 1, byte_order);
+
+	  regs[E_D0_REGNUM + dN] = pv_constant (imm8);
+	  pc += 2;
+	}
+      /* mov imm16, dN */
+      else if ((instr[0] & 0xfc) == 0x2c)
+        {
+	  int dN = instr[0] & 0x03;
+	  gdb_byte buf[2];
+	  LONGEST imm16;
+
+	  status = target_read_memory (pc + 1, buf, 2);
+	  if (status != 0)
+	    break;
+
+	  imm16 = extract_signed_integer (buf, 2, byte_order);
+	  regs[E_D0_REGNUM + dN] = pv_constant (imm16);
+	  pc += 3;
+	}
+      /* mov imm32, dN */
+      else if (instr[0] == 0xfc && ((instr[1] & 0xfc) == 0xcc))
+        {
+	  int dN = instr[1] & 0x03;
+	  gdb_byte buf[4];
+	  LONGEST imm32;
+
+	  status = target_read_memory (pc + 2, buf, 4);
+	  if (status != 0)
+	    break;
+
+	  imm32 = extract_signed_integer (buf, 4, byte_order);
+	  regs[E_D0_REGNUM + dN] = pv_constant (imm32);
+	  pc += 6;
+	}
+      else
+	{
+	  /* We've hit some instruction that we don't recognize.  Hopefully,
+	     we have enough to do prologue analysis.  */
+	  break;
+	}
     }
 
-  /* Next we should allocate the local frame.  No more prologue insns
-     are found after allocating the local frame.
+  /* Is the frame size (offset, really) a known constant?  */
+  if (pv_is_register (regs[E_SP_REGNUM], E_SP_REGNUM))
+    result->frame_size = regs[E_SP_REGNUM].k;
 
-     Search for add imm8,sp (0xf8feXX)
-     or add imm16,sp (0xfafeXXXX)
-     or add imm32,sp (0xfcfeXXXXXXXX).
-
-     If none of the above was found, then this prologue has no 
-     additional stack.  */
-
-  imm_size = 0;
-  if (buf[0] == 0xf8 && buf[1] == 0xfe)
-    imm_size = 1;
-  else if (buf[0] == 0xfa && buf[1] == 0xfe)
-    imm_size = 2;
-  else if (buf[0] == 0xfc && buf[1] == 0xfe)
-    imm_size = 4;
-
-  if (imm_size != 0)
+  /* Was the frame pointer initialized?  */
+  if (pv_is_register (regs[E_A3_REGNUM], E_SP_REGNUM))
     {
-      /* Suck in imm_size more bytes, they'll hold the size of the
-         current frame.  */
-      if (!safe_frame_unwind_memory (fi, addr + 2, buf, imm_size))
-	goto finish_prologue;
-
-      /* Note the size of the stack.  */
-      stack_extra_size -= extract_signed_integer (buf, imm_size);
-
-      /* We just consumed 2 + imm_size bytes.  */
-      addr += 2 + imm_size;
-
-      /* No more prologue insns follow, so begin preparation to return.  */
-      goto finish_prologue;
+      result->has_frame_ptr = 1;
+      result->frame_ptr_offset = regs[E_A3_REGNUM].k;
     }
-  /* Do the essentials and get out of here.  */
- finish_prologue:
-  /* Note if/where callee saved registers were saved.  */
-  if (fi)
-    set_reg_offsets (fi, this_cache, movm_args, fpregmask, stack_extra_size,
-		     frame_in_fp);
-  return addr;
+
+  /* Record where all the registers were saved.  */
+  pv_area_scan (stack, check_for_saved, (void *) result);
+
+  result->prologue_end = after_last_frame_setup_insn;
+
+  do_cleanups (back_to);
 }
 
 /* Function: skip_prologue
@@ -837,138 +1062,149 @@ mn10300_analyze_prologue (struct gdbarch *gdbarch, struct frame_info *fi,
 static CORE_ADDR
 mn10300_skip_prologue (struct gdbarch *gdbarch, CORE_ADDR pc)
 {
-  return mn10300_analyze_prologue (gdbarch, NULL, NULL, pc);
+  char *name;
+  CORE_ADDR func_addr, func_end;
+  struct mn10300_prologue p;
+
+  /* Try to find the extent of the function that contains PC.  */
+  if (!find_pc_partial_function (pc, &name, &func_addr, &func_end))
+    return pc;
+
+  mn10300_analyze_prologue (gdbarch, pc, func_end, &p);
+  return p.prologue_end;
 }
 
-/* Simple frame_unwind_cache.  
-   This finds the "extra info" for the frame.  */
-struct trad_frame_cache *
-mn10300_frame_unwind_cache (struct frame_info *next_frame,
-			    void **this_prologue_cache)
+/* Wrapper for mn10300_analyze_prologue: find the function start;
+   use the current frame PC as the limit, then
+   invoke mn10300_analyze_prologue and return its result.  */
+static struct mn10300_prologue *
+mn10300_analyze_frame_prologue (struct frame_info *this_frame,
+			   void **this_prologue_cache)
 {
-  struct gdbarch *gdbarch;
-  struct trad_frame_cache *cache;
-  CORE_ADDR pc, start, end;
-  void *cache_p;
-
-  if (*this_prologue_cache)
-    return (*this_prologue_cache);
-
-  gdbarch = get_frame_arch (next_frame);
-  cache_p = trad_frame_cache_zalloc (next_frame);
-  pc = gdbarch_unwind_pc (gdbarch, next_frame);
-  mn10300_analyze_prologue (gdbarch, next_frame, &cache_p, pc);
-  cache = cache_p;
-
-  if (find_pc_partial_function (pc, NULL, &start, &end))
-    trad_frame_set_id (cache, 
-		       frame_id_build (trad_frame_get_this_base (cache), 
-				       start));
-  else
+  if (!*this_prologue_cache)
     {
-      start = frame_func_unwind (next_frame, NORMAL_FRAME);
-      trad_frame_set_id (cache,
-			 frame_id_build (trad_frame_get_this_base (cache),
-					 start));
+      CORE_ADDR func_start, stop_addr;
+
+      *this_prologue_cache = FRAME_OBSTACK_ZALLOC (struct mn10300_prologue);
+
+      func_start = get_frame_func (this_frame);
+      stop_addr = get_frame_pc (this_frame);
+
+      /* If we couldn't find any function containing the PC, then
+         just initialize the prologue cache, but don't do anything.  */
+      if (!func_start)
+        stop_addr = func_start;
+
+      mn10300_analyze_prologue (get_frame_arch (this_frame),
+                                func_start, stop_addr, *this_prologue_cache);
     }
 
-  (*this_prologue_cache) = cache;
-  return cache;
+  return *this_prologue_cache;
+}
+
+/* Given the next frame and a prologue cache, return this frame's
+   base.  */
+static CORE_ADDR
+mn10300_frame_base (struct frame_info *this_frame, void **this_prologue_cache)
+{
+  struct mn10300_prologue *p
+    = mn10300_analyze_frame_prologue (this_frame, this_prologue_cache);
+
+  /* In functions that use alloca, the distance between the stack
+     pointer and the frame base varies dynamically, so we can't use
+     the SP plus static information like prologue analysis to find the
+     frame base.  However, such functions must have a frame pointer,
+     to be able to restore the SP on exit.  So whenever we do have a
+     frame pointer, use that to find the base.  */
+  if (p->has_frame_ptr)
+    {
+      CORE_ADDR fp = get_frame_register_unsigned (this_frame, E_A3_REGNUM);
+      return fp - p->frame_ptr_offset;
+    }
+  else
+    {
+      CORE_ADDR sp = get_frame_register_unsigned (this_frame, E_SP_REGNUM);
+      return sp - p->frame_size;
+    }
 }
 
 /* Here is a dummy implementation.  */
 static struct frame_id
-mn10300_unwind_dummy_id (struct gdbarch *gdbarch,
-			 struct frame_info *next_frame)
+mn10300_dummy_id (struct gdbarch *gdbarch, struct frame_info *this_frame)
 {
-  return frame_id_build (frame_sp_unwind (next_frame), 
-			 frame_pc_unwind (next_frame));
+  CORE_ADDR sp = get_frame_register_unsigned (this_frame, E_SP_REGNUM);
+  CORE_ADDR pc = get_frame_register_unsigned (this_frame, E_PC_REGNUM);
+  return frame_id_build (sp, pc);
 }
 
-/* Trad frame implementation.  */
 static void
-mn10300_frame_this_id (struct frame_info *next_frame,
+mn10300_frame_this_id (struct frame_info *this_frame,
 		       void **this_prologue_cache,
 		       struct frame_id *this_id)
 {
-  struct trad_frame_cache *cache = 
-    mn10300_frame_unwind_cache (next_frame, this_prologue_cache);
+  *this_id = frame_id_build (mn10300_frame_base (this_frame,
+						 this_prologue_cache),
+			     get_frame_func (this_frame));
 
-  trad_frame_get_id (cache, this_id);
 }
 
-static void
-mn10300_frame_prev_register (struct frame_info *next_frame,
-			     void **this_prologue_cache,
-			     int regnum, int *optimizedp,
-			     enum lval_type *lvalp, CORE_ADDR *addrp,
-			     int *realnump, gdb_byte *bufferp)
+static struct value *
+mn10300_frame_prev_register (struct frame_info *this_frame,
+		             void **this_prologue_cache, int regnum)
 {
-  struct trad_frame_cache *cache =
-    mn10300_frame_unwind_cache (next_frame, this_prologue_cache);
+  struct gdbarch_tdep *tdep = gdbarch_tdep (get_frame_arch (this_frame));
+  struct mn10300_prologue *p
+    = mn10300_analyze_frame_prologue (this_frame, this_prologue_cache);
+  CORE_ADDR frame_base = mn10300_frame_base (this_frame, this_prologue_cache);
+  int reg_size = register_size (get_frame_arch (this_frame), regnum);
 
-  trad_frame_get_register (cache, next_frame, regnum, optimizedp, 
-			   lvalp, addrp, realnump, bufferp);
-  /* Or...
-  trad_frame_get_prev_register (next_frame, cache->prev_regs, regnum, 
-			   optimizedp, lvalp, addrp, realnump, bufferp);
-  */
+  if (regnum == E_SP_REGNUM)
+    return frame_unwind_got_constant (this_frame, regnum, frame_base);
+
+  /* If prologue analysis says we saved this register somewhere,
+     return a description of the stack slot holding it.  */
+  if (p->reg_offset[regnum] != 1)
+    return frame_unwind_got_memory (this_frame, regnum,
+                                    frame_base + p->reg_offset[regnum]);
+
+  /* Otherwise, presume we haven't changed the value of this
+     register, and get it from the next frame.  */
+  return frame_unwind_got_register (this_frame, regnum, regnum);
 }
 
 static const struct frame_unwind mn10300_frame_unwind = {
   NORMAL_FRAME,
+  default_frame_unwind_stop_reason,
   mn10300_frame_this_id, 
-  mn10300_frame_prev_register
+  mn10300_frame_prev_register,
+  NULL,
+  default_frame_sniffer
 };
 
 static CORE_ADDR
-mn10300_frame_base_address (struct frame_info *next_frame,
-			    void **this_prologue_cache)
-{
-  struct trad_frame_cache *cache = 
-    mn10300_frame_unwind_cache (next_frame, this_prologue_cache);
-
-  return trad_frame_get_this_base (cache);
-}
-
-static const struct frame_unwind *
-mn10300_frame_sniffer (struct frame_info *next_frame)
-{
-  return &mn10300_frame_unwind;
-}
-
-static const struct frame_base mn10300_frame_base = {
-  &mn10300_frame_unwind, 
-  mn10300_frame_base_address, 
-  mn10300_frame_base_address,
-  mn10300_frame_base_address
-};
-
-static CORE_ADDR
-mn10300_unwind_pc (struct gdbarch *gdbarch, struct frame_info *next_frame)
+mn10300_unwind_pc (struct gdbarch *gdbarch, struct frame_info *this_frame)
 {
   ULONGEST pc;
 
-  pc = frame_unwind_register_unsigned (next_frame, E_PC_REGNUM);
+  pc = frame_unwind_register_unsigned (this_frame, E_PC_REGNUM);
   return pc;
 }
 
 static CORE_ADDR
-mn10300_unwind_sp (struct gdbarch *gdbarch, struct frame_info *next_frame)
+mn10300_unwind_sp (struct gdbarch *gdbarch, struct frame_info *this_frame)
 {
   ULONGEST sp;
 
-  sp = frame_unwind_register_unsigned (next_frame, E_SP_REGNUM);
+  sp = frame_unwind_register_unsigned (this_frame, E_SP_REGNUM);
   return sp;
 }
 
 static void
 mn10300_frame_unwind_init (struct gdbarch *gdbarch)
 {
-  frame_unwind_append_sniffer (gdbarch, dwarf2_frame_sniffer);
-  frame_unwind_append_sniffer (gdbarch, mn10300_frame_sniffer);
-  frame_base_set_default (gdbarch, &mn10300_frame_base);
-  set_gdbarch_unwind_dummy_id (gdbarch, mn10300_unwind_dummy_id);
+  dwarf2_append_unwinders (gdbarch);
+  frame_unwind_append_unwinder (gdbarch, &mn10300_frame_unwind);
+  set_gdbarch_dummy_id (gdbarch, mn10300_dummy_id);
   set_gdbarch_unwind_pc (gdbarch, mn10300_unwind_pc);
   set_gdbarch_unwind_sp (gdbarch, mn10300_unwind_sp);
 }
@@ -990,6 +1226,7 @@ mn10300_push_dummy_call (struct gdbarch *gdbarch,
 			 int struct_return,
 			 CORE_ADDR struct_addr)
 {
+  enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
   const int push_size = register_size (gdbarch, E_PC_REGNUM);
   int regs_used;
   int len, arg_len; 
@@ -1028,7 +1265,7 @@ mn10300_push_dummy_call (struct gdbarch *gdbarch,
   else
     regs_used = 0;
 
-  /* Push all arguments onto the stack. */
+  /* Push all arguments onto the stack.  */
   for (argnum = 0; argnum < nargs; argnum++)
     {
       /* FIXME what about structs?  Unions?  */
@@ -1037,8 +1274,8 @@ mn10300_push_dummy_call (struct gdbarch *gdbarch,
 	{
 	  /* Change to pointer-to-type.  */
 	  arg_len = push_size;
-	  store_unsigned_integer (valbuf, push_size, 
-				  VALUE_ADDRESS (*args));
+	  store_unsigned_integer (valbuf, push_size, byte_order,
+				  value_address (*args));
 	  val = &valbuf[0];
 	}
       else
@@ -1050,7 +1287,7 @@ mn10300_push_dummy_call (struct gdbarch *gdbarch,
       while (regs_used < 2 && arg_len > 0)
 	{
 	  regcache_cooked_write_unsigned (regcache, regs_used, 
-				  extract_unsigned_integer (val, push_size));
+		  extract_unsigned_integer (val, push_size, byte_order));
 	  val += push_size;
 	  arg_len -= push_size;
 	  regs_used++;
@@ -1072,7 +1309,7 @@ mn10300_push_dummy_call (struct gdbarch *gdbarch,
 
   /* Push the return address that contains the magic breakpoint.  */
   sp -= 4;
-  write_memory_unsigned_integer (sp, push_size, bp_addr);
+  write_memory_unsigned_integer (sp, push_size, byte_order, bp_addr);
 
   /* The CPU also writes the return address always into the
      MDR register on "call".  */
@@ -1097,7 +1334,7 @@ mn10300_push_dummy_call (struct gdbarch *gdbarch,
      Note that we don't update the return value though because that's
      the value of the stack just after pushing the arguments, but prior
      to performing the call.  This value is needed in order to
-     construct the frame ID of the dummy call.   */
+     construct the frame ID of the dummy call.  */
   {
     CORE_ADDR func_addr = find_function_addr (target_func, NULL);
     CORE_ADDR unwound_sp 
@@ -1131,7 +1368,7 @@ mn10300_dwarf2_reg_to_regnum (struct gdbarch *gdbarch, int dwarf2)
     40, 41, 42, 43, 44, 45, 46, 47,
     48, 49, 50, 51, 52, 53, 54, 55,
     56, 57, 58, 59, 60, 61, 62, 63,
-    9
+    9, 11
   };
 
   if (dwarf2 < 0
@@ -1184,6 +1421,9 @@ mn10300_gdbarch_init (struct gdbarch_info info,
       break;
     }
 
+  /* By default, chars are unsigned.  */
+  set_gdbarch_char_signed (gdbarch, 0);
+
   /* Registers.  */
   set_gdbarch_num_regs (gdbarch, num_regs);
   set_gdbarch_register_type (gdbarch, mn10300_register_type);
@@ -1198,7 +1438,7 @@ mn10300_gdbarch_init (struct gdbarch_info info,
   set_gdbarch_inner_than (gdbarch, core_addr_lessthan);
   /* Breakpoints.  */
   set_gdbarch_breakpoint_from_pc (gdbarch, mn10300_breakpoint_from_pc);
-  /* decr_pc_after_break? */
+  /* decr_pc_after_break?  */
   /* Disassembly.  */
   set_gdbarch_print_insn (gdbarch, print_insn_mn10300);
 
@@ -1218,7 +1458,7 @@ mn10300_gdbarch_init (struct gdbarch_info info,
   return gdbarch;
 }
  
-/* Dump out the mn10300 specific architecture information. */
+/* Dump out the mn10300 specific architecture information.  */
 
 static void
 mn10300_dump_tdep (struct gdbarch *gdbarch, struct ui_file *file)
@@ -1227,6 +1467,9 @@ mn10300_dump_tdep (struct gdbarch *gdbarch, struct ui_file *file)
   fprintf_unfiltered (file, "mn10300_dump_tdep: am33_mode = %d\n",
 		      tdep->am33_mode);
 }
+
+/* Provide a prototype to silence -Wmissing-prototypes.  */
+extern initialize_file_ftype _initialize_mn10300_tdep;
 
 void
 _initialize_mn10300_tdep (void)

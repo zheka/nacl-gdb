@@ -1,5 +1,6 @@
 /* Low level interface to SPUs, for the remote server for GDB.
-   Copyright (C) 2006, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2006, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    Contributed by Ulrich Weigand <uweigand@de.ibm.com>.
 
@@ -33,7 +34,7 @@
 /* Some older glibc versions do not define this.  */
 #ifndef __WNOTHREAD
 #define __WNOTHREAD     0x20000000      /* Don't wait on children of other
-				           threads in this group */
+					   threads in this group */
 #endif
 
 #define PTRACE_TYPE_RET long
@@ -52,10 +53,13 @@
 #define NR_spu_run	0x0116
 
 /* Get current thread ID (Linux task ID).  */
-#define current_tid ((struct inferior_list_entry *)current_inferior)->id
+#define current_ptid ((struct inferior_list_entry *)current_inferior)->id
 
 /* These are used in remote-utils.c.  */
 int using_threads = 0;
+
+/* Defined in auto-generated file reg-spu.c.  */
+void init_registers_spu (void);
 
 
 /* Fetch PPU register REGNO.  */
@@ -64,7 +68,7 @@ fetch_ppc_register (int regno)
 {
   PTRACE_TYPE_RET res;
 
-  int tid = current_tid;
+  int tid = ptid_get_lwp (current_ptid);
 
 #ifndef __powerpc64__
   /* If running as a 32-bit process on a 64-bit system, we attempt
@@ -87,7 +91,7 @@ fetch_ppc_register (int regno)
 
   errno = 0;
   res = ptrace (PT_READ_U, tid,
-	 	(PTRACE_TYPE_ARG3) (regno * sizeof (PTRACE_TYPE_RET)), 0);
+		(PTRACE_TYPE_ARG3) (regno * sizeof (PTRACE_TYPE_RET)), 0);
   if (errno != 0)
     {
       char mess[128];
@@ -147,7 +151,7 @@ fetch_ppc_memory (CORE_ADDR memaddr, char *myaddr, int len)
 	       / sizeof (PTRACE_TYPE_RET));
   PTRACE_TYPE_RET *buffer;
 
-  int tid = current_tid;
+  int tid = ptid_get_lwp (current_ptid);
 
   buffer = (PTRACE_TYPE_RET *) alloca (count * sizeof (PTRACE_TYPE_RET));
   for (i = 0; i < count; i++, addr += sizeof (PTRACE_TYPE_RET))
@@ -172,7 +176,7 @@ store_ppc_memory (CORE_ADDR memaddr, char *myaddr, int len)
 	       / sizeof (PTRACE_TYPE_RET));
   PTRACE_TYPE_RET *buffer;
 
-  int tid = current_tid;
+  int tid = ptid_get_lwp (current_ptid);
 
   buffer = (PTRACE_TYPE_RET *) alloca (count * sizeof (PTRACE_TYPE_RET));
 
@@ -187,7 +191,7 @@ store_ppc_memory (CORE_ADDR memaddr, char *myaddr, int len)
       return ret;
 
   memcpy ((char *) buffer + (memaddr & (sizeof (PTRACE_TYPE_RET) - 1)),
-          myaddr, len);
+	  myaddr, len);
 
   for (i = 0; i < count; i++, addr += sizeof (PTRACE_TYPE_RET))
     if ((ret = store_ppc_memory_1 (tid, addr, buffer[i])) != 0)
@@ -200,7 +204,7 @@ store_ppc_memory (CORE_ADDR memaddr, char *myaddr, int len)
 /* If the PPU thread is currently stopped on a spu_run system call,
    return to FD and ADDR the file handle and NPC parameter address
    used with the system call.  Return non-zero if successful.  */
-static int 
+static int
 parse_spufs_run (int *fd, CORE_ADDR *addr)
 {
   char buf[4];
@@ -237,7 +241,7 @@ spu_proc_xfer_spu (const char *annex, unsigned char *readbuf,
   if (!annex)
     return 0;
 
-  sprintf (buf, "/proc/%ld/fd/%s", current_tid, annex);
+  sprintf (buf, "/proc/%ld/fd/%s", ptid_get_lwp (current_ptid), annex);
   fd = open (buf, writebuf? O_WRONLY : O_RDONLY);
   if (fd <= 0)
     return -1;
@@ -265,6 +269,7 @@ static int
 spu_create_inferior (char *program, char **allargs)
 {
   int pid;
+  ptid_t ptid;
 
   pid = fork ();
   if (pid < 0)
@@ -286,7 +291,10 @@ spu_create_inferior (char *program, char **allargs)
       _exit (0177);
     }
 
-  add_thread (pid, NULL, pid);
+  add_process (pid, 0);
+
+  ptid = ptid_build (pid, pid, 0);
+  add_thread (ptid, NULL);
   return pid;
 }
 
@@ -294,6 +302,8 @@ spu_create_inferior (char *program, char **allargs)
 int
 spu_attach (unsigned long  pid)
 {
+  ptid_t ptid;
+
   if (ptrace (PTRACE_ATTACH, pid, 0, 0) != 0)
     {
       fprintf (stderr, "Cannot attach to process %ld: %s (%d)\n", pid,
@@ -302,32 +312,67 @@ spu_attach (unsigned long  pid)
       _exit (0177);
     }
 
-  add_thread (pid, NULL, pid);
+  add_process (pid, 1);
+  ptid = ptid_build (pid, pid, 0);
+  add_thread (ptid, NULL);
   return 0;
 }
 
 /* Kill the inferior process.  */
-static void
-spu_kill (void)
+static int
+spu_kill (int pid)
 {
-  ptrace (PTRACE_KILL, current_tid, 0, 0);
+  int status, ret;
+  struct process_info *process = find_process_pid (pid);
+  if (process == NULL)
+    return -1;
+
+  ptrace (PTRACE_KILL, pid, 0, 0);
+
+  do {
+    ret = waitpid (pid, &status, 0);
+    if (WIFEXITED (status) || WIFSIGNALED (status))
+      break;
+  } while (ret != -1 || errno != ECHILD);
+
+  clear_inferiors ();
+  remove_process (process);
+  return 0;
 }
 
 /* Detach from inferior process.  */
 static int
-spu_detach (void)
+spu_detach (int pid)
 {
-  ptrace (PTRACE_DETACH, current_tid, 0, 0);
+  struct process_info *process = find_process_pid (pid);
+  if (process == NULL)
+    return -1;
+
+  ptrace (PTRACE_DETACH, pid, 0, 0);
+
+  clear_inferiors ();
+  remove_process (process);
   return 0;
 }
 
 static void
-spu_join (void)
+spu_mourn (struct process_info *process)
+{
+  remove_process (process);
+}
+
+static void
+spu_join (int pid)
 {
   int status, ret;
+  struct process_info *process;
+
+  process = find_process_pid (pid);
+  if (process == NULL)
+    return;
 
   do {
-    ret = waitpid (current_tid, &status, 0);
+    ret = waitpid (pid, &status, 0);
     if (WIFEXITED (status) || WIFSIGNALED (status))
       break;
   } while (ret != -1 || errno != ECHILD);
@@ -335,46 +380,49 @@ spu_join (void)
 
 /* Return nonzero if the given thread is still alive.  */
 static int
-spu_thread_alive (unsigned long tid)
+spu_thread_alive (ptid_t ptid)
 {
-  return tid == current_tid;
+  return ptid_equal (ptid, current_ptid);
 }
 
 /* Resume process.  */
 static void
-spu_resume (struct thread_resume *resume_info)
+spu_resume (struct thread_resume *resume_info, size_t n)
 {
-  while (resume_info->thread != -1
-	 && resume_info->thread != current_tid)
-    resume_info++;
+  size_t i;
 
-  if (resume_info->leave_stopped)
+  for (i = 0; i < n; i++)
+    if (ptid_equal (resume_info[i].thread, minus_one_ptid)
+	|| ptid_equal (resume_info[i].thread, current_ptid))
+      break;
+
+  if (i == n)
     return;
 
   /* We don't support hardware single-stepping right now, assume
      GDB knows to use software single-stepping.  */
-  if (resume_info->step)
+  if (resume_info[i].kind == resume_step)
     fprintf (stderr, "Hardware single-step not supported.\n");
 
   regcache_invalidate ();
 
   errno = 0;
-  ptrace (PTRACE_CONT, current_tid, 0, resume_info->sig);
+  ptrace (PTRACE_CONT, ptid_get_lwp (current_ptid), 0, resume_info[i].sig);
   if (errno)
     perror_with_name ("ptrace");
 }
 
 /* Wait for process, returns status.  */
-static unsigned char
-spu_wait (char *status)
+static ptid_t
+spu_wait (ptid_t ptid, struct target_waitstatus *ourstatus, int options)
 {
-  int tid = current_tid;
+  int pid = ptid_get_pid (ptid);
   int w;
   int ret;
 
   while (1)
     {
-      ret = waitpid (tid, &w, WNOHANG | __WALL | __WNOTHREAD);
+      ret = waitpid (pid, &w, WNOHANG | __WALL | __WNOTHREAD);
 
       if (ret == -1)
 	{
@@ -396,48 +444,48 @@ spu_wait (char *status)
 
       while (!parse_spufs_run (&fd, &addr))
 	{
-	  ptrace (PT_SYSCALL, tid, (PTRACE_TYPE_ARG3) 0, 0);
-	  waitpid (tid, NULL, __WALL | __WNOTHREAD);
+	  ptrace (PT_SYSCALL, pid, (PTRACE_TYPE_ARG3) 0, 0);
+	  waitpid (pid, NULL, __WALL | __WNOTHREAD);
 	}
     }
 
   if (WIFEXITED (w))
     {
       fprintf (stderr, "\nChild exited with retcode = %x \n", WEXITSTATUS (w));
-      *status = 'W';
+      ourstatus->kind =  TARGET_WAITKIND_EXITED;
+      ourstatus->value.integer = WEXITSTATUS (w);
       clear_inferiors ();
-      return ((unsigned char) WEXITSTATUS (w));
+      return pid_to_ptid (ret);
     }
   else if (!WIFSTOPPED (w))
     {
       fprintf (stderr, "\nChild terminated with signal = %x \n", WTERMSIG (w));
-      *status = 'X';
+      ourstatus->kind = TARGET_WAITKIND_SIGNALLED;
+      ourstatus->value.sig = target_signal_from_host (WTERMSIG (w));
       clear_inferiors ();
-      return ((unsigned char) WTERMSIG (w));
+      return pid_to_ptid (ret);
     }
 
   /* After attach, we may have received a SIGSTOP.  Do not return this
      as signal to GDB, or else it will try to continue with SIGSTOP ...  */
   if (!server_waiting)
     {
-      *status = 'T';
-      return 0;
+      ourstatus->kind = TARGET_WAITKIND_STOPPED;
+      ourstatus->value.sig = TARGET_SIGNAL_0;
+      return ptid_build (ret, ret, 0);
     }
 
-  *status = 'T';
-  return ((unsigned char) WSTOPSIG (w));
+  ourstatus->kind = TARGET_WAITKIND_STOPPED;
+  ourstatus->value.sig = target_signal_from_host (WSTOPSIG (w));
+  return ptid_build (ret, ret, 0);
 }
 
 /* Fetch inferior registers.  */
 static void
-spu_fetch_registers (int regno)
+spu_fetch_registers (struct regcache *regcache, int regno)
 {
   int fd;
   CORE_ADDR addr;
-
-  /* ??? Some callers use 0 to mean all registers.  */
-  if (regno == 0)
-    regno = -1;
 
   /* We must be stopped on a spu_run system call.  */
   if (!parse_spufs_run (&fd, &addr))
@@ -445,14 +493,14 @@ spu_fetch_registers (int regno)
 
   /* The ID register holds the spufs file handle.  */
   if (regno == -1 || regno == SPU_ID_REGNUM)
-    supply_register (SPU_ID_REGNUM, (char *)&fd);
+    supply_register (regcache, SPU_ID_REGNUM, (char *)&fd);
 
   /* The NPC register is found at ADDR.  */
   if (regno == -1 || regno == SPU_PC_REGNUM)
     {
       char buf[4];
       if (fetch_ppc_memory (addr, buf, 4) == 0)
-	supply_register (SPU_PC_REGNUM, buf);
+	supply_register (regcache, SPU_PC_REGNUM, buf);
     }
 
   /* The GPRs are found in the "regs" spufs file.  */
@@ -465,13 +513,13 @@ spu_fetch_registers (int regno)
       sprintf (annex, "%d/regs", fd);
       if (spu_proc_xfer_spu (annex, buf, NULL, 0, sizeof buf) == sizeof buf)
 	for (i = 0; i < SPU_NUM_CORE_REGS; i++)
-	  supply_register (i, buf + i*16);
+	  supply_register (regcache, i, buf + i*16);
     }
 }
 
 /* Store inferior registers.  */
 static void
-spu_store_registers (int regno)
+spu_store_registers (struct regcache *regcache, int regno)
 {
   int fd;
   CORE_ADDR addr;
@@ -488,7 +536,7 @@ spu_store_registers (int regno)
   if (regno == -1 || regno == SPU_PC_REGNUM)
     {
       char buf[4];
-      collect_register (SPU_PC_REGNUM, buf);
+      collect_register (regcache, SPU_PC_REGNUM, buf);
       store_ppc_memory (addr, buf, 4);
     }
 
@@ -500,7 +548,7 @@ spu_store_registers (int regno)
       int i;
 
       for (i = 0; i < SPU_NUM_CORE_REGS; i++)
-	collect_register (i, buf + i*16);
+	collect_register (regcache, i, buf + i*16);
 
       sprintf (annex, "%d/regs", fd);
       spu_proc_xfer_spu (annex, NULL, buf, 0, sizeof buf);
@@ -514,7 +562,8 @@ spu_read_memory (CORE_ADDR memaddr, unsigned char *myaddr, int len)
 {
   int fd, ret;
   CORE_ADDR addr;
-  char annex[32];
+  char annex[32], lslr_annex[32], buf[32];
+  CORE_ADDR lslr;
 
   /* We must be stopped on a spu_run system call.  */
   if (!parse_spufs_run (&fd, &addr))
@@ -523,6 +572,22 @@ spu_read_memory (CORE_ADDR memaddr, unsigned char *myaddr, int len)
   /* Use the "mem" spufs file to access SPU local store.  */
   sprintf (annex, "%d/mem", fd);
   ret = spu_proc_xfer_spu (annex, myaddr, NULL, memaddr, len);
+  if (ret > 0)
+    return ret == len ? 0 : EIO;
+
+  /* SPU local store access wraps the address around at the
+     local store limit.  We emulate this here.  To avoid needing
+     an extra access to retrieve the LSLR, we only do that after
+     trying the original address first, and getting end-of-file.  */
+  sprintf (lslr_annex, "%d/lslr", fd);
+  memset (buf, 0, sizeof buf);
+  if (spu_proc_xfer_spu (lslr_annex, (unsigned char *)buf, NULL,
+			 0, sizeof buf) <= 0)
+    return ret;
+
+  lslr = strtoul (buf, NULL, 16);
+  ret = spu_proc_xfer_spu (annex, myaddr, NULL, memaddr & lslr, len);
+
   return ret == len ? 0 : EIO;
 }
 
@@ -535,7 +600,8 @@ spu_write_memory (CORE_ADDR memaddr, const unsigned char *myaddr, int len)
 {
   int fd, ret;
   CORE_ADDR addr;
-  char annex[32];
+  char annex[32], lslr_annex[32], buf[32];
+  CORE_ADDR lslr;
 
   /* We must be stopped on a spu_run system call.  */
   if (!parse_spufs_run (&fd, &addr))
@@ -544,6 +610,22 @@ spu_write_memory (CORE_ADDR memaddr, const unsigned char *myaddr, int len)
   /* Use the "mem" spufs file to access SPU local store.  */
   sprintf (annex, "%d/mem", fd);
   ret = spu_proc_xfer_spu (annex, NULL, myaddr, memaddr, len);
+  if (ret > 0)
+    return ret == len ? 0 : EIO;
+
+  /* SPU local store access wraps the address around at the
+     local store limit.  We emulate this here.  To avoid needing
+     an extra access to retrieve the LSLR, we only do that after
+     trying the original address first, and getting end-of-file.  */
+  sprintf (lslr_annex, "%d/lslr", fd);
+  memset (buf, 0, sizeof buf);
+  if (spu_proc_xfer_spu (lslr_annex, (unsigned char *)buf, NULL,
+			 0, sizeof buf) <= 0)
+    return ret;
+
+  lslr = strtoul (buf, NULL, 16);
+  ret = spu_proc_xfer_spu (annex, NULL, myaddr, memaddr & lslr, len);
+
   return ret == len ? 0 : EIO;
 }
 
@@ -557,13 +639,7 @@ spu_look_up_symbols (void)
 static void
 spu_request_interrupt (void)
 {
-  syscall (SYS_tkill, current_tid, SIGINT);
-}
-
-static const char *
-spu_arch_string (void)
-{
-  return "spu";
+  syscall (SYS_tkill, ptid_get_lwp (current_ptid), SIGINT);
 }
 
 static struct target_ops spu_target_ops = {
@@ -571,12 +647,15 @@ static struct target_ops spu_target_ops = {
   spu_attach,
   spu_kill,
   spu_detach,
+  spu_mourn,
   spu_join,
   spu_thread_alive,
   spu_resume,
   spu_wait,
   spu_fetch_registers,
   spu_store_registers,
+  NULL, /* prepare_to_access_memory */
+  NULL, /* done_accessing_memory */
   spu_read_memory,
   spu_write_memory,
   spu_look_up_symbols,
@@ -588,7 +667,6 @@ static struct target_ops spu_target_ops = {
   NULL,
   NULL,
   NULL,
-  spu_arch_string,
   spu_proc_xfer_spu,
   hostio_last_error_from_errno,
 };
@@ -600,5 +678,5 @@ initialize_low (void)
 
   set_target_ops (&spu_target_ops);
   set_breakpoint_data (breakpoint, sizeof breakpoint);
-  init_registers ();
+  init_registers_spu ();
 }

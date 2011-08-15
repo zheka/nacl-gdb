@@ -18,7 +18,11 @@
 #
 # SIM_AC_OUTPUT
 
-AC_DEFUN(SIM_AC_COMMON,
+# Include global overrides and fixes for Autoconf.
+m4_include(../../config/override.m4)
+sinclude([../../config/zlib.m4])
+
+AC_DEFUN([SIM_AC_COMMON],
 [
 # autoconf.info says this should be called right after AC_INIT.
 AC_CONFIG_HEADER(ifelse([$1],,config.h,[$1]):config.in)
@@ -245,7 +249,7 @@ dnl If the simulator doesn't invoke this, only the user environment is
 dnl supported.
 dnl ??? Until there is demonstrable value in doing something more complicated,
 dnl let's not.
-AC_DEFUN(SIM_AC_OPTION_ENVIRONMENT,
+AC_DEFUN([SIM_AC_OPTION_ENVIRONMENT],
 [
 AC_ARG_ENABLE(sim-environment,
 [  --enable-sim-environment=environment	Specify mixed, user, virtual or operating environment.],
@@ -269,7 +273,7 @@ dnl Specify the alignment restrictions of the target architecture.
 dnl Without this option all possible alignment restrictions are accommodated.
 dnl arg[1] is hardwired target alignment
 dnl arg[2] is default target alignment
-AC_DEFUN(SIM_AC_OPTION_ALIGNMENT,
+AC_DEFUN([SIM_AC_OPTION_ALIGNMENT],
 wire_alignment="[$1]"
 default_alignment="[$2]"
 [
@@ -318,7 +322,7 @@ AC_SUBST(sim_alignment)
 
 
 dnl Conditionally compile in assertion statements.
-AC_DEFUN(SIM_AC_OPTION_ASSERT,
+AC_DEFUN([SIM_AC_OPTION_ASSERT],
 [
 AC_ARG_ENABLE(sim-assert,
 [  --enable-sim-assert			Specify whether to perform random assertions.],
@@ -342,7 +346,7 @@ dnl arg[2] is the number assigned to the most significant bit
 dnl arg[3] is the number of bits in an address
 dnl arg[4] is the number of bits in an OpenFirmware cell.
 dnl FIXME: this information should be obtained from bfd/archure
-AC_DEFUN(SIM_AC_OPTION_BITSIZE,
+AC_DEFUN([SIM_AC_OPTION_BITSIZE],
 wire_word_bitsize="[$1]"
 wire_word_msb="[$2]"
 wire_address_bitsize="[$3]"
@@ -408,7 +412,7 @@ dnl --enable-sim-endian={yes,no,big,little} is for simulators
 dnl that support both big and little endian targets.
 dnl arg[1] is hardwired target endianness.
 dnl arg[2] is default target endianness.
-AC_DEFUN(SIM_AC_OPTION_ENDIAN,
+AC_DEFUN([SIM_AC_OPTION_ENDIAN],
 [
 wire_endian="[$1]"
 default_endian="[$2]"
@@ -458,7 +462,7 @@ AC_SUBST(sim_endian)
 dnl --enable-sim-hostendian is for users of the simulator when
 dnl they find that AC_C_BIGENDIAN does not function correctly
 dnl (for instance in a canadian cross)
-AC_DEFUN(SIM_AC_OPTION_HOSTENDIAN,
+AC_DEFUN([SIM_AC_OPTION_HOSTENDIAN],
 [
 AC_ARG_ENABLE(sim-hostendian,
 [  --enable-sim-hostendian=end		Specify host byte endian orientation.],
@@ -490,7 +494,7 @@ dnl It specifies the presence of hardware floating point
 dnl And optionally the bitsize of the floating point register.
 dnl arg[1] specifies the presence (or absence) of floating point hardware
 dnl arg[2] specifies the number of bits in a floating point register
-AC_DEFUN(SIM_AC_OPTION_FLOAT,
+AC_DEFUN([SIM_AC_OPTION_FLOAT],
 [
 default_sim_float="[$1]"
 default_sim_float_bitsize="[$2]"
@@ -519,7 +523,7 @@ AC_SUBST(sim_float)
 
 
 dnl The argument is the default cache size if none is specified.
-AC_DEFUN(SIM_AC_OPTION_SCACHE,
+AC_DEFUN([SIM_AC_OPTION_SCACHE],
 [
 default_sim_scache="ifelse([$1],,0,[$1])"
 AC_ARG_ENABLE(sim-scache,
@@ -539,7 +543,7 @@ AC_SUBST(sim_scache)
 
 
 dnl The argument is the default model if none is specified.
-AC_DEFUN(SIM_AC_OPTION_DEFAULT_MODEL,
+AC_DEFUN([SIM_AC_OPTION_DEFAULT_MODEL],
 [
 default_sim_default_model="ifelse([$1],,0,[$1])"
 AC_ARG_ENABLE(sim-default-model,
@@ -559,7 +563,7 @@ dnl --enable-sim-hardware is for users of the simulator
 dnl arg[1] Enable sim-hw by default? ("yes" or "no")
 dnl arg[2] is a space separated list of devices that override the defaults
 dnl arg[3] is a space separated list of extra target specific devices.
-AC_DEFUN(SIM_AC_OPTION_HARDWARE,
+AC_DEFUN([SIM_AC_OPTION_HARDWARE],
 [
 if test x"[$1]" = x"yes"; then
   sim_hw_p=yes
@@ -567,10 +571,11 @@ else
   sim_hw_p=no
 fi
 if test "[$2]"; then
-  hardware="core pal glue"
+  hardware="[$2]"
 else
-  hardware="core pal glue [$3]"
+  hardware="cfi core pal glue"
 fi
+hardware="$hardware [$3]"
 sim_hw_cflags="-DWITH_HW=1"
 sim_hw="$hardware"
 sim_hw_objs="\$(SIM_COMMON_HW_OBJS) `echo $sim_hw | sed -e 's/\([[^ ]][[^ ]]*\)/dv-\1.o/g'`"
@@ -621,7 +626,7 @@ dnl --enable-sim-inline is for users that wish to ramp up the simulator's
 dnl performance by inlining functions.
 dnl Guarantee that unconfigured simulators do not do any inlining
 sim_inline="-DDEFAULT_INLINE=0"
-AC_DEFUN(SIM_AC_OPTION_INLINE,
+AC_DEFUN([SIM_AC_OPTION_INLINE],
 [
 default_sim_inline="ifelse([$1],,,-DDEFAULT_INLINE=[$1])"
 AC_ARG_ENABLE(sim-inline,
@@ -666,7 +671,7 @@ fi])dnl
 AC_SUBST(sim_inline)
 
 
-AC_DEFUN(SIM_AC_OPTION_PACKAGES,
+AC_DEFUN([SIM_AC_OPTION_PACKAGES],
 [
 AC_ARG_ENABLE(sim-packages,
 [  --enable-sim-packages=list		Specify the packages to be included in the build.],
@@ -692,7 +697,7 @@ fi])dnl
 AC_SUBST(sim_packages)
 
 
-AC_DEFUN(SIM_AC_OPTION_REGPARM,
+AC_DEFUN([SIM_AC_OPTION_REGPARM],
 [
 AC_ARG_ENABLE(sim-regparm,
 [  --enable-sim-regparm=nr-parm		Pass parameters in registers instead of on the stack - x86/GCC specific.],
@@ -709,7 +714,7 @@ fi],[sim_regparm=""])dnl
 AC_SUBST(sim_regparm)
 
 
-AC_DEFUN(SIM_AC_OPTION_RESERVED_BITS,
+AC_DEFUN([SIM_AC_OPTION_RESERVED_BITS],
 [
 default_sim_reserved_bits="ifelse([$1],,1,[$1])"
 AC_ARG_ENABLE(sim-reserved-bits,
@@ -726,7 +731,7 @@ fi],[sim_reserved_bits="-DWITH_RESERVED_BITS=${default_sim_reserved_bits}"])dnl
 AC_SUBST(sim_reserved_bits)
 
 
-AC_DEFUN(SIM_AC_OPTION_SMP,
+AC_DEFUN([SIM_AC_OPTION_SMP],
 [
 default_sim_smp="ifelse([$1],,5,[$1])"
 AC_ARG_ENABLE(sim-smp,
@@ -746,7 +751,7 @@ fi])dnl
 AC_SUBST(sim_smp)
 
 
-AC_DEFUN(SIM_AC_OPTION_STDCALL,
+AC_DEFUN([SIM_AC_OPTION_STDCALL],
 [
 AC_ARG_ENABLE(sim-stdcall,
 [  --enable-sim-stdcall=type		Use an alternative function call/return mechanism - x86/GCC specific.],
@@ -763,7 +768,7 @@ fi],[sim_stdcall=""])dnl
 AC_SUBST(sim_stdcall)
 
 
-AC_DEFUN(SIM_AC_OPTION_XOR_ENDIAN,
+AC_DEFUN([SIM_AC_OPTION_XOR_ENDIAN],
 [
 default_sim_xor_endian="ifelse([$1],,8,[$1])"
 AC_ARG_ENABLE(sim-xor-endian,
@@ -782,7 +787,7 @@ AC_SUBST(sim_xor_endian)
 
 dnl --enable-build-warnings is for developers of the simulator.
 dnl it enables extra GCC specific warnings.
-AC_DEFUN(SIM_AC_OPTION_WARNINGS,
+AC_DEFUN([SIM_AC_OPTION_WARNINGS],
 [
 # NOTE: Don't add -Wall or -Wunused, they both include
 # -Wunused-parameter which reports bogus warnings.
@@ -866,7 +871,7 @@ dnl We cope by having autoconf generate two files and then merge them into
 dnl one afterwards.  The two pieces of the common fragment are inserted into
 dnl the target's fragment at the appropriate points.
 
-AC_DEFUN(SIM_AC_OUTPUT,
+AC_DEFUN([SIM_AC_OUTPUT],
 [
 AC_LINK_FILES($sim_link_files, $sim_link_links)
 dnl Make @cgen_breaks@ non-null only if the sim uses CGEN.
@@ -893,9 +898,10 @@ AC_OUTPUT
 ])
 
 sinclude(../../config/gettext-sister.m4)
+sinclude(../../config/acx.m4)
 
 dnl --enable-cgen-maint support
-AC_DEFUN(SIM_AC_OPTION_CGEN_MAINT,
+AC_DEFUN([SIM_AC_OPTION_CGEN_MAINT],
 [
 cgen_maint=no
 dnl Default is to use one in build tree.
@@ -929,71 +935,3 @@ AC_SUBST(CGEN_MAINT)
 AC_SUBST(cgendir)
 AC_SUBST(cgen)
 ])
-dnl FIXME: When upgrading to modern autoconf, remove
-dnl        SIM_CHECK_MEMBER and SIM_CHECK_MEMBERS et al and use
-dnl        AC_CHECK_MEMBERS from autoconf.
-dnl
-dnl Translated from a FC2 autoconf-2.59-3 installation.
-dnl  AC_CHECK_MEMBER(AGGREGATE.MEMBER,
-dnl                  [ACTION-IF-FOUND], [ACTION-IF-NOT-FOUND],
-dnl                  [INCLUDES])
-dnl
-dnl  ---------------------------------------------------------
-dnl  AGGREGATE.MEMBER is for instance `struct passwd.pw_gecos', shell
-dnl  variables are not a valid argument.
-AC_DEFUN([SIM_CHECK_MEMBER],
-dnl Extract the aggregate name, and the member name
-[AC_CACHE_CHECK([for $1], [ac_]patsubst([$1], [[\. ]], [_]),
-[ac_]patsubst([$1], [[\. ]], [_])[=no;]
-AC_TRY_COMPILE([$4],[
-dnl AGGREGATE ac_aggr;
-static ]patsubst([$1], [\..*])[ ac_aggr;
-dnl ac_aggr.MEMBER;
-if (ac_aggr.]patsubst([$1], [^[^.]*\.])[)
-return 0;],[ac_]patsubst([$1], [[\. ]], [_])[=yes;],
-AC_TRY_COMPILE([$4],[
-dnl AGGREGATE ac_aggr;
-static ]patsubst([$1], [\..*])[ ac_aggr;
-dnl ac_aggr.MEMBER;
-if (sizeof ac_aggr.]patsubst([$1], [^[^.]*\.])[)
-return 0;],
-[ac_]patsubst([$1], [[\. ]], [_])[=yes;],
-[ac_]patsubst([$1], [[\. ]], [_])[=no;]))
-[if test [$]ac_]patsubst([$1], [[\. ]], [_])[ = yes; then :; [$2]
-else :; [$3]
-fi])
-])dnl SIM_CHECK_MEMBER
-dnl
-dnl Translated from a FC2 autoconf-2.59-3 installation.
-dnl  SIM_CHECK_MEMBERS([AGGREGATE.MEMBER, ...])
-dnl except we just work with a limited set of fixed includes.
-dnl
-AC_DEFUN([SIM_CHECK_MEMBERS_1],
-[ifelse($#, 1,
-[SIM_CHECK_MEMBER([$1],
-AC_DEFINE_UNQUOTED([HAVE_]translit([$1], [a-z .], [A-Z__]), 1,
-[Define to 1 if ]patsubst([$1],
-[^[^.]*\.])[ is a member of ]patsubst([$1], [\..*])[. ]),,
-[#ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
-#endif
-#ifdef HAVE_SYS_STAT_H
-#include <sys/stat.h>
-#endif])],
-[SIM_CHECK_MEMBER([$1],
-AC_DEFINE_UNQUOTED([HAVE_]translit([$1], [a-z .], [A-Z__]), 1,
-[Define to 1 if ]patsubst([$1],
-[^[^.]*\.])[ is a member of ]patsubst([$1], [\..*])[. ]),,
-[#ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
-#endif
-#ifdef HAVE_SYS_STAT_H
-#include <sys/stat.h>
-#endif])
-SIM_CHECK_MEMBERS_1(builtin(shift,$@))])])dnl SIM_CHECK_MEMBERS
-dnl
-AC_DEFUN([SIM_CHECK_MEMBERS],
-[ifelse($#, 1, [SIM_CHECK_MEMBERS_1($1)],
-[errprint(__file__:__line__:
-[This SIM_CHECK_MEMBERS only supports one argument,]
-[the list of struct tests])])])dnl SIM_CHECK_MEMBERS

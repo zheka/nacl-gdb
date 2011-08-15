@@ -1,6 +1,7 @@
 /* Target-dependent code for OpenBSD/powerpc.
 
-   Copyright (C) 2004, 2005, 2006, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -56,7 +57,7 @@ ppcobsd_supply_gregset (const struct regset *regset,
 }
 
 /* Collect register REGNUM in the general-purpose register set
-   REGSET. from register cache REGCACHE into the buffer specified by
+   REGSET, from register cache REGCACHE into the buffer specified by
    GREGS and LEN.  If REGNUM is -1, do this for all registers in
    REGSET.  */
 
@@ -121,9 +122,13 @@ static const int ppcobsd_sigreturn_offset[] = {
 };
 
 static int
-ppcobsd_sigtramp_p (struct frame_info *next_frame)
+ppcobsd_sigtramp_frame_sniffer (const struct frame_unwind *self,
+				struct frame_info *this_frame,
+				void **this_cache)
 {
-  CORE_ADDR pc = frame_pc_unwind (next_frame);
+  struct gdbarch *gdbarch = get_frame_arch (this_frame);
+  enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
+  CORE_ADDR pc = get_frame_pc (this_frame);
   CORE_ADDR start_pc = (pc & ~(ppcobsd_page_size - 1));
   const int *offset;
   char *name;
@@ -137,17 +142,18 @@ ppcobsd_sigtramp_p (struct frame_info *next_frame)
       gdb_byte buf[2 * PPC_INSN_SIZE];
       unsigned long insn;
 
-      if (!safe_frame_unwind_memory (next_frame, start_pc + *offset,
+      if (!safe_frame_unwind_memory (this_frame, start_pc + *offset,
 				     buf, sizeof buf))
 	continue;
 
       /* Check for "li r0,SYS_sigreturn".  */
-      insn = extract_unsigned_integer (buf, PPC_INSN_SIZE);
+      insn = extract_unsigned_integer (buf, PPC_INSN_SIZE, byte_order);
       if (insn != 0x38000067)
 	continue;
 
       /* Check for "sc".  */
-      insn = extract_unsigned_integer (buf + PPC_INSN_SIZE, PPC_INSN_SIZE);
+      insn = extract_unsigned_integer (buf + PPC_INSN_SIZE,
+				       PPC_INSN_SIZE, byte_order);
       if (insn != 0x44000002)
 	continue;
 
@@ -158,10 +164,11 @@ ppcobsd_sigtramp_p (struct frame_info *next_frame)
 }
 
 static struct trad_frame_cache *
-ppcobsd_sigtramp_frame_cache (struct frame_info *next_frame, void **this_cache)
+ppcobsd_sigtramp_frame_cache (struct frame_info *this_frame, void **this_cache)
 {
-  struct gdbarch *gdbarch = get_frame_arch (next_frame);
+  struct gdbarch *gdbarch = get_frame_arch (this_frame);
   struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
+  enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
   struct trad_frame_cache *cache;
   CORE_ADDR addr, base, func;
   gdb_byte buf[PPC_INSN_SIZE];
@@ -171,22 +178,21 @@ ppcobsd_sigtramp_frame_cache (struct frame_info *next_frame, void **this_cache)
   if (*this_cache)
     return *this_cache;
 
-  cache = trad_frame_cache_zalloc (next_frame);
+  cache = trad_frame_cache_zalloc (this_frame);
   *this_cache = cache;
 
-  func = frame_pc_unwind (next_frame);
+  func = get_frame_pc (this_frame);
   func &= ~(ppcobsd_page_size - 1);
-  if (!safe_frame_unwind_memory (next_frame, func, buf, sizeof buf))
+  if (!safe_frame_unwind_memory (this_frame, func, buf, sizeof buf))
     return cache;
 
   /* Calculate the offset where we can find `struct sigcontext'.  We
      base our calculation on the amount of stack space reserved by the
      first instruction of the signal trampoline.  */
-  insn = extract_unsigned_integer (buf, PPC_INSN_SIZE);
+  insn = extract_unsigned_integer (buf, PPC_INSN_SIZE, byte_order);
   sigcontext_offset = (0x10000 - (insn & 0x0000ffff)) + 8;
 
-  base = frame_unwind_register_unsigned (next_frame,
-					 gdbarch_sp_regnum (gdbarch));
+  base = get_frame_register_unsigned (this_frame, gdbarch_sp_regnum (gdbarch));
   addr = base + sigcontext_offset + 2 * tdep->wordsize;
   for (i = 0; i < ppc_num_gprs; i++, addr += tdep->wordsize)
     {
@@ -202,7 +208,7 @@ ppcobsd_sigtramp_frame_cache (struct frame_info *next_frame, void **this_cache)
   trad_frame_set_reg_addr (cache, tdep->ppc_ctr_regnum, addr);
   addr += tdep->wordsize;
   trad_frame_set_reg_addr (cache, gdbarch_pc_regnum (gdbarch), addr);
-  /* SRR0? */
+  /* SRR0?  */
   addr += tdep->wordsize;
 
   /* Construct the frame ID using the function start.  */
@@ -212,43 +218,33 @@ ppcobsd_sigtramp_frame_cache (struct frame_info *next_frame, void **this_cache)
 }
 
 static void
-ppcobsd_sigtramp_frame_this_id (struct frame_info *next_frame,
+ppcobsd_sigtramp_frame_this_id (struct frame_info *this_frame,
 				void **this_cache, struct frame_id *this_id)
 {
   struct trad_frame_cache *cache =
-    ppcobsd_sigtramp_frame_cache (next_frame, this_cache);
+    ppcobsd_sigtramp_frame_cache (this_frame, this_cache);
 
   trad_frame_get_id (cache, this_id);
 }
 
-static void
-ppcobsd_sigtramp_frame_prev_register (struct frame_info *next_frame,
-				      void **this_cache, int regnum,
-				      int *optimizedp, enum lval_type *lvalp,
-				      CORE_ADDR *addrp, int *realnump,
-				      gdb_byte *valuep)
+static struct value *
+ppcobsd_sigtramp_frame_prev_register (struct frame_info *this_frame,
+				      void **this_cache, int regnum)
 {
   struct trad_frame_cache *cache =
-    ppcobsd_sigtramp_frame_cache (next_frame, this_cache);
+    ppcobsd_sigtramp_frame_cache (this_frame, this_cache);
 
-  trad_frame_get_register (cache, next_frame, regnum,
-			   optimizedp, lvalp, addrp, realnump, valuep);
+  return trad_frame_get_register (cache, this_frame, regnum);
 }
 
 static const struct frame_unwind ppcobsd_sigtramp_frame_unwind = {
   SIGTRAMP_FRAME,
+  default_frame_unwind_stop_reason,
   ppcobsd_sigtramp_frame_this_id,
-  ppcobsd_sigtramp_frame_prev_register
+  ppcobsd_sigtramp_frame_prev_register,
+  NULL,
+  ppcobsd_sigtramp_frame_sniffer
 };
-
-static const struct frame_unwind *
-ppcobsd_sigtramp_frame_sniffer (struct frame_info *next_frame)
-{
-  if (ppcobsd_sigtramp_p (next_frame))
-    return &ppcobsd_sigtramp_frame_unwind;
-
-  return NULL;
-}
 
 
 static void
@@ -268,7 +264,7 @@ ppcobsd_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
   set_gdbarch_regset_from_core_section
     (gdbarch, ppcobsd_regset_from_core_section);
 
-  frame_unwind_append_sniffer (gdbarch, ppcobsd_sigtramp_frame_sniffer);
+  frame_unwind_append_unwinder (gdbarch, &ppcobsd_sigtramp_frame_unwind);
 }
 
 

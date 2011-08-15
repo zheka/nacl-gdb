@@ -1,7 +1,8 @@
 /* Parts of target interface that deal with accessing memory and memory-like
    objects.
 
-   Copyright (C) 2006, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2006, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -84,6 +85,7 @@ claim_memory (VEC(memory_write_request_s) *blocks,
 	{
 	  struct memory_write_request *n =
 	    VEC_safe_push (memory_write_request_s, *result, NULL);
+
 	  *n = *r;
 	  n->begin = claimed_begin;
 	  n->end = claimed_end;
@@ -116,8 +118,8 @@ split_regular_and_flash_blocks (VEC(memory_write_request_s) *blocks,
   while (1)
     {
       VEC(memory_write_request_s) **r;
-      region = lookup_mem_region (cur_address);
 
+      region = lookup_mem_region (cur_address);
       r = region->attrib.mode == MEM_FLASH ? flash_blocks : regular_blocks;
       cur_address = region->hi;
       claim_memory (blocks, r, region->lo, region->hi);
@@ -175,6 +177,7 @@ blocks_to_erase (VEC(memory_write_request_s) *written)
 	{
 	  struct memory_write_request *n =
 	    VEC_safe_push (memory_write_request_s, result, NULL);
+
 	  memset (n, 0, sizeof (struct memory_write_request));
 	  n->begin = begin;
 	  n->end = end;
@@ -255,6 +258,7 @@ compute_garbled_blocks (VEC(memory_write_request_s) *erased_blocks,
 	    {
 	      struct memory_write_request *n =
 		VEC_safe_push (memory_write_request_s, result, NULL);
+
 	      memset (n, 0, sizeof (struct memory_write_request));
 	      n->begin = erased.begin;
 	      n->end = written->begin;
@@ -300,6 +304,7 @@ static void
 cleanup_write_requests_vector (void *p)
 {
   VEC(memory_write_request_s) **v = p;
+
   VEC_free (memory_write_request_s, *v);
 }
 
@@ -334,7 +339,7 @@ target_write_memory_blocks (VEC(memory_write_request_s) *requests,
 	 sizeof (struct memory_write_request), compare_block_starting_address);
 
   /* Split blocks into list of regular memory blocks,
-     and list of flash memory blocks. */
+     and list of flash memory blocks.  */
   make_cleanup (cleanup_write_requests_vector, &regular);
   make_cleanup (cleanup_write_requests_vector, &flash);
   split_regular_and_flash_blocks (blocks, &regular, &flash);
@@ -375,7 +380,8 @@ target_write_memory_blocks (VEC(memory_write_request_s) *requests,
 
 	  qsort (VEC_address (memory_write_request_s, flash),
 		 VEC_length (memory_write_request_s, flash),
-		 sizeof (struct memory_write_request), compare_block_starting_address);
+		 sizeof (struct memory_write_request),
+		 compare_block_starting_address);
 	}
     }
 
@@ -393,7 +399,7 @@ target_write_memory_blocks (VEC(memory_write_request_s) *requests,
     {
       LONGEST len;
 
-      len = target_write_with_progress (&current_target,
+      len = target_write_with_progress (current_target.beneath,
 					TARGET_OBJECT_MEMORY, NULL,
 					r->data, r->begin, r->end - r->begin,
 					progress_cb, r->baton);
@@ -418,7 +424,8 @@ target_write_memory_blocks (VEC(memory_write_request_s) *requests,
 
 	  len = target_write_with_progress (&current_target,
 					    TARGET_OBJECT_FLASH, NULL,
-					    r->data, r->begin, r->end - r->begin,
+					    r->data, r->begin,
+					    r->end - r->begin,
 					    progress_cb, r->baton);
 	  if (len < (LONGEST) (r->end - r->begin))
 	    error (_("Error writing data to flash"));

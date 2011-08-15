@@ -1,6 +1,7 @@
 /* Handle PA64 shared libraries for GDB, the GNU Debugger.
 
-   Copyright (C) 2004, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -15,9 +16,9 @@
    GNU General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program.  If not, see <http://www.gnu.org/licenses/>.
-   
-   HP in their infinite stupidity choose not to use standard ELF dynamic
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
+
+/* HP in their infinite stupidity choose not to use standard ELF dynamic
    linker interfaces.  They also choose not to make their ELF dymamic
    linker interfaces compatible with the SOM dynamic linker.  The
    net result is we can not use either of the existing somsolib.c or
@@ -36,6 +37,7 @@
 #include "gdbcore.h"
 #include "target.h"
 #include "inferior.h"
+#include "regcache.h"
 
 #include "hppa-tdep.h"
 #include "solist.h"
@@ -46,7 +48,7 @@
 
 /* We can build this file only when running natively on 64-bit HP/UX.
    We check for that by checking for the elf_hp.h header file.  */
-#ifdef HAVE_ELF_HP_H
+#if defined(HAVE_ELF_HP_H) && defined(__LP64__)
 
 /* FIXME: kettenis/20041213: These includes should be eliminated.  */
 #include <dlfcn.h>
@@ -58,7 +60,7 @@ struct lm_info {
   CORE_ADDR desc_addr;
 };
 
-/* When adding fields, be sure to clear them in _initialize_pa64_solib. */
+/* When adding fields, be sure to clear them in _initialize_pa64_solib.  */
 typedef struct
   {
     CORE_ADDR dld_flags_addr;
@@ -74,12 +76,12 @@ dld_cache_t;
 
 static dld_cache_t dld_cache;
 
-static int
-read_dynamic_info (asection *dyninfo_sect, dld_cache_t *dld_cache_p);
+static int read_dynamic_info (asection *dyninfo_sect,
+			      dld_cache_t *dld_cache_p);
 
 static void
 pa64_relocate_section_addresses (struct so_list *so,
-				 struct section_table *sec)
+				 struct target_section *sec)
 {
   asection *asec = sec->the_bfd_section;
   CORE_ADDR load_offset;
@@ -125,8 +127,8 @@ pa64_target_read_memory (void *buffer, CORE_ADDR ptr, size_t bufsiz, int ident)
 
    This must happen after dld starts running, so we can't do it in
    read_dynamic_info.  Record the fact that we have loaded the
-   descriptor.  If the library is archive bound, then return zero, else
-   return nonzero.  */
+   descriptor.  If the library is archive bound or the load map
+   hasn't been setup, then return zero; else return nonzero.  */
 
 static int
 read_dld_descriptor (void)
@@ -161,7 +163,10 @@ read_dld_descriptor (void)
       error (_("Error while reading in load map pointer."));
     }
 
-  /* Read in the dld load module descriptor */
+  if (!dld_cache.load_map)
+    return 0;
+
+  /* Read in the dld load module descriptor.  */
   if (dlgetmodinfo (-1, 
 		    &dld_cache.dld_desc,
 		    sizeof (dld_cache.dld_desc), 
@@ -201,7 +206,7 @@ read_dynamic_info (asection *dyninfo_sect, dld_cache_t *dld_cache_p)
     return 0;
 
   /* Scan the .dynamic section and record the items of interest. 
-     In particular, DT_HP_DLD_FLAGS */
+     In particular, DT_HP_DLD_FLAGS.  */
   for (bufend = buf + dyninfo_sect_size, entry_addr = dyninfo_addr;
        buf < bufend;
        buf += sizeof (Elf64_Dyn), entry_addr += sizeof (Elf64_Dyn))
@@ -209,9 +214,7 @@ read_dynamic_info (asection *dyninfo_sect, dld_cache_t *dld_cache_p)
       Elf64_Dyn *x_dynp = (Elf64_Dyn*)buf;
       Elf64_Sxword dyn_tag;
       CORE_ADDR	dyn_ptr;
-      char *pbuf;
 
-      pbuf = alloca (gdbarch_ptr_bit (current_gdbarch) / HOST_CHAR_BIT);
       dyn_tag = bfd_h_get_64 (symfile_objfile->obfd, 
 			      (bfd_byte*) &x_dynp->d_tag);
 
@@ -221,14 +224,15 @@ read_dynamic_info (asection *dyninfo_sect, dld_cache_t *dld_cache_p)
 	break;
       else if (dyn_tag == DT_HP_DLD_FLAGS)
 	{
-	  /* Set dld_flags_addr and dld_flags in *dld_cache_p */
+	  /* Set dld_flags_addr and dld_flags in *dld_cache_p.  */
 	  dld_cache_p->dld_flags_addr = entry_addr + offsetof(Elf64_Dyn, d_un);
 	  if (target_read_memory (dld_cache_p->dld_flags_addr,
 	  			  (char*) &dld_cache_p->dld_flags, 
 				  sizeof (dld_cache_p->dld_flags))
 	      != 0)
 	    {
-	      error (_("Error while reading in .dynamic section of the program."));
+	      error (_("Error while reading in "
+		       ".dynamic section of the program."));
 	    }
 	}
       else if (dyn_tag == DT_HP_LOAD_MAP)
@@ -241,16 +245,17 @@ read_dynamic_info (asection *dyninfo_sect, dld_cache_t *dld_cache_p)
 				  sizeof (dld_cache_p->load_map_addr))
 	      != 0)
 	    {
-	      error (_("Error while reading in .dynamic section of the program."));
+	      error (_("Error while reading in "
+		       ".dynamic section of the program."));
 	    }
 	}
       else 
 	{
-	  /* tag is not of interest */
+	  /* Tag is not of interest.  */
 	}
     }
 
-  /* Record other information and set is_valid to 1. */
+  /* Record other information and set is_valid to 1.  */
   dld_cache_p->dyninfo_sect = dyninfo_sect;
 
   /* Verify that we read in required info.  These fields are re-set to zero
@@ -264,8 +269,7 @@ read_dynamic_info (asection *dyninfo_sect, dld_cache_t *dld_cache_p)
   return 1;
 }
 
-/*
-   bfd_lookup_symbol -- lookup the value for a specific symbol
+/* bfd_lookup_symbol -- lookup the value for a specific symbol
 
    An expensive way to lookup the value of a single symbol for
    bfd's that are only temporary anyway.  This is used by the
@@ -273,8 +277,7 @@ read_dynamic_info (asection *dyninfo_sect, dld_cache_t *dld_cache_p)
    interface structures in the shared library.
 
    Note that 0 is specifically allowed as an error return (no
-   such symbol).
- */
+   such symbol).  */
 
 static CORE_ADDR
 bfd_lookup_symbol (bfd *abfd, char *symname)
@@ -300,7 +303,7 @@ bfd_lookup_symbol (bfd *abfd, char *symname)
 	  sym = *symbol_table++;
 	  if (strcmp (sym->name, symname) == 0)
 	    {
-	      /* Bfd symbols are section relative. */
+	      /* Bfd symbols are section relative.  */
 	      symaddr = sym->value + sym->section->vma;
 	      break;
 	    }
@@ -319,16 +322,15 @@ bfd_lookup_symbol (bfd *abfd, char *symname)
    to tell the dynamic linker that a private copy of the library is
    needed (so GDB can set breakpoints in the library).
 
-   We need to set two flag bits in this routine.
-
-     DT_HP_DEBUG_PRIVATE to indicate that shared libraries should be
-     mapped private.
-
-     DT_HP_DEBUG_CALLBACK to indicate that we want the dynamic linker to
-     call the breakpoint routine for significant events.  */
+   We need to set DT_HP_DEBUG_CALLBACK to indicate that we want the
+   dynamic linker to call the breakpoint routine for significant events.
+   We used to set DT_HP_DEBUG_PRIVATE to indicate that shared libraries
+   should be mapped private.  However, this flag can be set using
+   "chatr +dbg enable".  Not setting DT_HP_DEBUG_PRIVATE allows debugging
+   with shared libraries mapped shareable.  */
 
 static void
-pa64_solib_create_inferior_hook (void)
+pa64_solib_create_inferior_hook (int from_tty)
 {
   struct minimal_symbol *msymbol;
   unsigned int dld_flags, status;
@@ -336,10 +338,6 @@ pa64_solib_create_inferior_hook (void)
   char buf[4];
   struct objfile *objfile;
   CORE_ADDR anaddr;
-
-  /* First, remove all the solib event breakpoints.  Their addresses
-     may have changed since the last time we ran the program.  */
-  remove_solib_event_breakpoints ();
 
   if (symfile_objfile == NULL)
     return;
@@ -357,8 +355,16 @@ pa64_solib_create_inferior_hook (void)
   if (! read_dynamic_info (shlib_info, &dld_cache))
     error (_("Unable to read the .dynamic section."));
 
+  /* If the libraries were not mapped private, warn the user.  */
+  if ((dld_cache.dld_flags & DT_HP_DEBUG_PRIVATE) == 0)
+    warning
+      (_("\
+Private mapping of shared library text was not specified\n\
+by the executable; setting a breakpoint in a shared library which\n\
+is not privately mapped will not work.  See the HP-UX 11i v3 chatr\n\
+manpage for methods to privately map shared library text."));
+
   /* Turn on the flags we care about.  */
-  dld_cache.dld_flags |= DT_HP_DEBUG_PRIVATE;
   dld_cache.dld_flags |= DT_HP_DEBUG_CALLBACK;
   status = target_write_memory (dld_cache.dld_flags_addr,
 				(char *) &dld_cache.dld_flags,
@@ -401,25 +407,27 @@ pa64_solib_create_inferior_hook (void)
       /* Make sure the dynamic linker's really a useful object.  */
       if (!bfd_check_format (tmp_bfd, bfd_object))
 	{
-	  warning (_("Unable to grok dynamic linker %s as an object file"), buf);
+	  warning (_("Unable to grok dynamic linker %s as an object file"),
+		   buf);
 	  bfd_close (tmp_bfd);
 	  return;
 	}
 
       /* We find the dynamic linker's base address by examining the
 	 current pc (which point at the entry point for the dynamic
-	 linker) and subtracting the offset of the entry point. 
+	 linker) and subtracting the offset of the entry point.
 
 	 Also note the breakpoint is the second instruction in the
 	 routine.  */
-      load_addr = read_pc () - tmp_bfd->start_address;
+      load_addr = regcache_read_pc (get_current_regcache ())
+		  - tmp_bfd->start_address;
       sym_addr = bfd_lookup_symbol (tmp_bfd, "__dld_break");
       sym_addr = load_addr + sym_addr + 4;
       
       /* Create the shared library breakpoint.  */
       {
 	struct breakpoint *b
-	  = create_solib_event_breakpoint (sym_addr);
+	  = create_solib_event_breakpoint (target_gdbarch, sym_addr);
 
 	/* The breakpoint is actually hard-coded into the dynamic linker,
 	   so we don't need to actually insert a breakpoint instruction
@@ -450,12 +458,6 @@ pa64_current_sos (void)
   if (! dld_cache.have_read_dld_descriptor)
     if (! read_dld_descriptor ())
       return NULL;
-
-  /* If the libraries were not mapped private, warn the user.  */
-  if ((dld_cache.dld_flags & DT_HP_DEBUG_PRIVATE) == 0)
-    warning (_("The shared libraries were not privately mapped; setting a\n"
-    	     "breakpoint in a shared library will not work until you rerun "
-	     "the program.\n"));
 
   for (dll_index = -1; ; dll_index++)
     {
@@ -492,19 +494,20 @@ pa64_current_sos (void)
 #ifdef SOLIB_PA64_DBG
       {
         struct load_module_desc *d = &new->lm_info->desc;
+
 	printf ("\n+ library \"%s\" is described at index %d\n", new->so_name, 
 		dll_index);
-	printf ("    text_base = 0x%llx\n", d->text_base); 
-	printf ("    text_size = 0x%llx\n", d->text_size); 
-	printf ("    data_base = 0x%llx\n", d->data_base); 
-	printf ("    data_size = 0x%llx\n", d->data_size); 
-	printf ("    unwind_base = 0x%llx\n", d->unwind_base); 
-	printf ("    linkage_ptr = 0x%llx\n", d->linkage_ptr); 
-	printf ("    phdr_base = 0x%llx\n", d->phdr_base); 
-	printf ("    tls_size = 0x%llx\n", d->tls_size); 
-	printf ("    tls_start_addr = 0x%llx\n", d->tls_start_addr); 
-	printf ("    unwind_size = 0x%llx\n", d->unwind_size); 
-	printf ("    tls_index = 0x%llx\n", d->tls_index); 
+	printf ("    text_base = %s\n", hex_string (d->text_base));
+	printf ("    text_size = %s\n", hex_string (d->text_size));
+	printf ("    data_base = %s\n", hex_string (d->data_base));
+	printf ("    data_size = %s\n", hex_string (d->data_size));
+	printf ("    unwind_base = %s\n", hex_string (d->unwind_base));
+	printf ("    linkage_ptr = %s\n", hex_string (d->linkage_ptr));
+	printf ("    phdr_base = %s\n", hex_string (d->phdr_base));
+	printf ("    tls_size = %s\n", hex_string (d->tls_size));
+	printf ("    tls_start_addr = %s\n", hex_string (d->tls_start_addr));
+	printf ("    unwind_size = %s\n", hex_string (d->unwind_size));
+	printf ("    tls_index = %s\n", hex_string (d->tls_index));
       }
 #endif
 
@@ -526,7 +529,7 @@ pa64_open_symbol_file_object (void *from_ttyp)
   char *dll_path;
 
   if (symfile_objfile)
-    if (!query ("Attempt to reload symbols from process? "))
+    if (!query (_("Attempt to reload symbols from process? ")))
       return 0;
 
   /* Read in the load map pointer if we have not done so already.  */
@@ -624,7 +627,7 @@ pa64_solib_get_solib_by_pc (CORE_ADDR addr)
   return retval;
 }
 
-/* pa64 libraries do not seem to set the section offsets in a standard (i.e. 
+/* pa64 libraries do not seem to set the section offsets in a standard (i.e.
    SVr4) way; the text section offset stored in the file doesn't correspond
    to the place where the library is actually loaded into memory.  Instead,
    we rely on the dll descriptor to tell us where things were loaded.  */
@@ -655,6 +658,7 @@ _initialize_pa64_solib (void)
   pa64_so_ops.current_sos = pa64_current_sos;
   pa64_so_ops.open_symbol_file_object = pa64_open_symbol_file_object;
   pa64_so_ops.in_dynsym_resolve_code = pa64_in_dynsym_resolve_code;
+  pa64_so_ops.bfd_open = solib_bfd_open;
 
   memset (&dld_cache, 0, sizeof (dld_cache));
 }
@@ -662,8 +666,8 @@ _initialize_pa64_solib (void)
 void pa64_solib_select (struct gdbarch *gdbarch)
 {
   struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
-  set_solib_ops (gdbarch, &pa64_so_ops);
 
+  set_solib_ops (gdbarch, &pa64_so_ops);
   tdep->solib_thread_start_addr = pa64_solib_thread_start_addr;
   tdep->solib_get_got_by_pc = pa64_solib_get_got_by_pc;
   tdep->solib_get_solib_by_pc = pa64_solib_get_solib_by_pc;

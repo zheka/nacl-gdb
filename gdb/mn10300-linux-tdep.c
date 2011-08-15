@@ -1,6 +1,6 @@
 /* Target-dependent code for the Matsushita MN10300 for GDB, the GNU debugger.
 
-   Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008
+   Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011
    Free Software Foundation, Inc.
 
    This file is part of GDB.
@@ -32,6 +32,7 @@
 #include "frame.h"
 #include "trad-frame.h"
 #include "tramp-frame.h"
+#include "linux-tdep.h"
 
 #include <stdlib.h>
 
@@ -82,7 +83,7 @@ typedef struct
    Given a section name and size, create a struct reg object
    with a supply_register and a collect_register method.  */
 
-/* Copy register value of REGNUM from regset to regcache.  
+/* Copy register value of REGNUM from regset to regcache.
    If REGNUM is -1, do this for all gp registers in regset.  */
 
 static void
@@ -239,8 +240,8 @@ am33_supply_gregset_method (const struct regset *regset,
   return;
 }
 
-/* Copy fp register value of REGNUM from regset to regcache.  
-   If REGNUM is -1, do this for all fp registers in regset. */
+/* Copy fp register value of REGNUM from regset to regcache.
+   If REGNUM is -1, do this for all fp registers in regset.  */
 
 static void
 am33_supply_fpregset_method (const struct regset *regset, 
@@ -264,7 +265,8 @@ am33_supply_fpregset_method (const struct regset *regset,
   else if (regnum == E_FPCR_REGNUM)
     regcache_raw_supply (regcache, E_FPCR_REGNUM, 
 			 &fpregset->fpcr);
-  else if (E_FS0_REGNUM <= regnum && regnum < E_FS0_REGNUM + MN10300_ELF_NFPREG)
+  else if (E_FS0_REGNUM <= regnum
+	   && regnum < E_FS0_REGNUM + MN10300_ELF_NFPREG)
     regcache_raw_supply (regcache, regnum, 
 			 &fpregset->fpregs[regnum - E_FS0_REGNUM]);
 
@@ -472,7 +474,7 @@ am33_regset_from_core_section (struct gdbarch *gdbarch,
 
 static void
 am33_linux_sigframe_cache_init (const struct tramp_frame *self,
-                                struct frame_info *next_frame,
+                                struct frame_info *this_frame,
 			        struct trad_frame_cache *this_cache,
 			        CORE_ADDR func);
 
@@ -615,23 +617,23 @@ struct sigcontext {
 
 static void
 am33_linux_sigframe_cache_init (const struct tramp_frame *self,
-                                struct frame_info *next_frame,
+                                struct frame_info *this_frame,
 			        struct trad_frame_cache *this_cache,
 			        CORE_ADDR func)
 {
   CORE_ADDR sc_base, fpubase;
   int i;
 
-  sc_base = frame_unwind_register_unsigned (next_frame, E_SP_REGNUM);
+  sc_base = get_frame_register_unsigned (this_frame, E_SP_REGNUM);
   if (self == &am33_linux_sigframe)
     {
       sc_base += 8;
-      sc_base = get_frame_memory_unsigned (next_frame, sc_base, 4);
+      sc_base = get_frame_memory_unsigned (this_frame, sc_base, 4);
     }
   else
     {
       sc_base += 12;
-      sc_base = get_frame_memory_unsigned (next_frame, sc_base, 4);
+      sc_base = get_frame_memory_unsigned (this_frame, sc_base, 4);
       sc_base += 20;
     }
 
@@ -690,8 +692,9 @@ am33_linux_sigframe_cache_init (const struct tramp_frame *self,
   trad_frame_set_reg_addr (this_cache, E_PC_REGNUM,
                            sc_base + AM33_SIGCONTEXT_PC);
 
-  fpubase = get_frame_memory_unsigned (next_frame,
-                                       sc_base + AM33_SIGCONTEXT_FPUCONTEXT, 4);
+  fpubase = get_frame_memory_unsigned (this_frame,
+                                       sc_base + AM33_SIGCONTEXT_FPUCONTEXT,
+				       4);
   if (fpubase)
     {
       for (i = 0; i < 32; i++)
@@ -709,8 +712,10 @@ am33_linux_sigframe_cache_init (const struct tramp_frame *self,
    Now's our chance to register our corefile handling.  */
 
 static void
-am33_linux_init_osabi (struct gdbarch_info gdbinfo, struct gdbarch *gdbarch)
+am33_linux_init_osabi (struct gdbarch_info info, struct gdbarch *gdbarch)
 {
+  linux_init_abi (info, gdbarch);
+
   set_gdbarch_regset_from_core_section (gdbarch, 
 					am33_regset_from_core_section);
   set_solib_svr4_fetch_link_map_offsets
@@ -719,6 +724,9 @@ am33_linux_init_osabi (struct gdbarch_info gdbinfo, struct gdbarch *gdbarch)
   tramp_frame_prepend_unwinder (gdbarch, &am33_linux_sigframe);
   tramp_frame_prepend_unwinder (gdbarch, &am33_linux_rt_sigframe);
 }
+
+/* Provide a prototype to silence -Wmissing-prototypes.  */
+extern initialize_file_ftype _initialize_mn10300_linux_tdep;
 
 void
 _initialize_mn10300_linux_tdep (void)

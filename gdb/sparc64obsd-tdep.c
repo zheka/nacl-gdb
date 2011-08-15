@@ -1,6 +1,7 @@
 /* Target-dependent code for OpenBSD/sparc64.
 
-   Copyright (C) 2004, 2005, 2006, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -121,7 +122,7 @@ sparc64obsd_pc_in_sigtramp (CORE_ADDR pc, char *name)
 }
 
 static struct sparc_frame_cache *
-sparc64obsd_frame_cache (struct frame_info *next_frame, void **this_cache)
+sparc64obsd_frame_cache (struct frame_info *this_frame, void **this_cache)
 {
   struct sparc_frame_cache *cache;
   CORE_ADDR addr;
@@ -129,20 +130,20 @@ sparc64obsd_frame_cache (struct frame_info *next_frame, void **this_cache)
   if (*this_cache)
     return *this_cache;
 
-  cache = sparc_frame_cache (next_frame, this_cache);
+  cache = sparc_frame_cache (this_frame, this_cache);
   gdb_assert (cache == *this_cache);
 
   /* If we couldn't find the frame's function, we're probably dealing
      with an on-stack signal trampoline.  */
   if (cache->pc == 0)
     {
-      cache->pc = frame_pc_unwind (next_frame);
+      cache->pc = get_frame_pc (this_frame);
       cache->pc &= ~(sparc64obsd_page_size - 1);
 
       /* Since we couldn't find the frame's function, the cache was
          initialized under the assumption that we're frameless.  */
       cache->frameless_p = 0;
-      addr = frame_unwind_register_unsigned (next_frame, SPARC_FP_REGNUM);
+      addr = get_frame_register_unsigned (this_frame, SPARC_FP_REGNUM);
       if (addr & 1)
 	addr += BIAS;
       cache->base = addr;
@@ -151,59 +152,60 @@ sparc64obsd_frame_cache (struct frame_info *next_frame, void **this_cache)
   /* We find the appropriate instance of `struct sigcontext' at a
      fixed offset in the signal frame.  */
   addr = cache->base + 128 + 16;
-  cache->saved_regs = sparc64nbsd_sigcontext_saved_regs (addr, next_frame);
+  cache->saved_regs = sparc64nbsd_sigcontext_saved_regs (addr, this_frame);
 
   return cache;
 }
 
 static void
-sparc64obsd_frame_this_id (struct frame_info *next_frame, void **this_cache,
+sparc64obsd_frame_this_id (struct frame_info *this_frame, void **this_cache,
 			   struct frame_id *this_id)
 {
   struct sparc_frame_cache *cache =
-    sparc64obsd_frame_cache (next_frame, this_cache);
+    sparc64obsd_frame_cache (this_frame, this_cache);
 
   (*this_id) = frame_id_build (cache->base, cache->pc);
 }
 
-static void
-sparc64obsd_frame_prev_register (struct frame_info *next_frame,
-				 void **this_cache,
-				 int regnum, int *optimizedp,
-				 enum lval_type *lvalp, CORE_ADDR *addrp,
-				 int *realnump, gdb_byte *valuep)
+static struct value *
+sparc64obsd_frame_prev_register (struct frame_info *this_frame,
+				 void **this_cache, int regnum)
 {
   struct sparc_frame_cache *cache =
-    sparc64obsd_frame_cache (next_frame, this_cache);
+    sparc64obsd_frame_cache (this_frame, this_cache);
 
-  trad_frame_get_prev_register (next_frame, cache->saved_regs, regnum,
-				optimizedp, lvalp, addrp, realnump, valuep);
+  return trad_frame_get_prev_register (this_frame, cache->saved_regs, regnum);
+}
+
+static int
+sparc64obsd_sigtramp_frame_sniffer (const struct frame_unwind *self,
+				    struct frame_info *this_frame,
+				    void **this_cache)
+{
+  CORE_ADDR pc = get_frame_pc (this_frame);
+  char *name;
+
+  find_pc_partial_function (pc, &name, NULL, NULL);
+  if (sparc64obsd_pc_in_sigtramp (pc, name))
+    return 1;
+
+  return 0;
 }
 
 static const struct frame_unwind sparc64obsd_frame_unwind =
 {
   SIGTRAMP_FRAME,
+  default_frame_unwind_stop_reason,
   sparc64obsd_frame_this_id,
-  sparc64obsd_frame_prev_register
+  sparc64obsd_frame_prev_register,
+  NULL,
+  sparc64obsd_sigtramp_frame_sniffer
 };
-
-static const struct frame_unwind *
-sparc64obsd_sigtramp_frame_sniffer (struct frame_info *next_frame)
-{
-  CORE_ADDR pc = frame_pc_unwind (next_frame);
-  char *name;
-
-  find_pc_partial_function (pc, &name, NULL, NULL);
-  if (sparc64obsd_pc_in_sigtramp (pc, name))
-    return &sparc64obsd_frame_unwind;
-
-  return NULL;
-}
 
 /* Kernel debugging support.  */
 
 static struct sparc_frame_cache *
-sparc64obsd_trapframe_cache (struct frame_info *next_frame, void **this_cache)
+sparc64obsd_trapframe_cache (struct frame_info *this_frame, void **this_cache)
 {
   struct sparc_frame_cache *cache;
   CORE_ADDR sp, trapframe_addr;
@@ -212,13 +214,13 @@ sparc64obsd_trapframe_cache (struct frame_info *next_frame, void **this_cache)
   if (*this_cache)
     return *this_cache;
 
-  cache = sparc_frame_cache (next_frame, this_cache);
+  cache = sparc_frame_cache (this_frame, this_cache);
   gdb_assert (cache == *this_cache);
 
-  sp = frame_unwind_register_unsigned (next_frame, SPARC_SP_REGNUM);
+  sp = get_frame_register_unsigned (this_frame, SPARC_SP_REGNUM);
   trapframe_addr = sp + BIAS + 176;
 
-  cache->saved_regs = trad_frame_alloc_saved_regs (next_frame);
+  cache->saved_regs = trad_frame_alloc_saved_regs (this_frame);
 
   cache->saved_regs[SPARC64_STATE_REGNUM].addr = trapframe_addr;
   cache->saved_regs[SPARC64_PC_REGNUM].addr = trapframe_addr + 8;
@@ -232,55 +234,56 @@ sparc64obsd_trapframe_cache (struct frame_info *next_frame, void **this_cache)
 }
 
 static void
-sparc64obsd_trapframe_this_id (struct frame_info *next_frame,
+sparc64obsd_trapframe_this_id (struct frame_info *this_frame,
 			       void **this_cache, struct frame_id *this_id)
 {
   struct sparc_frame_cache *cache =
-    sparc64obsd_trapframe_cache (next_frame, this_cache);
+    sparc64obsd_trapframe_cache (this_frame, this_cache);
 
   (*this_id) = frame_id_build (cache->base, cache->pc);
 }
 
-static void
-sparc64obsd_trapframe_prev_register (struct frame_info *next_frame,
-				     void **this_cache,
-				     int regnum, int *optimizedp,
-				     enum lval_type *lvalp, CORE_ADDR *addrp,
-				     int *realnump, gdb_byte *valuep)
+static struct value *
+sparc64obsd_trapframe_prev_register (struct frame_info *this_frame,
+				     void **this_cache, int regnum)
 {
   struct sparc_frame_cache *cache =
-    sparc64obsd_trapframe_cache (next_frame, this_cache);
+    sparc64obsd_trapframe_cache (this_frame, this_cache);
 
-  trad_frame_get_prev_register (next_frame, cache->saved_regs, regnum,
-				optimizedp, lvalp, addrp, realnump, valuep);
+  return trad_frame_get_prev_register (this_frame, cache->saved_regs, regnum);
 }
 
-static const struct frame_unwind sparc64obsd_trapframe_unwind =
-{
-  NORMAL_FRAME,
-  sparc64obsd_trapframe_this_id,
-  sparc64obsd_trapframe_prev_register
-};
-
-static const struct frame_unwind *
-sparc64obsd_trapframe_sniffer (struct frame_info *next_frame)
+static int
+sparc64obsd_trapframe_sniffer (const struct frame_unwind *self,
+			       struct frame_info *this_frame,
+			       void **this_cache)
 {
   CORE_ADDR pc;
   ULONGEST pstate;
   char *name;
 
   /* Check whether we are in privileged mode, and bail out if we're not.  */
-  pstate = frame_unwind_register_unsigned (next_frame, SPARC64_PSTATE_REGNUM);
+  pstate = get_frame_register_unsigned (this_frame, SPARC64_PSTATE_REGNUM);
   if ((pstate & SPARC64_PSTATE_PRIV) == 0)
-    return NULL;
+    return 0;
 
-  pc = frame_unwind_address_in_block (next_frame, NORMAL_FRAME);
+  pc = get_frame_address_in_block (this_frame);
   find_pc_partial_function (pc, &name, NULL, NULL);
   if (name && strcmp (name, "Lslowtrap_reenter") == 0)
-    return &sparc64obsd_trapframe_unwind;
+    return 1;
 
-  return NULL;
+  return 0;
 }
+
+static const struct frame_unwind sparc64obsd_trapframe_unwind =
+{
+  NORMAL_FRAME,
+  default_frame_unwind_stop_reason,
+  sparc64obsd_trapframe_this_id,
+  sparc64obsd_trapframe_prev_register,
+  NULL,
+  sparc64obsd_trapframe_sniffer
+};
 
 
 /* Threads support.  */
@@ -293,15 +296,17 @@ static void
 sparc64obsd_supply_uthread (struct regcache *regcache,
 			    int regnum, CORE_ADDR addr)
 {
+  struct gdbarch *gdbarch = get_regcache_arch (regcache);
+  enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
   CORE_ADDR fp, fp_addr = addr + SPARC64OBSD_UTHREAD_FP_OFFSET;
   gdb_byte buf[8];
 
   gdb_assert (regnum >= -1);
 
-  fp = read_memory_unsigned_integer (fp_addr, 8);
+  fp = read_memory_unsigned_integer (fp_addr, 8, byte_order);
   if (regnum == SPARC_SP_REGNUM || regnum == -1)
     {
-      store_unsigned_integer (buf, 8, fp);
+      store_unsigned_integer (buf, 8, byte_order, fp);
       regcache_raw_supply (regcache, SPARC_SP_REGNUM, buf);
 
       if (regnum == SPARC_SP_REGNUM)
@@ -313,15 +318,15 @@ sparc64obsd_supply_uthread (struct regcache *regcache,
     {
       CORE_ADDR i7, i7_addr = addr + SPARC64OBSD_UTHREAD_PC_OFFSET;
 
-      i7 = read_memory_unsigned_integer (i7_addr, 8);
+      i7 = read_memory_unsigned_integer (i7_addr, 8, byte_order);
       if (regnum == SPARC64_PC_REGNUM || regnum == -1)
 	{
-	  store_unsigned_integer (buf, 8, i7 + 8);
+	  store_unsigned_integer (buf, 8, byte_order, i7 + 8);
 	  regcache_raw_supply (regcache, SPARC64_PC_REGNUM, buf);
 	}
       if (regnum == SPARC64_NPC_REGNUM || regnum == -1)
 	{
-	  store_unsigned_integer (buf, 8, i7 + 12);
+	  store_unsigned_integer (buf, 8, byte_order, i7 + 12);
 	  regcache_raw_supply (regcache, SPARC64_NPC_REGNUM, buf);
 	}
 
@@ -336,6 +341,8 @@ static void
 sparc64obsd_collect_uthread(const struct regcache *regcache,
 			    int regnum, CORE_ADDR addr)
 {
+  struct gdbarch *gdbarch = get_regcache_arch (regcache);
+  enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
   CORE_ADDR sp;
   gdb_byte buf[8];
 
@@ -354,15 +361,15 @@ sparc64obsd_collect_uthread(const struct regcache *regcache,
       CORE_ADDR i7, i7_addr = addr + SPARC64OBSD_UTHREAD_PC_OFFSET;
 
       regcache_raw_collect (regcache, SPARC64_PC_REGNUM, buf);
-      i7 = extract_unsigned_integer (buf, 8) - 8;
-      write_memory_unsigned_integer (i7_addr, 8, i7);
+      i7 = extract_unsigned_integer (buf, 8, byte_order) - 8;
+      write_memory_unsigned_integer (i7_addr, 8, byte_order, i7);
 
       if (regnum == SPARC64_PC_REGNUM)
 	return;
     }
 
   regcache_raw_collect (regcache, SPARC_SP_REGNUM, buf);
-  sp = extract_unsigned_integer (buf, 8);
+  sp = extract_unsigned_integer (buf, 8, byte_order);
   sparc_collect_rwindow (regcache, sp, regnum);
 }
 
@@ -378,8 +385,8 @@ sparc64obsd_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
   /* Make sure we can single-step "new" syscalls.  */
   tdep->step_trap = sparcnbsd_step_trap;
 
-  frame_unwind_append_sniffer (gdbarch, sparc64obsd_sigtramp_frame_sniffer);
-  frame_unwind_append_sniffer (gdbarch, sparc64obsd_trapframe_sniffer);
+  frame_unwind_append_unwinder (gdbarch, &sparc64obsd_frame_unwind);
+  frame_unwind_append_unwinder (gdbarch, &sparc64obsd_trapframe_unwind);
 
   sparc64_init_abi (info, gdbarch);
 

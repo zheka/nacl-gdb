@@ -2,7 +2,7 @@
    Unix.
 
    Copyright (C) 1988, 1989, 1990, 1991, 1992, 1993, 1994, 1995, 1996, 1998,
-   1999, 2000, 2001, 2002, 2004, 2005, 2007, 2008
+   1999, 2000, 2001, 2002, 2004, 2005, 2007, 2008, 2009, 2010, 2011
    Free Software Foundation, Inc.
 
    This file is part of GDB.
@@ -27,12 +27,14 @@
 #include "target.h"
 #include "inferior.h"
 #include "gdb_string.h"
+#include "inf-child.h"
 
 /* Fetch register REGNUM from the inferior.  If REGNUM is -1, do this
    for all registers.  */
 
 static void
-inf_child_fetch_inferior_registers (struct regcache *regcache, int regnum)
+inf_child_fetch_inferior_registers (struct target_ops *ops,
+				    struct regcache *regcache, int regnum)
 {
   if (regnum == -1)
     {
@@ -49,7 +51,8 @@ inf_child_fetch_inferior_registers (struct regcache *regcache, int regnum)
    this for all registers (including the floating point registers).  */
 
 static void
-inf_child_store_inferior_registers (struct regcache *regcache, int regnum)
+inf_child_store_inferior_registers (struct target_ops *ops,
+				    struct regcache *regcache, int regnum)
 {
 }
 
@@ -84,72 +87,12 @@ inf_child_post_startup_inferior (ptid_t ptid)
      inferior" operation by a debugger.  */
 }
 
-static void
-inf_child_acknowledge_created_inferior (int pid)
-{
-  /* This version of Unix doesn't require a meaningful "acknowledge
-     created inferior" operation by a debugger.  */
-}
-
-static void
-inf_child_insert_fork_catchpoint (int pid)
-{
-  /* This version of Unix doesn't support notification of fork
-     events.  */
-}
-
-static int
-inf_child_remove_fork_catchpoint (int pid)
-{
-  /* This version of Unix doesn't support notification of fork
-     events.  */
-  return 0;
-}
-
-static void
-inf_child_insert_vfork_catchpoint (int pid)
-{
-  /* This version of Unix doesn't support notification of vfork
-     events.  */
-}
-
-static int
-inf_child_remove_vfork_catchpoint (int pid)
-{
-  /* This version of Unix doesn't support notification of vfork
-     events.  */
-  return 0;
-}
-
 static int
 inf_child_follow_fork (struct target_ops *ops, int follow_child)
 {
   /* This version of Unix doesn't support following fork or vfork
      events.  */
   return 0;
-}
-
-static void
-inf_child_insert_exec_catchpoint (int pid)
-{
-  /* This version of Unix doesn't support notification of exec
-     events.  */
-}
-
-static int
-inf_child_remove_exec_catchpoint (int pid)
-{
-  /* This version of Unix doesn't support notification of exec
-     events.  */
-  return 0;
-}
-
-static int
-inf_child_reported_exec_events_per_exec_call (void)
-{
-  /* This version of Unix doesn't support notification of exec
-     events.  */
-  return 1;
 }
 
 static int
@@ -170,6 +113,7 @@ struct target_ops *
 inf_child_target (void)
 {
   struct target_ops *t = XZALLOC (struct target_ops);
+
   t->to_shortname = "child";
   t->to_longname = "Unix child process";
   t->to_doc = "Unix child process (started by the \"run\" command).";
@@ -187,24 +131,15 @@ inf_child_target (void)
   t->to_terminal_ours = terminal_ours;
   t->to_terminal_info = child_terminal_info;
   t->to_post_startup_inferior = inf_child_post_startup_inferior;
-  t->to_acknowledge_created_inferior = inf_child_acknowledge_created_inferior;
-  t->to_insert_fork_catchpoint = inf_child_insert_fork_catchpoint;
-  t->to_remove_fork_catchpoint = inf_child_remove_fork_catchpoint;
-  t->to_insert_vfork_catchpoint = inf_child_insert_vfork_catchpoint;
-  t->to_remove_vfork_catchpoint = inf_child_remove_vfork_catchpoint;
   t->to_follow_fork = inf_child_follow_fork;
-  t->to_insert_exec_catchpoint = inf_child_insert_exec_catchpoint;
-  t->to_remove_exec_catchpoint = inf_child_remove_exec_catchpoint;
-  t->to_reported_exec_events_per_exec_call =
-    inf_child_reported_exec_events_per_exec_call;
   t->to_can_run = inf_child_can_run;
   t->to_pid_to_exec_file = inf_child_pid_to_exec_file;
   t->to_stratum = process_stratum;
-  t->to_has_all_memory = 1;
-  t->to_has_memory = 1;
-  t->to_has_stack = 1;
-  t->to_has_registers = 1;
-  t->to_has_execution = 1;
+  t->to_has_all_memory = default_child_has_all_memory;
+  t->to_has_memory = default_child_has_memory;
+  t->to_has_stack = default_child_has_stack;
+  t->to_has_registers = default_child_has_registers;
+  t->to_has_execution = default_child_has_execution;
   t->to_magic = OPS_MAGIC;
   return t;
 }

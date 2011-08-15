@@ -1,7 +1,8 @@
 #!/bin/sh -u
 
 # Register protocol definitions for GDB, the GNU debugger.
-# Copyright 2001, 2002, 2007, 2008 Free Software Foundation, Inc.
+# Copyright 2001, 2002, 2007, 2008, 2009, 2010, 2011
+# Free Software Foundation, Inc.
 #
 # This file is part of GDB.
 #
@@ -100,7 +101,7 @@ cat <<EOF
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
-   the Free Software Foundation; either version 2 of the License, or
+   the Free Software Foundation; either version 3 of the License, or
    (at your option) any later version.
 
    This program is distributed in the hope that it will be useful,
@@ -109,9 +110,7 @@ cat <<EOF
    GNU General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place - Suite 330,
-   Boston, MA 02111-1307, USA.  */
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 /* This file was created with the aid of \`\`regdat.sh'' and \`\`$1''.  */
 
@@ -121,12 +120,15 @@ EOF
 
 exec > new-$2
 copyright $1
+echo '#include "server.h"'
 echo '#include "regdef.h"'
-echo '#include "regcache.h"'
 echo
 offset=0
 i=0
 name=x
+xmltarget=x
+xmlarch=x
+xmlosabi=x
 expedite=x
 exec < $1
 while do_read
@@ -134,6 +136,15 @@ do
   if test "${type}" = "name"; then
     name="${entry}"
     echo "struct reg regs_${name}[] = {"
+    continue
+  elif test "${type}" = "xmltarget"; then
+    xmltarget="${entry}"
+    continue
+  elif test "${type}" = "xmlarch"; then
+    xmlarch="${entry}"
+    continue
+  elif test "${type}" = "osabi"; then
+    xmlosabi="${entry}"
     continue
   elif test "${type}" = "expedite"; then
     expedite="${entry}"
@@ -151,15 +162,32 @@ done
 echo "};"
 echo
 echo "const char *expedite_regs_${name}[] = { \"`echo ${expedite} | sed 's/,/", "/g'`\", 0 };"
+if test "${xmltarget}" = x; then
+  if test "${xmlarch}" = x && test "${xmlosabi}" = x; then
+    echo "const char *xmltarget_${name} = 0;"
+  else
+    echo "const char *xmltarget_${name} = \"@<target>\\"
+    if test "${xmlarch}" != x; then
+      echo "<architecture>${xmlarch}</architecture>\\"
+    fi
+    if test "${xmlosabi}" != x; then
+      echo "<osabi>${xmlosabi}</osabi>\\"
+    fi
+    echo "</target>\";"
+  fi
+else
+  echo "const char *xmltarget_${name} = \"${xmltarget}\";"
+fi
 echo
 
 cat <<EOF
 void
-init_registers ()
+init_registers_${name} ()
 {
     set_register_cache (regs_${name},
 			sizeof (regs_${name}) / sizeof (regs_${name}[0]));
     gdbserver_expedite_regs = expedite_regs_${name};
+    gdbserver_xmltarget = xmltarget_${name};
 }
 EOF
 

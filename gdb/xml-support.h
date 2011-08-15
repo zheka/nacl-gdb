@@ -1,6 +1,7 @@
 /* Helper routines for parsing XML using Expat.
 
-   Copyright (C) 2006, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2006, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -196,16 +197,34 @@ void gdb_xml_use_dtd (struct gdb_xml_parser *parser, const char *dtd_name);
 
 int gdb_xml_parse (struct gdb_xml_parser *parser, const char *buffer);
 
+/* Parse a XML document.  DOCUMENT is the data to parse, which should
+   be NUL-terminated. If non-NULL, use the compiled-in DTD named
+   DTD_NAME to drive the parsing.
+
+   The return value is 0 for success or -1 for error.  It may throw,
+   but only if something unexpected goes wrong during parsing; parse
+   errors will be caught, warned about, and reported as failure.  */
+
+int gdb_xml_parse_quick (const char *name, const char *dtd_name,
+			 const struct gdb_xml_element *elements,
+			 const char *document, void *user_data);
+
 /* Issue a debugging message from one of PARSER's handlers.  */
 
 void gdb_xml_debug (struct gdb_xml_parser *parser, const char *format, ...)
-     ATTR_FORMAT (printf, 2, 0);
+     ATTRIBUTE_PRINTF (2, 0);
 
 /* Issue an error message from one of PARSER's handlers, and stop
    parsing.  */
 
 void gdb_xml_error (struct gdb_xml_parser *parser, const char *format, ...)
-     ATTR_NORETURN ATTR_FORMAT (printf, 2, 0);
+     ATTRIBUTE_NORETURN ATTRIBUTE_PRINTF (2, 0);
+
+/* Find the attribute named NAME in the set of parsed attributes
+   ATTRIBUTES.  Returns NULL if not found.  */
+
+struct gdb_xml_value *xml_find_attribute (VEC(gdb_xml_value_s) *attributes,
+					  const char *name);
 
 /* Parse an integer attribute into a ULONGEST.  */
 
@@ -232,5 +251,18 @@ extern gdb_xml_attribute_handler gdb_xml_parse_attr_enum;
 
 ULONGEST gdb_xml_parse_ulongest (struct gdb_xml_parser *parser,
 				 const char *value);
+
+/* Simple printf to obstack function.  Current implemented formatters:
+   %s - grow an xml escaped text in OBSTACK.  */
+
+extern void obstack_xml_printf (struct obstack *obstack,
+                               const char *format, ...)
+  ATTRIBUTE_PRINTF_2;
+
+/* Open FILENAME, read all its text into memory, close it, and return
+   the text.  If something goes wrong, return NULL and warn.  */
+
+extern char *xml_fetch_content_from_file (const char *filename,
+                                          void *baton);
 
 #endif

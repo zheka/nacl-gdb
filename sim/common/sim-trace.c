@@ -1,5 +1,6 @@
 /* Simulator tracing/debugging support.
-   Copyright (C) 1997, 1998, 2001, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 1997, 1998, 2001, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
    Contributed by Cygnus Support.
 
 This file is part of GDB, the GNU debugger.
@@ -84,73 +85,69 @@ static const OPTION trace_options[] =
   /* This table is organized to group related instructions together.  */
   { {"trace", optional_argument, NULL, 't'},
       't', "on|off", "Trace useful things",
-      trace_option_handler },
+      trace_option_handler, NULL },
   { {"trace-insn", optional_argument, NULL, OPTION_TRACE_INSN},
       '\0', "on|off", "Perform instruction tracing",
-      trace_option_handler },
+      trace_option_handler, NULL },
   { {"trace-decode", optional_argument, NULL, OPTION_TRACE_DECODE},
       '\0', "on|off", "Trace instruction decoding",
-      trace_option_handler },
+      trace_option_handler, NULL },
   { {"trace-extract", optional_argument, NULL, OPTION_TRACE_EXTRACT},
       '\0', "on|off", "Trace instruction extraction",
-      trace_option_handler },
+      trace_option_handler, NULL },
   { {"trace-linenum", optional_argument, NULL, OPTION_TRACE_LINENUM},
       '\0', "on|off", "Perform line number tracing (implies --trace-insn)",
-      trace_option_handler },
+      trace_option_handler, NULL },
   { {"trace-memory", optional_argument, NULL, OPTION_TRACE_MEMORY},
       '\0', "on|off", "Trace memory operations",
-      trace_option_handler },
+      trace_option_handler, NULL },
   { {"trace-alu", optional_argument, NULL, OPTION_TRACE_ALU},
       '\0', "on|off", "Trace ALU operations",
-      trace_option_handler },
+      trace_option_handler, NULL },
   { {"trace-fpu", optional_argument, NULL, OPTION_TRACE_FPU},
       '\0', "on|off", "Trace FPU operations",
-      trace_option_handler },
+      trace_option_handler, NULL },
   { {"trace-vpu", optional_argument, NULL, OPTION_TRACE_VPU},
       '\0', "on|off", "Trace VPU operations",
-      trace_option_handler },
+      trace_option_handler, NULL },
   { {"trace-branch", optional_argument, NULL, OPTION_TRACE_BRANCH},
       '\0', "on|off", "Trace branching",
-      trace_option_handler },
+      trace_option_handler, NULL },
   { {"trace-semantics", optional_argument, NULL, OPTION_TRACE_SEMANTICS},
       '\0', "on|off", "Perform ALU, FPU, MEMORY, and BRANCH tracing",
-      trace_option_handler },
+      trace_option_handler, NULL },
   { {"trace-model", optional_argument, NULL, OPTION_TRACE_MODEL},
       '\0', "on|off", "Include model performance data",
-      trace_option_handler },
+      trace_option_handler, NULL },
   { {"trace-core", optional_argument, NULL, OPTION_TRACE_CORE},
       '\0', "on|off", "Trace core operations",
-      trace_option_handler },
+      trace_option_handler, NULL },
   { {"trace-events", optional_argument, NULL, OPTION_TRACE_EVENTS},
       '\0', "on|off", "Trace events",
-      trace_option_handler },
+      trace_option_handler, NULL },
 #ifdef SIM_HAVE_ADDR_RANGE
   { {"trace-range", required_argument, NULL, OPTION_TRACE_RANGE},
       '\0', "START,END", "Specify range of addresses for instruction tracing",
-      trace_option_handler },
+      trace_option_handler, NULL },
 #if 0 /*wip*/
   { {"trace-function", required_argument, NULL, OPTION_TRACE_FUNCTION},
       '\0', "FUNCTION", "Specify function to trace",
-      trace_option_handler },
+      trace_option_handler, NULL },
 #endif
 #endif
   { {"trace-debug", optional_argument, NULL, OPTION_TRACE_DEBUG},
       '\0', "on|off", "Add information useful for debugging the simulator to the tracing output",
-      trace_option_handler },
+      trace_option_handler, NULL },
   { {"trace-file", required_argument, NULL, OPTION_TRACE_FILE},
       '\0', "FILE NAME", "Specify tracing output file",
-      trace_option_handler },
-  { {NULL, no_argument, NULL, 0}, '\0', NULL, NULL, NULL }
+      trace_option_handler, NULL },
+  { {NULL, no_argument, NULL, 0}, '\0', NULL, NULL, NULL, NULL }
 };
 
 /* Set/reset the trace options indicated in MASK.  */
 
 static SIM_RC
-set_trace_option_mask (sd, name, mask, arg)
-     SIM_DESC sd;
-     const char *name;
-     int mask;
-     const char *arg;
+set_trace_option_mask (SIM_DESC sd, const char *name, int mask, const char *arg)
 {
   int trace_nr;
   int cpu_nr;
@@ -217,7 +214,7 @@ set_trace_option_mask (sd, name, mask, arg)
 		}
 	    }
 	}
-    }  
+    }
 
   return SIM_RC_OK;
 }
@@ -225,11 +222,7 @@ set_trace_option_mask (sd, name, mask, arg)
 /* Set one trace option based on its IDX value.  */
 
 static SIM_RC
-set_trace_option (sd, name, idx, arg)
-     SIM_DESC sd;
-     const char *name;
-     int idx;
-     const char *arg;
+set_trace_option (SIM_DESC sd, const char *name, int idx, const char *arg)
 {
   return set_trace_option_mask (sd, name, 1 << idx, arg);
 }
@@ -240,7 +233,6 @@ trace_option_handler (SIM_DESC sd, sim_cpu *cpu, int opt,
 		      char *arg, int is_command)
 {
   int n;
-  int cpu_nr;
 
   switch (opt)
     {
@@ -360,6 +352,7 @@ trace_option_handler (SIM_DESC sd, sim_cpu *cpu, int opt,
     case OPTION_TRACE_RANGE :
       if (WITH_TRACE)
 	{
+	  int cpu_nr;
 	  char *chp = arg;
 	  unsigned long start,end;
 	  start = strtoul (chp, &chp, 0);
@@ -520,7 +513,7 @@ save_data (SIM_DESC sd,
 	   TRACE_DATA *data,
 	   data_fmt fmt,
 	   long size,
-	   void *buf)
+	   const void *buf)
 {
   int i = TRACE_INPUT_IDX (data);
   if (i == sizeof (TRACE_INPUT_FMT (data)))
@@ -612,7 +605,7 @@ print_data (SIM_DESC sd,
       abort ();
     }
 }
-		  
+
 static const char *
 trace_idx_to_str (int trace_idx)
 {
@@ -1028,7 +1021,7 @@ trace_result_word1 (SIM_DESC sd,
   save_data (sd, data, trace_fmt_word, sizeof (unsigned_word), &r0);
 
   trace_results (sd, cpu, trace_idx, last_input);
-}	      
+}
 
 void
 trace_result0 (SIM_DESC sd,
@@ -1042,7 +1035,7 @@ trace_result0 (SIM_DESC sd,
   last_input = TRACE_INPUT_IDX (data);
 
   trace_results (sd, cpu, trace_idx, last_input);
-}	      
+}
 
 void
 trace_result_word2 (SIM_DESC sd,
@@ -1060,7 +1053,7 @@ trace_result_word2 (SIM_DESC sd,
   save_data (sd, data, trace_fmt_word, sizeof (r1), &r1);
 
   trace_results (sd, cpu, trace_idx, last_input);
-}	      
+}
 
 void
 trace_result_word4 (SIM_DESC sd,
@@ -1082,7 +1075,7 @@ trace_result_word4 (SIM_DESC sd,
   save_data (sd, data, trace_fmt_word, sizeof (r3), &r3);
 
   trace_results (sd, cpu, trace_idx, last_input);
-}	      
+}
 
 void
 trace_result_bool1 (SIM_DESC sd,
@@ -1098,7 +1091,7 @@ trace_result_bool1 (SIM_DESC sd,
   save_data (sd, data, trace_fmt_bool, sizeof (r0), &r0);
 
   trace_results (sd, cpu, trace_idx, last_input);
-}	      
+}
 
 void
 trace_result_addr1 (SIM_DESC sd,
@@ -1114,7 +1107,7 @@ trace_result_addr1 (SIM_DESC sd,
   save_data (sd, data, trace_fmt_addr, sizeof (r0), &r0);
 
   trace_results (sd, cpu, trace_idx, last_input);
-}	      
+}
 
 void
 trace_result_fp1 (SIM_DESC sd,
@@ -1130,7 +1123,7 @@ trace_result_fp1 (SIM_DESC sd,
   save_data (sd, data, trace_fmt_fp, sizeof (fp_word), &f0);
 
   trace_results (sd, cpu, trace_idx, last_input);
-}	      
+}
 
 void
 trace_result_fp2 (SIM_DESC sd,
@@ -1148,7 +1141,7 @@ trace_result_fp2 (SIM_DESC sd,
   save_data (sd, data, trace_fmt_fp, sizeof (f1), &f1);
 
   trace_results (sd, cpu, trace_idx, last_input);
-}	      
+}
 
 void
 trace_result_fpu1 (SIM_DESC sd,
@@ -1166,7 +1159,7 @@ trace_result_fpu1 (SIM_DESC sd,
   save_data (sd, data, trace_fmt_fp, sizeof (double), &d);
 
   trace_results (sd, cpu, trace_idx, last_input);
-}	      
+}
 
 void
 trace_result_string1 (SIM_DESC sd,
@@ -1182,7 +1175,7 @@ trace_result_string1 (SIM_DESC sd,
   save_data (sd, data, trace_fmt_string, strlen (s0) + 1, s0);
 
   trace_results (sd, cpu, trace_idx, last_input);
-}	      
+}
 
 void
 trace_result_word1_string1 (SIM_DESC sd,
@@ -1200,7 +1193,7 @@ trace_result_word1_string1 (SIM_DESC sd,
   save_data (sd, data, trace_fmt_string, strlen (s0) + 1, s0);
 
   trace_results (sd, cpu, trace_idx, last_input);
-}	      
+}
 
 void
 trace_vprintf (SIM_DESC sd, sim_cpu *cpu, const char *fmt, va_list ap)

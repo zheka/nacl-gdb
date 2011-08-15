@@ -1,3 +1,46 @@
+2011-03-21  Kevin Buettner  <kevinb@redhat.com>
+
+	* simops (OP_10007E0): Update errno handling as most traps
+	do not invoke the host's functionality directly.  Invoke
+	sim_io_stat() instead of stat() for implementing TARGET_SYS_stat.
+	Implement TARGET_SYS_fstat, TARGET_SYS_rename, and TARGET_SYS_unlink.
+
+2011-02-14  Mike Frysinger  <vapier@gentoo.org>
+
+	* simops.c (OP_10007E0): Change zfree to free.
+
+2011-01-11  Andrew Burgess  <aburgess@broadcom.com>
+
+	* interp.c (sim_store_register): Update return value to
+	match new API.
+
+2010-03-30  Mike Frysinger  <vapier@gentoo.org>
+
+	* interp.c (interrupt_names): Add const to pointer type.
+	(do_interrupt): Add const to interrupt_name.
+
+2010-01-09  Ralf Wildenhues  <Ralf.Wildenhues@gmx.de>
+
+	* configure: Regenerate.
+
+2009-08-22  Ralf Wildenhues  <Ralf.Wildenhues@gmx.de>
+
+	* config.in: Regenerate.
+	* configure: Likewise.
+
+	* configure: Regenerate.
+
+2008-07-11  Hans-Peter Nilsson  <hp@axis.com>
+
+	* configure: Regenerate to track ../common/common.m4 changes.
+	* config.in: Ditto.
+
+2008-06-06  Vladimir Prus  <vladimir@codesourcery.com>
+            Daniel Jacobowitz  <dan@codesourcery.com>
+            Joseph Myers  <joseph@codesourcery.com>
+
+	* configure: Regenerate.
+
 2008-02-05  DJ Delorie  <dj@redhat.com>
 
 	* simops.c (OP_1C007E0): Compensate for 64 bit hosts.

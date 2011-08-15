@@ -1,6 +1,7 @@
 /* Target description support for GDB.
 
-   Copyright (C) 2006, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2006, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    Contributed by CodeSourcery.
 
@@ -29,6 +30,7 @@
 #include "vec.h"
 #include "xml-support.h"
 #include "xml-tdesc.h"
+#include "osabi.h"
 
 #include "gdb_assert.h"
 #include "gdb_obstack.h"
@@ -79,13 +81,86 @@ typedef struct tdesc_reg
   char *type;
 
   /* The target-described type corresponding to TYPE, if found.  */
-  struct type *gdb_type;
+  struct tdesc_type *tdesc_type;
 } *tdesc_reg_p;
 DEF_VEC_P(tdesc_reg_p);
 
 /* A named type from a target description.  */
-typedef struct type *type_p;
-DEF_VEC_P(type_p);
+
+typedef struct tdesc_type_field
+{
+  char *name;
+  struct tdesc_type *type;
+  int start, end;
+} tdesc_type_field;
+DEF_VEC_O(tdesc_type_field);
+
+typedef struct tdesc_type_flag
+{
+  char *name;
+  int start;
+} tdesc_type_flag;
+DEF_VEC_O(tdesc_type_flag);
+
+typedef struct tdesc_type
+{
+  /* The name of this type.  */
+  char *name;
+
+  /* Identify the kind of this type.  */
+  enum
+  {
+    /* Predefined types.  */
+    TDESC_TYPE_INT8,
+    TDESC_TYPE_INT16,
+    TDESC_TYPE_INT32,
+    TDESC_TYPE_INT64,
+    TDESC_TYPE_INT128,
+    TDESC_TYPE_UINT8,
+    TDESC_TYPE_UINT16,
+    TDESC_TYPE_UINT32,
+    TDESC_TYPE_UINT64,
+    TDESC_TYPE_UINT128,
+    TDESC_TYPE_CODE_PTR,
+    TDESC_TYPE_DATA_PTR,
+    TDESC_TYPE_IEEE_SINGLE,
+    TDESC_TYPE_IEEE_DOUBLE,
+    TDESC_TYPE_ARM_FPA_EXT,
+    TDESC_TYPE_I387_EXT,
+
+    /* Types defined by a target feature.  */
+    TDESC_TYPE_VECTOR,
+    TDESC_TYPE_STRUCT,
+    TDESC_TYPE_UNION,
+    TDESC_TYPE_FLAGS
+  } kind;
+
+  /* Kind-specific data.  */
+  union
+  {
+    /* Vector type.  */
+    struct
+    {
+      struct tdesc_type *type;
+      int count;
+    } v;
+
+    /* Struct or union type.  */
+    struct
+    {
+      VEC(tdesc_type_field) *fields;
+      LONGEST size;
+    } u;
+
+    /* Flags type.  */
+    struct
+    {
+      VEC(tdesc_type_flag) *flags;
+      LONGEST size;
+    } f;
+  } u;
+} *tdesc_type_p;
+DEF_VEC_P(tdesc_type_p);
 
 /* A feature from a target description.  Each feature is a collection
    of other elements, e.g. registers and types.  */
@@ -100,9 +175,13 @@ typedef struct tdesc_feature
   VEC(tdesc_reg_p) *registers;
 
   /* The types associated with this feature.  */
-  VEC(type_p) *types;
+  VEC(tdesc_type_p) *types;
 } *tdesc_feature_p;
 DEF_VEC_P(tdesc_feature_p);
+
+/* A compatible architecture from a target description.  */
+typedef const struct bfd_arch_info *arch_p;
+DEF_VEC_P(arch_p);
 
 /* A target description.  */
 
@@ -110,6 +189,13 @@ struct target_desc
 {
   /* The architecture reported by the target, if any.  */
   const struct bfd_arch_info *arch;
+
+  /* The osabi reported by the target, if any; GDB_OSABI_UNKNOWN
+     otherwise.  */
+  enum gdb_osabi osabi;
+
+  /* The list of compatible architectures reported by the target.  */
+  VEC(arch_p) *compatible;
 
   /* Any architecture-specific properties specified by the target.  */
   VEC(property_s) *properties;
@@ -122,15 +208,22 @@ struct target_desc
    target description may be shared by multiple architectures, but
    this data is private to one gdbarch.  */
 
+typedef struct tdesc_arch_reg
+{
+  struct tdesc_reg *reg;
+  struct type *type;
+} tdesc_arch_reg;
+DEF_VEC_O(tdesc_arch_reg);
+
 struct tdesc_arch_data
 {
-  /* A list of registers, indexed by GDB's internal register number.
+  /* A list of register/type pairs, indexed by GDB's internal register number.
      During initialization of the gdbarch this list is used to store
      registers which the architecture assigns a fixed register number.
      Registers which are NULL in this array, or off the end, are
      treated as zero-sized and nameless (i.e. placeholders in the
      numbering).  */
-  VEC(tdesc_reg_p) *registers;
+  VEC(tdesc_arch_reg) *arch_regs;
 
   /* Functions which report the register name, type, and reggroups for
      pseudo-registers.  */
@@ -183,7 +276,7 @@ target_find_description (void)
   /* The current architecture should not have any target description
      specified.  It should have been cleared, e.g. when we
      disconnected from the previous target.  */
-  gdb_assert (gdbarch_target_desc (current_gdbarch) == NULL);
+  gdb_assert (gdbarch_target_desc (target_gdbarch) == NULL);
 
   /* First try to fetch an XML description from the user-specified
      file.  */
@@ -216,9 +309,9 @@ target_find_description (void)
 	{
 	  struct tdesc_arch_data *data;
 
-	  data = gdbarch_data (current_gdbarch, tdesc_data);
+	  data = gdbarch_data (target_gdbarch, tdesc_data);
 	  if (tdesc_has_registers (current_target_desc)
-	      && data->registers == NULL)
+	      && data->arch_regs == NULL)
 	    warning (_("Target-supplied registers are not supported "
 		       "by the current architecture"));
 	}
@@ -261,6 +354,28 @@ target_current_description (void)
 
   return NULL;
 }
+
+/* Return non-zero if this target description is compatible
+   with the given BFD architecture.  */
+
+int
+tdesc_compatible_p (const struct target_desc *target_desc,
+		    const struct bfd_arch_info *arch)
+{
+  const struct bfd_arch_info *compat;
+  int ix;
+
+  for (ix = 0; VEC_iterate (arch_p, target_desc->compatible, ix, compat);
+       ix++)
+    {
+      if (compat == arch
+	  || arch->compatible (arch, compat)
+	  || compat->compatible (compat, arch))
+	return 1;
+    }
+
+  return 0;
+}
 
 
 /* Direct accessors for target descriptions.  */
@@ -290,6 +405,16 @@ tdesc_architecture (const struct target_desc *target_desc)
 {
   return target_desc->arch;
 }
+
+/* Return the OSABI associated with this target description, or
+   GDB_OSABI_UNKNOWN if no osabi was specified.  */
+
+enum gdb_osabi
+tdesc_osabi (const struct target_desc *target_desc)
+{
+  return target_desc->osabi;
+}
+
 
 
 /* Return 1 if this target description includes any registers.  */
@@ -339,50 +464,266 @@ tdesc_feature_name (const struct tdesc_feature *feature)
   return feature->name;
 }
 
-/* Predefined types.  Note that none of these types depend on the
-   current architecture; some of the builtin_type_foo variables are
-   swapped based on the architecture.  */
-static struct
+/* Predefined types.  */
+static struct tdesc_type tdesc_predefined_types[] =
 {
-  const char *name;
-  struct type **type;
-} tdesc_predefined_types[] =
-  {
-    { "int8", &builtin_type_int8 },
-    { "int16", &builtin_type_int16 },
-    { "int32", &builtin_type_int32 },
-    { "int64", &builtin_type_int64 },
-    { "int128", &builtin_type_int128 },
-    { "uint8", &builtin_type_uint8 },
-    { "uint16", &builtin_type_uint16 },
-    { "uint32", &builtin_type_uint32 },
-    { "uint64", &builtin_type_uint64 },
-    { "uint128", &builtin_type_uint128 },
-    { "ieee_single", &builtin_type_ieee_single },
-    { "ieee_double", &builtin_type_ieee_double },
-    { "arm_fpa_ext", &builtin_type_arm_ext }
-  };
+  { "int8", TDESC_TYPE_INT8 },
+  { "int16", TDESC_TYPE_INT16 },
+  { "int32", TDESC_TYPE_INT32 },
+  { "int64", TDESC_TYPE_INT64 },
+  { "int128", TDESC_TYPE_INT128 },
+  { "uint8", TDESC_TYPE_UINT8 },
+  { "uint16", TDESC_TYPE_UINT16 },
+  { "uint32", TDESC_TYPE_UINT32 },
+  { "uint64", TDESC_TYPE_UINT64 },
+  { "uint128", TDESC_TYPE_UINT128 },
+  { "code_ptr", TDESC_TYPE_CODE_PTR },
+  { "data_ptr", TDESC_TYPE_DATA_PTR },
+  { "ieee_single", TDESC_TYPE_IEEE_SINGLE },
+  { "ieee_double", TDESC_TYPE_IEEE_DOUBLE },
+  { "arm_fpa_ext", TDESC_TYPE_ARM_FPA_EXT },
+  { "i387_ext", TDESC_TYPE_I387_EXT }
+};
 
 /* Return the type associated with ID in the context of FEATURE, or
    NULL if none.  */
 
-struct type *
+struct tdesc_type *
 tdesc_named_type (const struct tdesc_feature *feature, const char *id)
 {
   int ix;
-  struct type *gdb_type;
+  struct tdesc_type *type;
 
   /* First try target-defined types.  */
-  for (ix = 0; VEC_iterate (type_p, feature->types, ix, gdb_type); ix++)
-    if (strcmp (TYPE_NAME (gdb_type), id) == 0)
-      return gdb_type;
+  for (ix = 0; VEC_iterate (tdesc_type_p, feature->types, ix, type); ix++)
+    if (strcmp (type->name, id) == 0)
+      return type;
 
   /* Next try the predefined types.  */
   for (ix = 0; ix < ARRAY_SIZE (tdesc_predefined_types); ix++)
     if (strcmp (tdesc_predefined_types[ix].name, id) == 0)
-      return *tdesc_predefined_types[ix].type;
+      return &tdesc_predefined_types[ix];
 
   return NULL;
+}
+
+/* Lookup type associated with ID.  */
+
+struct type *
+tdesc_find_type (struct gdbarch *gdbarch, const char *id)
+{
+  struct tdesc_arch_reg *reg;
+  struct tdesc_arch_data *data;
+  int i, num_regs;
+
+  data = gdbarch_data (gdbarch, tdesc_data);
+  num_regs = VEC_length (tdesc_arch_reg, data->arch_regs);
+  for (i = 0; i < num_regs; i++)
+    {
+      reg = VEC_index (tdesc_arch_reg, data->arch_regs, i);
+      if (reg->reg
+	  && reg->reg->tdesc_type
+	  && reg->type
+	  && strcmp (id, reg->reg->tdesc_type->name) == 0)
+	return reg->type;
+    }
+
+  return NULL;
+}
+
+/* Construct, if necessary, and return the GDB type implementing target
+   type TDESC_TYPE for architecture GDBARCH.  */
+
+static struct type *
+tdesc_gdb_type (struct gdbarch *gdbarch, struct tdesc_type *tdesc_type)
+{
+  struct type *type;
+
+  switch (tdesc_type->kind)
+    {
+    /* Predefined types.  */
+    case TDESC_TYPE_INT8:
+      return builtin_type (gdbarch)->builtin_int8;
+
+    case TDESC_TYPE_INT16:
+      return builtin_type (gdbarch)->builtin_int16;
+
+    case TDESC_TYPE_INT32:
+      return builtin_type (gdbarch)->builtin_int32;
+
+    case TDESC_TYPE_INT64:
+      return builtin_type (gdbarch)->builtin_int64;
+
+    case TDESC_TYPE_INT128:
+      return builtin_type (gdbarch)->builtin_int128;
+
+    case TDESC_TYPE_UINT8:
+      return builtin_type (gdbarch)->builtin_uint8;
+
+    case TDESC_TYPE_UINT16:
+      return builtin_type (gdbarch)->builtin_uint16;
+
+    case TDESC_TYPE_UINT32:
+      return builtin_type (gdbarch)->builtin_uint32;
+
+    case TDESC_TYPE_UINT64:
+      return builtin_type (gdbarch)->builtin_uint64;
+
+    case TDESC_TYPE_UINT128:
+      return builtin_type (gdbarch)->builtin_uint128;
+
+    case TDESC_TYPE_CODE_PTR:
+      return builtin_type (gdbarch)->builtin_func_ptr;
+
+    case TDESC_TYPE_DATA_PTR:
+      return builtin_type (gdbarch)->builtin_data_ptr;
+
+    default:
+      break;
+    }
+
+  type = tdesc_find_type (gdbarch, tdesc_type->name);
+  if (type)
+    return type;
+
+  switch (tdesc_type->kind)
+    {
+    case TDESC_TYPE_IEEE_SINGLE:
+      return arch_float_type (gdbarch, -1, "builtin_type_ieee_single",
+			      floatformats_ieee_single);
+
+    case TDESC_TYPE_IEEE_DOUBLE:
+      return arch_float_type (gdbarch, -1, "builtin_type_ieee_double",
+			      floatformats_ieee_double);
+
+    case TDESC_TYPE_ARM_FPA_EXT:
+      return arch_float_type (gdbarch, -1, "builtin_type_arm_ext",
+			      floatformats_arm_ext);
+
+    case TDESC_TYPE_I387_EXT:
+      return arch_float_type (gdbarch, -1, "builtin_type_i387_ext",
+			      floatformats_i387_ext);
+
+    /* Types defined by a target feature.  */
+    case TDESC_TYPE_VECTOR:
+      {
+	struct type *type, *field_type;
+
+	field_type = tdesc_gdb_type (gdbarch, tdesc_type->u.v.type);
+	type = init_vector_type (field_type, tdesc_type->u.v.count);
+	TYPE_NAME (type) = xstrdup (tdesc_type->name);
+
+	return type;
+      }
+
+    case TDESC_TYPE_STRUCT:
+      {
+	struct type *type, *field_type;
+	struct tdesc_type_field *f;
+	int ix;
+
+	type = arch_composite_type (gdbarch, NULL, TYPE_CODE_STRUCT);
+	TYPE_NAME (type) = xstrdup (tdesc_type->name);
+	TYPE_TAG_NAME (type) = TYPE_NAME (type);
+
+	for (ix = 0;
+	     VEC_iterate (tdesc_type_field, tdesc_type->u.u.fields, ix, f);
+	     ix++)
+	  {
+	    if (f->type == NULL)
+	      {
+		/* Bitfield.  */
+		struct field *fld;
+		struct type *field_type;
+		int bitsize, total_size;
+
+		/* This invariant should be preserved while creating
+		   types.  */
+		gdb_assert (tdesc_type->u.u.size != 0);
+		if (tdesc_type->u.u.size > 4)
+		  field_type = builtin_type (gdbarch)->builtin_uint64;
+		else
+		  field_type = builtin_type (gdbarch)->builtin_uint32;
+
+		fld = append_composite_type_field_raw (type, xstrdup (f->name),
+						       field_type);
+
+		/* For little-endian, BITPOS counts from the LSB of
+		   the structure and marks the LSB of the field.  For
+		   big-endian, BITPOS counts from the MSB of the
+		   structure and marks the MSB of the field.  Either
+		   way, it is the number of bits to the "left" of the
+		   field.  To calculate this in big-endian, we need
+		   the total size of the structure.  */
+		bitsize = f->end - f->start + 1;
+		total_size = tdesc_type->u.u.size * TARGET_CHAR_BIT;
+		if (gdbarch_bits_big_endian (gdbarch))
+		  FIELD_BITPOS (fld[0]) = total_size - f->start - bitsize;
+		else
+		  FIELD_BITPOS (fld[0]) = f->start;
+		FIELD_BITSIZE (fld[0]) = bitsize;
+	      }
+	    else
+	      {
+		field_type = tdesc_gdb_type (gdbarch, f->type);
+		append_composite_type_field (type, xstrdup (f->name),
+					     field_type);
+	      }
+	  }
+
+	if (tdesc_type->u.u.size != 0)
+	  TYPE_LENGTH (type) = tdesc_type->u.u.size;
+	return type;
+      }
+
+    case TDESC_TYPE_UNION:
+      {
+	struct type *type, *field_type;
+	struct tdesc_type_field *f;
+	int ix;
+
+	type = arch_composite_type (gdbarch, NULL, TYPE_CODE_UNION);
+	TYPE_NAME (type) = xstrdup (tdesc_type->name);
+
+	for (ix = 0;
+	     VEC_iterate (tdesc_type_field, tdesc_type->u.u.fields, ix, f);
+	     ix++)
+	  {
+	    field_type = tdesc_gdb_type (gdbarch, f->type);
+	    append_composite_type_field (type, xstrdup (f->name), field_type);
+
+	    /* If any of the children of a union are vectors, flag the
+	       union as a vector also.  This allows e.g. a union of two
+	       vector types to show up automatically in "info vector".  */
+	    if (TYPE_VECTOR (field_type))
+	      TYPE_VECTOR (type) = 1;
+	  }
+	return type;
+      }
+
+    case TDESC_TYPE_FLAGS:
+      {
+	struct tdesc_type_flag *f;
+	int ix;
+
+	type = arch_flags_type (gdbarch, tdesc_type->name,
+				tdesc_type->u.f.size);
+	for (ix = 0;
+	     VEC_iterate (tdesc_type_flag, tdesc_type->u.f.flags, ix, f);
+	     ix++)
+	  /* Note that contrary to the function name, this call will
+	     just set the properties of an already-allocated
+	     field.  */
+	  append_flags_type_flag (type, f->start,
+				  *f->name ? f->name : NULL);
+
+	return type;
+      }
+    }
+
+  internal_error (__FILE__, __LINE__,
+		  "Type \"%s\" has an unknown kind %d",
+		  tdesc_type->name, tdesc_type->kind);
 }
 
 
@@ -417,7 +758,7 @@ tdesc_data_cleanup (void *data_untyped)
 {
   struct tdesc_arch_data *data = data_untyped;
 
-  VEC_free (tdesc_reg_p, data->registers);
+  VEC_free (tdesc_arch_reg, data->arch_regs);
   xfree (data);
 }
 
@@ -446,15 +787,33 @@ tdesc_numbered_register (const struct tdesc_feature *feature,
 			 struct tdesc_arch_data *data,
 			 int regno, const char *name)
 {
+  struct tdesc_arch_reg arch_reg = { 0 };
   struct tdesc_reg *reg = tdesc_find_register_early (feature, name);
 
   if (reg == NULL)
     return 0;
 
   /* Make sure the vector includes a REGNO'th element.  */
-  while (regno >= VEC_length (tdesc_reg_p, data->registers))
-    VEC_safe_push (tdesc_reg_p, data->registers, NULL);
-  VEC_replace (tdesc_reg_p, data->registers, regno, reg);
+  while (regno >= VEC_length (tdesc_arch_reg, data->arch_regs))
+    VEC_safe_push (tdesc_arch_reg, data->arch_regs, &arch_reg);
+
+  arch_reg.reg = reg;
+  VEC_replace (tdesc_arch_reg, data->arch_regs, regno, &arch_reg);
+  return 1;
+}
+
+/* Search FEATURE for a register named NAME, but do not assign a fixed
+   register number to it.  */
+
+int
+tdesc_unnumbered_register (const struct tdesc_feature *feature,
+			   const char *name)
+{
+  struct tdesc_reg *reg = tdesc_find_register_early (feature, name);
+
+  if (reg == NULL)
+    return 0;
+
   return 1;
 }
 
@@ -490,17 +849,24 @@ tdesc_register_size (const struct tdesc_feature *feature,
 
 /* Look up a register by its GDB internal register number.  */
 
-static struct tdesc_reg *
-tdesc_find_register (struct gdbarch *gdbarch, int regno)
+static struct tdesc_arch_reg *
+tdesc_find_arch_register (struct gdbarch *gdbarch, int regno)
 {
-  struct tdesc_reg *reg;
   struct tdesc_arch_data *data;
 
   data = gdbarch_data (gdbarch, tdesc_data);
-  if (regno < VEC_length (tdesc_reg_p, data->registers))
-    return VEC_index (tdesc_reg_p, data->registers, regno);
+  if (regno < VEC_length (tdesc_arch_reg, data->arch_regs))
+    return VEC_index (tdesc_arch_reg, data->arch_regs, regno);
   else
     return NULL;
+}
+
+static struct tdesc_reg *
+tdesc_find_register (struct gdbarch *gdbarch, int regno)
+{
+  struct tdesc_arch_reg *reg = tdesc_find_arch_register (gdbarch, regno);
+
+  return reg? reg->reg : NULL;
 }
 
 /* Return the name of register REGNO, from the target description or
@@ -519,6 +885,7 @@ tdesc_register_name (struct gdbarch *gdbarch, int regno)
   if (regno >= num_regs && regno < num_regs + num_pseudo_regs)
     {
       struct tdesc_arch_data *data = gdbarch_data (gdbarch, tdesc_data);
+
       gdb_assert (data->pseudo_register_name != NULL);
       return data->pseudo_register_name (gdbarch, regno);
     }
@@ -526,66 +893,78 @@ tdesc_register_name (struct gdbarch *gdbarch, int regno)
   return "";
 }
 
-static struct type *
+struct type *
 tdesc_register_type (struct gdbarch *gdbarch, int regno)
 {
-  struct tdesc_reg *reg = tdesc_find_register (gdbarch, regno);
+  struct tdesc_arch_reg *arch_reg = tdesc_find_arch_register (gdbarch, regno);
+  struct tdesc_reg *reg = arch_reg? arch_reg->reg : NULL;
   int num_regs = gdbarch_num_regs (gdbarch);
   int num_pseudo_regs = gdbarch_num_pseudo_regs (gdbarch);
 
   if (reg == NULL && regno >= num_regs && regno < num_regs + num_pseudo_regs)
     {
       struct tdesc_arch_data *data = gdbarch_data (gdbarch, tdesc_data);
+
       gdb_assert (data->pseudo_register_type != NULL);
       return data->pseudo_register_type (gdbarch, regno);
     }
 
   if (reg == NULL)
     /* Return "int0_t", since "void" has a misleading size of one.  */
-    return builtin_type_int0;
+    return builtin_type (gdbarch)->builtin_int0;
 
-  /* First check for a predefined or target defined type.  */
-  if (reg->gdb_type)
-    return reg->gdb_type;
-
-  /* Next try size-sensitive type shortcuts.  */
-  if (strcmp (reg->type, "float") == 0)
+  if (arch_reg->type == NULL)
     {
-      if (reg->bitsize == gdbarch_float_bit (gdbarch))
-	return builtin_type_float;
-      else if (reg->bitsize == gdbarch_double_bit (gdbarch))
-	return builtin_type_double;
-      else if (reg->bitsize == gdbarch_long_double_bit (gdbarch))
-	return builtin_type_long_double;
-    }
-  else if (strcmp (reg->type, "int") == 0)
-    {
-      if (reg->bitsize == gdbarch_long_bit (gdbarch))
-	return builtin_type_long;
-      else if (reg->bitsize == TARGET_CHAR_BIT)
-	return builtin_type_char;
-      else if (reg->bitsize == gdbarch_short_bit (gdbarch))
-	return builtin_type_short;
-      else if (reg->bitsize == gdbarch_int_bit (gdbarch))
-	return builtin_type_int;
-      else if (reg->bitsize == gdbarch_long_long_bit (gdbarch))
-	return builtin_type_long_long;
-      else if (reg->bitsize == gdbarch_ptr_bit (gdbarch))
-	/* A bit desperate by this point... */
-	return builtin_type_void_data_ptr;
-    }
-  else if (strcmp (reg->type, "code_ptr") == 0)
-    return builtin_type_void_func_ptr;
-  else if (strcmp (reg->type, "data_ptr") == 0)
-    return builtin_type_void_data_ptr;
-  else
-    internal_error (__FILE__, __LINE__,
-		    "Register \"%s\" has an unknown type \"%s\"",
-		    reg->name, reg->type);
+      /* First check for a predefined or target defined type.  */
+      if (reg->tdesc_type)
+        arch_reg->type = tdesc_gdb_type (gdbarch, reg->tdesc_type);
 
-  warning (_("Register \"%s\" has an unsupported size (%d bits)"),
-	   reg->name, reg->bitsize);
-  return builtin_type_long;
+      /* Next try size-sensitive type shortcuts.  */
+      else if (strcmp (reg->type, "float") == 0)
+	{
+	  if (reg->bitsize == gdbarch_float_bit (gdbarch))
+	    arch_reg->type = builtin_type (gdbarch)->builtin_float;
+	  else if (reg->bitsize == gdbarch_double_bit (gdbarch))
+	    arch_reg->type = builtin_type (gdbarch)->builtin_double;
+	  else if (reg->bitsize == gdbarch_long_double_bit (gdbarch))
+	    arch_reg->type = builtin_type (gdbarch)->builtin_long_double;
+	  else
+	    {
+	      warning (_("Register \"%s\" has an unsupported size (%d bits)"),
+		       reg->name, reg->bitsize);
+	      arch_reg->type = builtin_type (gdbarch)->builtin_double;
+	    }
+	}
+      else if (strcmp (reg->type, "int") == 0)
+	{
+	  if (reg->bitsize == gdbarch_long_bit (gdbarch))
+	    arch_reg->type = builtin_type (gdbarch)->builtin_long;
+	  else if (reg->bitsize == TARGET_CHAR_BIT)
+	    arch_reg->type = builtin_type (gdbarch)->builtin_char;
+	  else if (reg->bitsize == gdbarch_short_bit (gdbarch))
+	    arch_reg->type = builtin_type (gdbarch)->builtin_short;
+	  else if (reg->bitsize == gdbarch_int_bit (gdbarch))
+	    arch_reg->type = builtin_type (gdbarch)->builtin_int;
+	  else if (reg->bitsize == gdbarch_long_long_bit (gdbarch))
+	    arch_reg->type = builtin_type (gdbarch)->builtin_long_long;
+	  else if (reg->bitsize == gdbarch_ptr_bit (gdbarch))
+	  /* A bit desperate by this point...  */
+	    arch_reg->type = builtin_type (gdbarch)->builtin_data_ptr;
+	  else
+	    {
+	      warning (_("Register \"%s\" has an unsupported size (%d bits)"),
+		       reg->name, reg->bitsize);
+	      arch_reg->type = builtin_type (gdbarch)->builtin_long;
+	    }
+	}
+
+      if (arch_reg->type == NULL)
+	internal_error (__FILE__, __LINE__,
+			"Register \"%s\" has an unknown type \"%s\"",
+			reg->name, reg->type);
+    }
+
+  return arch_reg->type;
 }
 
 static int
@@ -663,8 +1042,10 @@ tdesc_register_reggroup_p (struct gdbarch *gdbarch, int regno,
   if (regno >= num_regs && regno < num_regs + num_pseudo_regs)
     {
       struct tdesc_arch_data *data = gdbarch_data (gdbarch, tdesc_data);
-      gdb_assert (data->pseudo_register_reggroup_p != NULL);
-      return data->pseudo_register_reggroup_p (gdbarch, regno, reggroup);
+
+      if (data->pseudo_register_reggroup_p != NULL)
+	return data->pseudo_register_reggroup_p (gdbarch, regno, reggroup);
+      /* Otherwise fall through to the default reggroup_p.  */
     }
 
   ret = tdesc_register_in_reggroup_p (gdbarch, regno, reggroup);
@@ -713,10 +1094,11 @@ tdesc_use_registers (struct gdbarch *gdbarch,
 		     struct tdesc_arch_data *early_data)
 {
   int num_regs = gdbarch_num_regs (gdbarch);
-  int i, ixf, ixr;
+  int ixf, ixr;
   struct tdesc_feature *feature;
   struct tdesc_reg *reg;
   struct tdesc_arch_data *data;
+  struct tdesc_arch_reg *arch_reg, new_arch_reg = { 0 };
   htab_t reg_hash;
 
   /* We can't use the description for registers if it doesn't describe
@@ -726,7 +1108,7 @@ tdesc_use_registers (struct gdbarch *gdbarch,
   gdb_assert (tdesc_has_registers (target_desc));
 
   data = gdbarch_data (gdbarch, tdesc_data);
-  data->registers = early_data->registers;
+  data->arch_regs = early_data->arch_regs;
   xfree (early_data);
 
   /* Build up a set of all registers, so that we can assign register
@@ -747,18 +1129,20 @@ tdesc_use_registers (struct gdbarch *gdbarch,
 
   /* Remove any registers which were assigned numbers by the
      architecture.  */
-  for (ixr = 0; VEC_iterate (tdesc_reg_p, data->registers, ixr, reg); ixr++)
-    if (reg)
-      htab_remove_elt (reg_hash, reg);
+  for (ixr = 0;
+       VEC_iterate (tdesc_arch_reg, data->arch_regs, ixr, arch_reg);
+       ixr++)
+    if (arch_reg->reg)
+      htab_remove_elt (reg_hash, arch_reg->reg);
 
   /* Assign numbers to the remaining registers and add them to the
      list of registers.  The new numbers are always above gdbarch_num_regs.
      Iterate over the features, not the hash table, so that the order
      matches that in the target description.  */
 
-  gdb_assert (VEC_length (tdesc_reg_p, data->registers) <= num_regs);
-  while (VEC_length (tdesc_reg_p, data->registers) < num_regs)
-    VEC_safe_push (tdesc_reg_p, data->registers, NULL);
+  gdb_assert (VEC_length (tdesc_arch_reg, data->arch_regs) <= num_regs);
+  while (VEC_length (tdesc_arch_reg, data->arch_regs) < num_regs)
+    VEC_safe_push (tdesc_arch_reg, data->arch_regs, &new_arch_reg);
   for (ixf = 0;
        VEC_iterate (tdesc_feature_p, target_desc->features, ixf, feature);
        ixf++)
@@ -767,7 +1151,8 @@ tdesc_use_registers (struct gdbarch *gdbarch,
 	 ixr++)
       if (htab_find (reg_hash, reg) != NULL)
 	{
-	  VEC_safe_push (tdesc_reg_p, data->registers, reg);
+	  new_arch_reg.reg = reg;
+	  VEC_safe_push (tdesc_arch_reg, data->arch_regs, &new_arch_reg);
 	  num_regs++;
 	}
 
@@ -810,27 +1195,181 @@ tdesc_create_reg (struct tdesc_feature *feature, const char *name,
 
   /* If the register's type is target-defined, look it up now.  We may not
      have easy access to the containing feature when we want it later.  */
-  reg->gdb_type = tdesc_named_type (feature, reg->type);
+  reg->tdesc_type = tdesc_named_type (feature, reg->type);
 
   VEC_safe_push (tdesc_reg_p, feature->registers, reg);
+}
+
+static void
+tdesc_free_type (struct tdesc_type *type)
+{
+  switch (type->kind)
+    {
+    case TDESC_TYPE_STRUCT:
+    case TDESC_TYPE_UNION:
+      {
+	struct tdesc_type_field *f;
+	int ix;
+
+	for (ix = 0;
+	     VEC_iterate (tdesc_type_field, type->u.u.fields, ix, f);
+	     ix++)
+	  xfree (f->name);
+
+	VEC_free (tdesc_type_field, type->u.u.fields);
+      }
+      break;
+
+    case TDESC_TYPE_FLAGS:
+      {
+	struct tdesc_type_flag *f;
+	int ix;
+
+	for (ix = 0;
+	     VEC_iterate (tdesc_type_flag, type->u.f.flags, ix, f);
+	     ix++)
+	  xfree (f->name);
+
+	VEC_free (tdesc_type_flag, type->u.f.flags);
+      }
+      break;
+
+    default:
+      break;
+    }
+
+  xfree (type->name);
+  xfree (type);
+}
+
+struct tdesc_type *
+tdesc_create_vector (struct tdesc_feature *feature, const char *name,
+		     struct tdesc_type *field_type, int count)
+{
+  struct tdesc_type *type = XZALLOC (struct tdesc_type);
+
+  type->name = xstrdup (name);
+  type->kind = TDESC_TYPE_VECTOR;
+  type->u.v.type = field_type;
+  type->u.v.count = count;
+
+  VEC_safe_push (tdesc_type_p, feature->types, type);
+  return type;
+}
+
+struct tdesc_type *
+tdesc_create_struct (struct tdesc_feature *feature, const char *name)
+{
+  struct tdesc_type *type = XZALLOC (struct tdesc_type);
+
+  type->name = xstrdup (name);
+  type->kind = TDESC_TYPE_STRUCT;
+
+  VEC_safe_push (tdesc_type_p, feature->types, type);
+  return type;
+}
+
+/* Set the total length of TYPE.  Structs which contain bitfields may
+   omit the reserved bits, so the end of the last field may not
+   suffice.  */
+
+void
+tdesc_set_struct_size (struct tdesc_type *type, LONGEST size)
+{
+  gdb_assert (type->kind == TDESC_TYPE_STRUCT);
+  type->u.u.size = size;
+}
+
+struct tdesc_type *
+tdesc_create_union (struct tdesc_feature *feature, const char *name)
+{
+  struct tdesc_type *type = XZALLOC (struct tdesc_type);
+
+  type->name = xstrdup (name);
+  type->kind = TDESC_TYPE_UNION;
+
+  VEC_safe_push (tdesc_type_p, feature->types, type);
+  return type;
+}
+
+struct tdesc_type *
+tdesc_create_flags (struct tdesc_feature *feature, const char *name,
+		    LONGEST size)
+{
+  struct tdesc_type *type = XZALLOC (struct tdesc_type);
+
+  type->name = xstrdup (name);
+  type->kind = TDESC_TYPE_FLAGS;
+  type->u.f.size = size;
+
+  VEC_safe_push (tdesc_type_p, feature->types, type);
+  return type;
+}
+
+/* Add a new field.  Return a temporary pointer to the field, which
+   is only valid until the next call to tdesc_add_field (the vector
+   might be reallocated).  */
+
+void
+tdesc_add_field (struct tdesc_type *type, const char *field_name,
+		 struct tdesc_type *field_type)
+{
+  struct tdesc_type_field f = { 0 };
+
+  gdb_assert (type->kind == TDESC_TYPE_UNION
+	      || type->kind == TDESC_TYPE_STRUCT);
+
+  f.name = xstrdup (field_name);
+  f.type = field_type;
+
+  VEC_safe_push (tdesc_type_field, type->u.u.fields, &f);
+}
+
+/* Add a new bitfield.  */
+
+void
+tdesc_add_bitfield (struct tdesc_type *type, const char *field_name,
+		    int start, int end)
+{
+  struct tdesc_type_field f = { 0 };
+
+  gdb_assert (type->kind == TDESC_TYPE_STRUCT);
+
+  f.name = xstrdup (field_name);
+  f.start = start;
+  f.end = end;
+
+  VEC_safe_push (tdesc_type_field, type->u.u.fields, &f);
+}
+
+void
+tdesc_add_flag (struct tdesc_type *type, int start,
+		const char *flag_name)
+{
+  struct tdesc_type_flag f = { 0 };
+
+  gdb_assert (type->kind == TDESC_TYPE_FLAGS);
+
+  f.name = xstrdup (flag_name);
+  f.start = start;
+
+  VEC_safe_push (tdesc_type_flag, type->u.f.flags, &f);
 }
 
 static void
 tdesc_free_feature (struct tdesc_feature *feature)
 {
   struct tdesc_reg *reg;
+  struct tdesc_type *type;
   int ix;
 
   for (ix = 0; VEC_iterate (tdesc_reg_p, feature->registers, ix, reg); ix++)
     tdesc_free_reg (reg);
   VEC_free (tdesc_reg_p, feature->registers);
 
-  /* There is no easy way to free xmalloc-allocated types, nor is
-     there a way to allocate types on an obstack not associated with
-     an objfile.  Therefore we never free types.  Since we only ever
-     parse an identical XML document once, this memory leak is mostly
-     contained.  */
-  VEC_free (type_p, feature->types);
+  for (ix = 0; VEC_iterate (tdesc_type_p, feature->types, ix, type); ix++)
+    tdesc_free_type (type);
+  VEC_free (tdesc_type_p, feature->types);
 
   xfree (feature->name);
   xfree (feature);
@@ -845,15 +1384,6 @@ tdesc_create_feature (struct target_desc *tdesc, const char *name)
 
   VEC_safe_push (tdesc_feature_p, tdesc->features, new_feature);
   return new_feature;
-}
-
-void
-tdesc_record_type (struct tdesc_feature *feature, struct type *type)
-{
-  /* The type's ID should be used as its TYPE_NAME.  */
-  gdb_assert (TYPE_NAME (type) != NULL);
-
-  VEC_safe_push (type_p, feature->types, type);
 }
 
 struct target_desc *
@@ -885,6 +1415,8 @@ free_target_description (void *arg)
     }
   VEC_free (property_s, target_desc->properties);
 
+  VEC_free (arch_p, target_desc->compatible);
+
   xfree (target_desc);
 }
 
@@ -892,6 +1424,30 @@ struct cleanup *
 make_cleanup_free_target_description (struct target_desc *target_desc)
 {
   return make_cleanup (free_target_description, target_desc);
+}
+
+void
+tdesc_add_compatible (struct target_desc *target_desc,
+		      const struct bfd_arch_info *compatible)
+{
+  const struct bfd_arch_info *compat;
+  int ix;
+
+  /* If this instance of GDB is compiled without BFD support for the
+     compatible architecture, simply ignore it -- we would not be able
+     to handle it anyway.  */
+  if (compatible == NULL)
+    return;
+
+  for (ix = 0; VEC_iterate (arch_p, target_desc->compatible, ix, compat);
+       ix++)
+    if (compat == compatible)
+      internal_error (__FILE__, __LINE__,
+		      _("Attempted to add duplicate "
+			"compatible architecture \"%s\""),
+		      compatible->printable_name);
+
+  VEC_safe_push (arch_p, target_desc->compatible, compatible);
 }
 
 void
@@ -919,6 +1475,12 @@ set_tdesc_architecture (struct target_desc *target_desc,
 			const struct bfd_arch_info *arch)
 {
   target_desc->arch = arch;
+}
+
+void
+set_tdesc_osabi (struct target_desc *target_desc, enum gdb_osabi osabi)
+{
+  target_desc->osabi = osabi;
 }
 
 
@@ -959,12 +1521,11 @@ show_tdesc_filename_cmd (struct ui_file *file, int from_tty,
 			 const char *value)
 {
   if (value != NULL && *value != '\0')
-    printf_filtered (_("\
-The target description will be read from \"%s\".\n"),
+    printf_filtered (_("The target description will be read from \"%s\".\n"),
 		     value);
   else
-    printf_filtered (_("\
-The target description will be read from the target.\n"));
+    printf_filtered (_("The target description will be "
+		       "read from the target.\n"));
 }
 
 static void
@@ -976,29 +1537,19 @@ unset_tdesc_filename_cmd (char *args, int from_tty)
   target_find_description ();
 }
 
-static const char *
-tdesc_type_id (struct type *type)
-{
-  int ix;
-
-  for (ix = 0; ix < ARRAY_SIZE (tdesc_predefined_types); ix++)
-    if (TYPE_MAIN_TYPE (*tdesc_predefined_types[ix].type)
-	== TYPE_MAIN_TYPE (type))
-      return tdesc_predefined_types[ix].name;
-
-  return TYPE_NAME (type);
-}
-
 static void
 maint_print_c_tdesc_cmd (char *args, int from_tty)
 {
   const struct target_desc *tdesc;
+  const struct bfd_arch_info *compatible;
   const char *filename, *inp;
   char *function, *outp;
   struct property *prop;
   struct tdesc_feature *feature;
   struct tdesc_reg *reg;
-  struct type *type;
+  struct tdesc_type *type;
+  struct tdesc_type_field *f;
+  struct tdesc_type_flag *flag;
   int ix, ix2, ix3;
 
   /* Use the global target-supplied description, not the current
@@ -1013,7 +1564,7 @@ maint_print_c_tdesc_cmd (char *args, int from_tty)
     error (_("The current target description did not come from an XML file."));
 
   filename = lbasename (target_description_filename);
-  function = xmalloc (strlen (filename) + 1);
+  function = alloca (strlen (filename) + 1);
   for (inp = filename, outp = function; *inp != '\0'; inp++)
     if (*inp == '.')
       break;
@@ -1027,7 +1578,7 @@ maint_print_c_tdesc_cmd (char *args, int from_tty)
   printf_unfiltered ("/* THIS FILE IS GENERATED.  Original: %s */\n\n",
 		     filename);
   printf_unfiltered ("#include \"defs.h\"\n");
-  printf_unfiltered ("#include \"gdbtypes.h\"\n");
+  printf_unfiltered ("#include \"osabi.h\"\n");
   printf_unfiltered ("#include \"target-descriptions.h\"\n");
   printf_unfiltered ("\n");
 
@@ -1038,7 +1589,7 @@ maint_print_c_tdesc_cmd (char *args, int from_tty)
   printf_unfiltered
     ("  struct target_desc *result = allocate_target_description ();\n");
   printf_unfiltered ("  struct tdesc_feature *feature;\n");
-  printf_unfiltered ("  struct type *field_type, *type;\n");
+  printf_unfiltered ("  struct tdesc_type *field_type, *type;\n");
   printf_unfiltered ("\n");
 
   if (tdesc_architecture (tdesc) != NULL)
@@ -1048,6 +1599,25 @@ maint_print_c_tdesc_cmd (char *args, int from_tty)
 	 tdesc_architecture (tdesc)->printable_name);
       printf_unfiltered ("\n");
     }
+
+  if (tdesc_osabi (tdesc) > GDB_OSABI_UNKNOWN
+      && tdesc_osabi (tdesc) < GDB_OSABI_INVALID)
+    {
+      printf_unfiltered
+	("  set_tdesc_osabi (result, osabi_from_tdesc_string (\"%s\"));\n",
+	 gdbarch_osabi_name (tdesc_osabi (tdesc)));
+      printf_unfiltered ("\n");
+    }
+
+  for (ix = 0; VEC_iterate (arch_p, tdesc->compatible, ix, compatible);
+       ix++)
+    {
+      printf_unfiltered
+	("  tdesc_add_compatible (result, bfd_scan_arch (\"%s\"));\n",
+	 compatible->printable_name);
+    }
+  if (ix)
+    printf_unfiltered ("\n");
 
   for (ix = 0; VEC_iterate (property_s, tdesc->properties, ix, prop);
        ix++)
@@ -1060,48 +1630,55 @@ maint_print_c_tdesc_cmd (char *args, int from_tty)
        VEC_iterate (tdesc_feature_p, tdesc->features, ix, feature);
        ix++)
     {
-      printf_unfiltered ("  feature = tdesc_create_feature (result, \"%s\");\n",
+      printf_unfiltered ("  \
+feature = tdesc_create_feature (result, \"%s\");\n",
 			 feature->name);
 
       for (ix2 = 0;
-	   VEC_iterate (type_p, feature->types, ix2, type);
+	   VEC_iterate (tdesc_type_p, feature->types, ix2, type);
 	   ix2++)
 	{
-	  switch (TYPE_CODE (type))
+	  switch (type->kind)
 	    {
-	    case TYPE_CODE_ARRAY:
+	    case TDESC_TYPE_VECTOR:
 	      printf_unfiltered
 		("  field_type = tdesc_named_type (feature, \"%s\");\n",
-		 tdesc_type_id (TYPE_TARGET_TYPE (type)));
+		 type->u.v.type->name);
 	      printf_unfiltered
-		("  type = init_vector_type (field_type, %d);\n",
-		 TYPE_LENGTH (type) / TYPE_LENGTH (TYPE_TARGET_TYPE (type)));
-	      printf_unfiltered
-		("  TYPE_NAME (type) = xstrdup (\"%s\");\n", TYPE_NAME (type));
+		("  tdesc_create_vector (feature, \"%s\", field_type, %d);\n",
+		 type->name, type->u.v.count);
 	      break;
-	    case TYPE_CODE_UNION:
+	    case TDESC_TYPE_UNION:
 	      printf_unfiltered
-		("  type = init_composite_type (NULL, TYPE_CODE_UNION);\n");
-	      printf_unfiltered
-		("  TYPE_NAME (type) = xstrdup (\"%s\");\n", TYPE_NAME (type));
-	      for (ix3 = 0; ix3 < TYPE_NFIELDS (type); ix3++)
+		("  type = tdesc_create_union (feature, \"%s\");\n",
+		 type->name);
+	      for (ix3 = 0;
+		   VEC_iterate (tdesc_type_field, type->u.u.fields, ix3, f);
+		   ix3++)
 		{
 		  printf_unfiltered
 		    ("  field_type = tdesc_named_type (feature, \"%s\");\n",
-		     tdesc_type_id (TYPE_FIELD_TYPE (type, ix3)));
+		     f->type->name);
 		  printf_unfiltered
-		    ("  append_composite_type_field (type, "
-		     "xstrdup (\"%s\"), field_type);\n",
-		     TYPE_FIELD_NAME (type, ix3));
+		    ("  tdesc_add_field (type, \"%s\", field_type);\n",
+		     f->name);
 		}
-	      if (TYPE_VECTOR (type))
+	      break;
+	    case TDESC_TYPE_FLAGS:
+	      printf_unfiltered
+		("  field_type = tdesc_create_flags (feature, \"%s\", %d);\n",
+		 type->name, (int) type->u.f.size);
+	      for (ix3 = 0;
+		   VEC_iterate (tdesc_type_flag, type->u.f.flags, ix3,
+				flag);
+		   ix3++)
 		printf_unfiltered
-		  ("  TYPE_FLAGS (type) |= TYPE_FLAG_VECTOR;\n");
+		  ("  tdesc_add_flag (field_type, %d, \"%s\");\n",
+		   flag->start, flag->name);
 	      break;
 	    default:
-	      error (_("C output is not supported type \"%s\"."), TYPE_NAME (type));
+	      error (_("C output is not supported type \"%s\"."), type->name);
 	    }
-	  printf_unfiltered ("  tdesc_record_type (feature, type);\n");
 	  printf_unfiltered ("\n");
 	}
 
@@ -1124,6 +1701,9 @@ maint_print_c_tdesc_cmd (char *args, int from_tty)
   printf_unfiltered ("  tdesc_%s = result;\n", function);
   printf_unfiltered ("}\n");
 }
+
+/* Provide a prototype to silence -Wmissing-prototypes.  */
+extern initialize_file_ftype _initialize_target_descriptions;
 
 void
 _initialize_target_descriptions (void)

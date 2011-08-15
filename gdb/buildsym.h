@@ -1,6 +1,6 @@
 /* Build symbol tables in GDB's internal format.
    Copyright (C) 1986, 1987, 1988, 1989, 1990, 1991, 1992, 1993, 1995, 1996,
-   1997, 1998, 1999, 2000, 2002, 2003, 2007, 2008
+   1997, 1998, 1999, 2000, 2002, 2003, 2007, 2008, 2009, 2010, 2011
    Free Software Foundation, Inc.
 
    This file is part of GDB.
@@ -44,15 +44,17 @@ struct block;
 #endif
 
 #define HASHSIZE 127		/* Size of things hashed via
-				   hashname() */
+				   hashname().  */
 
 /* Name of source file whose symbol data we are now processing.  This
-   comes from a symbol of type N_SO. */
+   comes from a symbol of type N_SO for stabs.  For Dwarf it comes
+   from the DW_AT_name attribute of a DW_TAG_compile_unit DIE.  */
 
 EXTERN char *last_source_file;
 
 /* Core address of start of text of current source file.  This too
-   comes from the N_SO symbol. */
+   comes from the N_SO symbol.  For Dwarf it typically comes from the
+   DW_AT_low_pc attribute of a DW_TAG_compile_unit DIE.  */
 
 EXTERN CORE_ADDR last_source_start_addr;
 
@@ -123,6 +125,10 @@ EXTERN struct pending *local_symbols;
 
 EXTERN struct pending *param_symbols;
 
+/* "using" directives local to lexical context.  */
+
+EXTERN struct using_direct *using_directives;
+
 /* Stack representing unclosed lexical contexts (that will become
    blocks, eventually).  */
 
@@ -136,6 +142,10 @@ struct context_stack
 
     struct pending *params;
 
+    /* Pending using directives at the time we entered.  */
+
+    struct using_direct *using_directives;
+
     /* Pointer into blocklist as of entry */
 
     struct pending_block *old_blocks;
@@ -148,7 +158,7 @@ struct context_stack
 
     CORE_ADDR start_addr;
 
-    /* Temp slot for exception handling. */
+    /* Temp slot for exception handling.  */
 
     CORE_ADDR end_addr;
 
@@ -188,7 +198,7 @@ struct pending_block
 /* Pointer to the head of a linked list of symbol blocks which have
    already been finalized (lexical contexts already closed) and which
    are just waiting to be built into a blockvector when finalizing the
-   associated symtab. */
+   associated symtab.  */
 
 EXTERN struct pending_block *pending_blocks;
 
@@ -203,7 +213,7 @@ EXTERN struct subfile_stack *subfile_stack;
 
 #define next_symbol_text(objfile) (*next_symbol_text_func)(objfile)
 
-/* Function to invoke get the next symbol.  Return the symbol name. */
+/* Function to invoke get the next symbol.  Return the symbol name.  */
 
 EXTERN char *(*next_symbol_text_func) (struct objfile *);
 
@@ -243,7 +253,7 @@ extern void record_block_range (struct block *,
 
 extern void really_free_pendings (void *dummy);
 
-extern void start_subfile (char *name, char *dirname);
+extern void start_subfile (const char *name, const char *dirname);
 
 extern void patch_subfile_names (struct subfile *subfile, char *name);
 
@@ -276,7 +286,7 @@ extern void free_pending_blocks (void);
 
 /* FIXME: Note that this is used only in buildsym.c and dstread.c,
    which should be fixed to not need direct access to
-   record_pending_block. */
+   record_pending_block.  */
 
 extern void record_pending_block (struct objfile *objfile,
 				  struct block *block,
@@ -290,7 +300,8 @@ extern void merge_symbol_lists (struct pending **srclist,
 				struct pending **targetlist);
 
 /* The macro table for the compilation unit whose symbols we're
-   currently reading.  All the symtabs for this CU will point to this.  */
+   currently reading.  All the symtabs for this CU will point to
+   this.  */
 EXTERN struct macro_table *pending_macros;
 
 #undef EXTERN

@@ -1,5 +1,6 @@
 /* CRIS v32 simulator support code
-   Copyright (C) 2004, 2005, 2006, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
    Contributed by Axis Communications.
 
 This file is part of the GNU simulators.
@@ -28,6 +29,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 #define SPECIFIC_U_MEM_FN
 #define SPECIFIC_U_MOVEM_FN
 #define BASENUM 32
+#define CRIS_TLS_REGISTER 2
 #include "cris-tmpl.c"
 
 #if WITH_PROFILE_MODEL_P

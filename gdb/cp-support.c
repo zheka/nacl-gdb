@@ -1,5 +1,5 @@
 /* Helper routines for C++ support in GDB.
-   Copyright (C) 2002, 2003, 2004, 2005, 2007, 2008
+   Copyright (C) 2002, 2003, 2004, 2005, 2007, 2008, 2009, 2010, 2011
    Free Software Foundation, Inc.
 
    Contributed by MontaVista Software.
@@ -32,8 +32,13 @@
 #include "block.h"
 #include "complaints.h"
 #include "gdbtypes.h"
+#include "exceptions.h"
+#include "expression.h"
+#include "value.h"
 
 #include "safe-ctype.h"
+
+#include "psymtab.h"
 
 #define d_left(dc) (dc)->u.s_binary.left
 #define d_right(dc) (dc)->u.s_binary.right
@@ -47,7 +52,7 @@ static void demangled_name_complaint (const char *name);
 
 /* Functions/variables related to overload resolution.  */
 
-static int sym_return_val_size;
+static int sym_return_val_size = -1;
 static int sym_return_val_index;
 static struct symbol **sym_return_val;
 
@@ -59,8 +64,6 @@ static void make_symbol_overload_list_using (const char *func_name,
 
 static void make_symbol_overload_list_qualified (const char *func_name);
 
-static void read_in_psymtabs (const char *oload_name);
-
 /* The list of "maint cplus" commands.  */
 
 struct cmd_list_element *maint_cplus_cmd_list = NULL;
@@ -69,6 +72,19 @@ struct cmd_list_element *maint_cplus_cmd_list = NULL;
 
 static void maint_cplus_command (char *arg, int from_tty);
 static void first_component_command (char *arg, int from_tty);
+
+/* Operator validation.
+   NOTE: Multi-byte operators (usually the assignment variety
+   operator) must appear before the single byte version, i.e., "+="
+   before "+".  */
+static const char *operator_tokens[] =
+  {
+    "++", "+=", "+", "->*", "->", "--", "-=", "-", "*=", "*",
+    "/=", "/", "%=", "%", "!=", "==", "!", "&&", "<<=", "<<",
+    ">>=", ">>", "<=", "<", ">=", ">", "~", "&=", "&", "|=",
+    "||", "|", "^=", "^", "=", "()", "[]", ",", "new", "delete"
+    /* new[] and delete[] require special whitespace handling */
+  };
 
 /* Return 1 if STRING is clearly already in canonical form.  This
    function is conservative; things which it does not recognize are
@@ -131,11 +147,11 @@ cp_canonicalize_string (const char *string)
   return ret;
 }
 
-/* Convert a mangled name to a demangle_component tree.  *MEMORY is set to the
-   block of used memory that should be freed when finished with the tree. 
-   DEMANGLED_P is set to the char * that should be freed when finished with
-   the tree, or NULL if none was needed.  OPTIONS will be passed to the
-   demangler.  */
+/* Convert a mangled name to a demangle_component tree.  *MEMORY is
+   set to the block of used memory that should be freed when finished
+   with the tree.  DEMANGLED_P is set to the char * that should be
+   freed when finished with the tree, or NULL if none was needed.
+   OPTIONS will be passed to the demangler.  */
 
 static struct demangle_component *
 mangled_name_to_comp (const char *mangled_name, int options,
@@ -143,13 +159,13 @@ mangled_name_to_comp (const char *mangled_name, int options,
 {
   struct demangle_component *ret;
   char *demangled_name;
-  int len;
 
   /* If it looks like a v3 mangled name, then try to go directly
      to trees.  */
   if (mangled_name[0] == '_' && mangled_name[1] == 'Z')
     {
-      ret = cplus_demangle_v3_components (mangled_name, options, memory);
+      ret = cplus_demangle_v3_components (mangled_name,
+					  options, memory);
       if (ret)
 	{
 	  *demangled_p = NULL;
@@ -157,17 +173,19 @@ mangled_name_to_comp (const char *mangled_name, int options,
 	}
     }
 
-  /* If it doesn't, or if that failed, then try to demangle the name.  */
+  /* If it doesn't, or if that failed, then try to demangle the
+     name.  */
   demangled_name = cplus_demangle (mangled_name, options);
   if (demangled_name == NULL)
    return NULL;
   
-  /* If we could demangle the name, parse it to build the component tree.  */
+  /* If we could demangle the name, parse it to build the component
+     tree.  */
   ret = cp_demangled_name_to_comp (demangled_name, NULL);
 
   if (ret == NULL)
     {
-      free (demangled_name);
+      xfree (demangled_name);
       return NULL;
     }
 
@@ -180,19 +198,20 @@ mangled_name_to_comp (const char *mangled_name, int options,
 char *
 cp_class_name_from_physname (const char *physname)
 {
-  void *storage;
+  void *storage = NULL;
   char *demangled_name = NULL, *ret;
   struct demangle_component *ret_comp, *prev_comp, *cur_comp;
   int done;
 
-  ret_comp = mangled_name_to_comp (physname, DMGL_ANSI, &storage,
-				   &demangled_name);
+  ret_comp = mangled_name_to_comp (physname, DMGL_ANSI,
+				   &storage, &demangled_name);
   if (ret_comp == NULL)
     return NULL;
 
   done = 0;
 
-  /* First strip off any qualifiers, if we have a function or method.  */
+  /* First strip off any qualifiers, if we have a function or
+     method.  */
   while (!done)
     switch (ret_comp->type)
       {
@@ -219,9 +238,9 @@ cp_class_name_from_physname (const char *physname)
   if (ret_comp->type == DEMANGLE_COMPONENT_TEMPLATE)
     ret_comp = d_left (ret_comp);
 
-  /* What we have now should be a name, possibly qualified.  Additional
-     qualifiers could live in the left subtree or the right subtree.  Find
-     the last piece.  */
+  /* What we have now should be a name, possibly qualified.
+     Additional qualifiers could live in the left subtree or the right
+     subtree.  Find the last piece.  */
   done = 0;
   prev_comp = NULL;
   cur_comp = ret_comp;
@@ -252,7 +271,8 @@ cp_class_name_from_physname (const char *physname)
     {
       /* We want to discard the rightmost child of PREV_COMP.  */
       *prev_comp = *d_left (prev_comp);
-      /* The ten is completely arbitrary; we don't have a good estimate.  */
+      /* The ten is completely arbitrary; we don't have a good
+	 estimate.  */
       ret = cp_comp_to_string (ret_comp, 10);
     }
 
@@ -262,9 +282,10 @@ cp_class_name_from_physname (const char *physname)
   return ret;
 }
 
-/* Return the child of COMP which is the basename of a method, variable,
-   et cetera.  All scope qualifiers are discarded, but template arguments
-   will be included.  The component tree may be modified.  */
+/* Return the child of COMP which is the basename of a method,
+   variable, et cetera.  All scope qualifiers are discarded, but
+   template arguments will be included.  The component tree may be
+   modified.  */
 
 static struct demangle_component *
 unqualified_name_from_comp (struct demangle_component *comp)
@@ -324,13 +345,12 @@ unqualified_name_from_comp (struct demangle_component *comp)
 char *
 method_name_from_physname (const char *physname)
 {
-  void *storage;
+  void *storage = NULL;
   char *demangled_name = NULL, *ret;
   struct demangle_component *ret_comp;
-  int done;
 
-  ret_comp = mangled_name_to_comp (physname, DMGL_ANSI, &storage,
-				   &demangled_name);
+  ret_comp = mangled_name_to_comp (physname, DMGL_ANSI,
+				   &storage, &demangled_name);
   if (ret_comp == NULL)
     return NULL;
 
@@ -338,7 +358,8 @@ method_name_from_physname (const char *physname)
 
   ret = NULL;
   if (ret_comp != NULL)
-    /* The ten is completely arbitrary; we don't have a good estimate.  */
+    /* The ten is completely arbitrary; we don't have a good
+       estimate.  */
     ret = cp_comp_to_string (ret_comp, 10);
 
   xfree (storage);
@@ -358,7 +379,6 @@ cp_func_name (const char *full_name)
 {
   char *ret;
   struct demangle_component *ret_comp;
-  int done;
 
   ret_comp = cp_demangled_name_to_comp (full_name, NULL);
   if (!ret_comp)
@@ -377,8 +397,8 @@ cp_func_name (const char *full_name)
    (optionally) a return type.  Return the name of the function without
    parameters or return type, or NULL if we can not parse the name.  */
 
-static char *
-remove_params (const char *demangled_name)
+char *
+cp_remove_params (const char *demangled_name)
 {
   int done = 0;
   struct demangle_component *ret_comp;
@@ -539,7 +559,8 @@ cp_find_first_component_aux (const char *name, int permissive)
 	case 'o':
 	  /* Operator names can screw up the recursion.  */
 	  if (operator_possible
-	      && strncmp (name + index, "operator", LENGTH_OF_OPERATOR) == 0)
+	      && strncmp (name + index, "operator",
+			  LENGTH_OF_OPERATOR) == 0)
 	    {
 	      index += LENGTH_OF_OPERATOR;
 	      while (ISSPACE(name[index]))
@@ -629,27 +650,29 @@ cp_entire_prefix_len (const char *name)
 
 /* Test to see if SYM is a symbol that we haven't seen corresponding
    to a function named OLOAD_NAME.  If so, add it to the current
-   completion list. */
+   completion list.  */
 
 static void
-overload_list_add_symbol (struct symbol *sym, const char *oload_name)
+overload_list_add_symbol (struct symbol *sym,
+			  const char *oload_name)
 {
   int newsize;
   int i;
   char *sym_name;
 
-  /* If there is no type information, we can't do anything, so skip */
+  /* If there is no type information, we can't do anything, so
+     skip.  */
   if (SYMBOL_TYPE (sym) == NULL)
     return;
 
-  /* skip any symbols that we've already considered. */
+  /* skip any symbols that we've already considered.  */
   for (i = 0; i < sym_return_val_index; ++i)
     if (strcmp (SYMBOL_LINKAGE_NAME (sym),
 		SYMBOL_LINKAGE_NAME (sym_return_val[i])) == 0)
       return;
 
   /* Get the demangled name without parameters */
-  sym_name = remove_params (SYMBOL_NATURAL_NAME (sym));
+  sym_name = cp_remove_params (SYMBOL_NATURAL_NAME (sym));
   if (!sym_name)
     return;
 
@@ -662,12 +685,13 @@ overload_list_add_symbol (struct symbol *sym, const char *oload_name)
 
   xfree (sym_name);
 
-  /* We have a match for an overload instance, so add SYM to the current list
-   * of overload instances */
+  /* We have a match for an overload instance, so add SYM to the
+     current list of overload instances */
   if (sym_return_val_index + 3 > sym_return_val_size)
     {
       newsize = (sym_return_val_size *= 2) * sizeof (struct symbol *);
-      sym_return_val = (struct symbol **) xrealloc ((char *) sym_return_val, newsize);
+      sym_return_val = (struct symbol **)
+	xrealloc ((char *) sym_return_val, newsize);
     }
   sym_return_val[sym_return_val_index++] = sym;
   sym_return_val[sym_return_val_index] = NULL;
@@ -681,6 +705,7 @@ make_symbol_overload_list (const char *func_name,
 			   const char *namespace)
 {
   struct cleanup *old_cleanups;
+  const char *name;
 
   sym_return_val_size = 100;
   sym_return_val_index = 0;
@@ -692,9 +717,152 @@ make_symbol_overload_list (const char *func_name,
 
   make_symbol_overload_list_using (func_name, namespace);
 
+  if (namespace[0] == '\0')
+    name = func_name;
+  else
+    {
+      char *concatenated_name
+	= alloca (strlen (namespace) + 2 + strlen (func_name) + 1);
+      strcpy (concatenated_name, namespace);
+      strcat (concatenated_name, "::");
+      strcat (concatenated_name, func_name);
+      name = concatenated_name;
+    }
+
+  make_symbol_overload_list_qualified (name);
+
   discard_cleanups (old_cleanups);
 
   return sym_return_val;
+}
+
+/* Add all symbols with a name matching NAME in BLOCK to the overload
+   list.  */
+
+static void
+make_symbol_overload_list_block (const char *name,
+                                 const struct block *block)
+{
+  struct dict_iterator iter;
+  struct symbol *sym;
+
+  const struct dictionary *dict = BLOCK_DICT (block);
+
+  for (sym = dict_iter_name_first (dict, name, &iter);
+       sym != NULL;
+       sym = dict_iter_name_next (name, &iter))
+    overload_list_add_symbol (sym, name);
+}
+
+/* Adds the function FUNC_NAME from NAMESPACE to the overload set.  */
+
+static void
+make_symbol_overload_list_namespace (const char *func_name,
+                                     const char *namespace)
+{
+  const char *name;
+  const struct block *block = NULL;
+
+  if (namespace[0] == '\0')
+    name = func_name;
+  else
+    {
+      char *concatenated_name
+	= alloca (strlen (namespace) + 2 + strlen (func_name) + 1);
+
+      strcpy (concatenated_name, namespace);
+      strcat (concatenated_name, "::");
+      strcat (concatenated_name, func_name);
+      name = concatenated_name;
+    }
+
+  /* Look in the static block.  */
+  block = block_static_block (get_selected_block (0));
+  if (block)
+    make_symbol_overload_list_block (name, block);
+
+  /* Look in the global block.  */
+  block = block_global_block (block);
+  if (block)
+    make_symbol_overload_list_block (name, block);
+
+}
+
+/* Search the namespace of the given type and namespace of and public
+   base types.  */
+
+static void
+make_symbol_overload_list_adl_namespace (struct type *type,
+                                         const char *func_name)
+{
+  char *namespace;
+  char *type_name;
+  int i, prefix_len;
+
+  while (TYPE_CODE (type) == TYPE_CODE_PTR
+	 || TYPE_CODE (type) == TYPE_CODE_REF
+         || TYPE_CODE (type) == TYPE_CODE_ARRAY
+         || TYPE_CODE (type) == TYPE_CODE_TYPEDEF)
+    {
+      if (TYPE_CODE (type) == TYPE_CODE_TYPEDEF)
+	type = check_typedef(type);
+      else
+	type = TYPE_TARGET_TYPE (type);
+    }
+
+  type_name = TYPE_NAME (type);
+
+  if (type_name == NULL)
+    return;
+
+  prefix_len = cp_entire_prefix_len (type_name);
+
+  if (prefix_len != 0)
+    {
+      namespace = alloca (prefix_len + 1);
+      strncpy (namespace, type_name, prefix_len);
+      namespace[prefix_len] = '\0';
+
+      make_symbol_overload_list_namespace (func_name, namespace);
+    }
+
+  /* Check public base type */
+  if (TYPE_CODE (type) == TYPE_CODE_CLASS)
+    for (i = 0; i < TYPE_N_BASECLASSES (type); i++)
+      {
+	if (BASETYPE_VIA_PUBLIC (type, i))
+	  make_symbol_overload_list_adl_namespace (TYPE_BASECLASS (type,
+								   i),
+						   func_name);
+      }
+}
+
+/* Adds the overload list overload candidates for FUNC_NAME found
+   through argument dependent lookup.  */
+
+struct symbol **
+make_symbol_overload_list_adl (struct type **arg_types, int nargs,
+                               const char *func_name)
+{
+  int i;
+
+  gdb_assert (sym_return_val_size != -1);
+
+  for (i = 1; i <= nargs; i++)
+    make_symbol_overload_list_adl_namespace (arg_types[i - 1],
+					     func_name);
+
+  return sym_return_val;
+}
+
+/* Used for cleanups to reset the "searched" flag in case of an
+   error.  */
+
+static void
+reset_directive_searched (void *data)
+{
+  struct using_direct *direct = data;
+  direct->searched = 0;
 }
 
 /* This applies the using directives to add namespaces to search in,
@@ -706,38 +874,48 @@ static void
 make_symbol_overload_list_using (const char *func_name,
 				 const char *namespace)
 {
-  const struct using_direct *current;
+  struct using_direct *current;
+  const struct block *block;
 
   /* First, go through the using directives.  If any of them apply,
      look in the appropriate namespaces for new functions to match
      on.  */
 
-  for (current = block_using (get_selected_block (0));
-       current != NULL;
-       current = current->next)
-    {
-      if (strcmp (namespace, current->outer) == 0)
-	{
-	  make_symbol_overload_list_using (func_name,
-					   current->inner);
-	}
-    }
+  for (block = get_selected_block (0);
+       block != NULL;
+       block = BLOCK_SUPERBLOCK (block))
+    for (current = block_using (block);
+	current != NULL;
+	current = current->next)
+      {
+	/* Prevent recursive calls.  */
+	if (current->searched)
+	  continue;
+
+        /* If this is a namespace alias or imported declaration ignore
+	   it.  */
+        if (current->alias != NULL || current->declaration != NULL)
+          continue;
+
+        if (strcmp (namespace, current->import_dest) == 0)
+	  {
+	    /* Mark this import as searched so that the recursive call
+	       does not search it again.  */
+	    struct cleanup *old_chain;
+	    current->searched = 1;
+	    old_chain = make_cleanup (reset_directive_searched,
+				      current);
+
+	    make_symbol_overload_list_using (func_name,
+					     current->import_src);
+
+	    current->searched = 0;
+	    discard_cleanups (old_chain);
+	  }
+      }
 
   /* Now, add names for this namespace.  */
-  
-  if (namespace[0] == '\0')
-    {
-      make_symbol_overload_list_qualified (func_name);
-    }
-  else
-    {
-      char *concatenated_name
-	= alloca (strlen (namespace) + 2 + strlen (func_name) + 1);
-      strcpy (concatenated_name, namespace);
-      strcat (concatenated_name, "::");
-      strcat (concatenated_name, func_name);
-      make_symbol_overload_list_qualified (concatenated_name);
-    }
+  make_symbol_overload_list_namespace (func_name, namespace);
 }
 
 /* This does the bulk of the work of finding overloaded symbols.
@@ -754,25 +932,20 @@ make_symbol_overload_list_qualified (const char *func_name)
   struct dict_iterator iter;
   const struct dictionary *dict;
 
-  /* Look through the partial symtabs for all symbols which begin
-     by matching FUNC_NAME.  Make sure we read that symbol table in. */
+  /* Look through the partial symtabs for all symbols which begin by
+     matching FUNC_NAME.  Make sure we read that symbol table in.  */
 
-  read_in_psymtabs (func_name);
+  ALL_OBJFILES (objfile)
+  {
+    if (objfile->sf)
+      objfile->sf->qf->expand_symtabs_for_function (objfile, func_name);
+  }
 
   /* Search upwards from currently selected frame (so that we can
      complete on local vars.  */
 
   for (b = get_selected_block (0); b != NULL; b = BLOCK_SUPERBLOCK (b))
-    {
-      dict = BLOCK_DICT (b);
-
-      for (sym = dict_iter_name_first (dict, func_name, &iter);
-	   sym;
-	   sym = dict_iter_name_next (func_name, &iter))
-	{
-	  overload_list_add_symbol (sym, func_name);
-	}
-    }
+    make_symbol_overload_list_block (func_name, b);
 
   surrounding_static_block = block_static_block (get_selected_block (0));
 
@@ -783,14 +956,7 @@ make_symbol_overload_list_qualified (const char *func_name)
   {
     QUIT;
     b = BLOCKVECTOR_BLOCK (BLOCKVECTOR (s), GLOBAL_BLOCK);
-    dict = BLOCK_DICT (b);
-
-    for (sym = dict_iter_name_first (dict, func_name, &iter);
-	 sym;
-	 sym = dict_iter_name_next (func_name, &iter))
-    {
-      overload_list_add_symbol (sym, func_name);
-    }
+    make_symbol_overload_list_block (func_name, b);
   }
 
   ALL_PRIMARY_SYMTABS (objfile, s)
@@ -800,40 +966,11 @@ make_symbol_overload_list_qualified (const char *func_name)
     /* Don't do this block twice.  */
     if (b == surrounding_static_block)
       continue;
-    dict = BLOCK_DICT (b);
-
-    for (sym = dict_iter_name_first (dict, func_name, &iter);
-	 sym;
-	 sym = dict_iter_name_next (func_name, &iter))
-    {
-      overload_list_add_symbol (sym, func_name);
-    }
+    make_symbol_overload_list_block (func_name, b);
   }
 }
 
-/* Look through the partial symtabs for all symbols which begin
-   by matching FUNC_NAME.  Make sure we read that symbol table in. */
-
-static void
-read_in_psymtabs (const char *func_name)
-{
-  struct partial_symtab *ps;
-  struct objfile *objfile;
-
-  ALL_PSYMTABS (objfile, ps)
-  {
-    if (ps->readin)
-      continue;
-
-    if ((lookup_partial_symbol (ps, func_name, NULL, 1, VAR_DOMAIN)
-	 != NULL)
-	|| (lookup_partial_symbol (ps, func_name, NULL, 0, VAR_DOMAIN)
-	    != NULL))
-      psymtab_to_symtab (ps);
-  }
-}
-
-/* Lookup the rtti type for a class name. */
+/* Lookup the rtti type for a class name.  */
 
 struct type *
 cp_lookup_rtti_type (const char *name, struct block *block)
@@ -841,7 +978,7 @@ cp_lookup_rtti_type (const char *name, struct block *block)
   struct symbol * rtti_sym;
   struct type * rtti_type;
 
-  rtti_sym = lookup_symbol (name, block, STRUCT_DOMAIN, NULL, NULL);
+  rtti_sym = lookup_symbol (name, block, STRUCT_DOMAIN, NULL);
 
   if (rtti_sym == NULL)
     {
@@ -881,8 +1018,11 @@ cp_lookup_rtti_type (const char *name, struct block *block)
 static  void
 maint_cplus_command (char *arg, int from_tty)
 {
-  printf_unfiltered (_("\"maintenance cplus\" must be followed by the name of a command.\n"));
-  help_list (maint_cplus_cmd_list, "maintenance cplus ", -1, gdb_stdout);
+  printf_unfiltered (_("\"maintenance cplus\" must be followed "
+		       "by the name of a command.\n"));
+  help_list (maint_cplus_cmd_list,
+	     "maintenance cplus ",
+	     -1, gdb_stdout);
 }
 
 /* This is a front end for cp_find_first_component, for unit testing.
@@ -892,8 +1032,14 @@ maint_cplus_command (char *arg, int from_tty)
 static void
 first_component_command (char *arg, int from_tty)
 {
-  int len = cp_find_first_component (arg);
-  char *prefix = alloca (len + 1);
+  int len;  
+  char *prefix; 
+
+  if (!arg)
+    return;
+
+  len = cp_find_first_component (arg);
+  prefix = alloca (len + 1);
 
   memcpy (prefix, arg, len);
   prefix[len] = '\0';
@@ -903,15 +1049,127 @@ first_component_command (char *arg, int from_tty)
 
 extern initialize_file_ftype _initialize_cp_support; /* -Wmissing-prototypes */
 
+#define SKIP_SPACE(P)				\
+  do						\
+  {						\
+    while (*(P) == ' ' || *(P) == '\t')		\
+      ++(P);					\
+  }						\
+  while (0)
+
+/* Returns the length of the operator name or 0 if INPUT does not
+   point to a valid C++ operator.  INPUT should start with
+   "operator".  */
+int
+cp_validate_operator (const char *input)
+{
+  int i;
+  char *copy;
+  const char *p;
+  struct expression *expr;
+  struct value *val;
+  struct gdb_exception except;
+
+  p = input;
+
+  if (strncmp (p, "operator", 8) == 0)
+    {
+      int valid = 0;
+
+      p += 8;
+      SKIP_SPACE (p);
+      for (i = 0;
+	   i < sizeof (operator_tokens) / sizeof (operator_tokens[0]);
+	   ++i)
+	{
+	  int length = strlen (operator_tokens[i]);
+
+	  /* By using strncmp here, we MUST have operator_tokens
+	     ordered!  See additional notes where operator_tokens is
+	     defined above.  */
+	  if (strncmp (p, operator_tokens[i], length) == 0)
+	    {
+	      const char *op = p;
+
+	      valid = 1;
+	      p += length;
+
+	      if (strncmp (op, "new", 3) == 0
+		  || strncmp (op, "delete", 6) == 0)
+		{
+
+		  /* Special case: new[] and delete[].  We must be
+		     careful to swallow whitespace before/in "[]".  */
+		  SKIP_SPACE (p);
+
+		  if (*p == '[')
+		    {
+		      ++p;
+		      SKIP_SPACE (p);
+		      if (*p == ']')
+			++p;
+		      else
+			valid = 0;
+		    }
+		}
+
+	      if (valid)
+		return (p - input);
+	    }
+	}
+
+      /* Check input for a conversion operator.  */
+
+      /* Skip past base typename.  */
+      while (*p != '*' && *p != '&' && *p != 0 && *p != ' ')
+	++p;
+      SKIP_SPACE (p);
+
+      /* Add modifiers '*' / '&'.  */
+      while (*p == '*' || *p == '&')
+	{
+	  ++p;
+	  SKIP_SPACE (p);
+	}
+
+      /* Check for valid type.  [Remember: input starts with 
+	 "operator".]  */
+      copy = savestring (input + 8, p - input - 8);
+      expr = NULL;
+      val = NULL;
+      TRY_CATCH (except, RETURN_MASK_ALL)
+	{
+	  expr = parse_expression (copy);
+	  val = evaluate_type (expr);
+	}
+
+      xfree (copy);
+      if (expr)
+	xfree (expr);
+
+      if (val != NULL && value_type (val) != NULL)
+	return (p - input);
+    }
+
+  return 0;
+}
+
 void
 _initialize_cp_support (void)
 {
-  add_prefix_cmd ("cplus", class_maintenance, maint_cplus_command,
-		  _("C++ maintenance commands."), &maint_cplus_cmd_list,
-		  "maintenance cplus ", 0, &maintenancelist);
-  add_alias_cmd ("cp", "cplus", class_maintenance, 1, &maintenancelist);
+  add_prefix_cmd ("cplus", class_maintenance,
+		  maint_cplus_command,
+		  _("C++ maintenance commands."),
+		  &maint_cplus_cmd_list,
+		  "maintenance cplus ",
+		  0, &maintenancelist);
+  add_alias_cmd ("cp", "cplus",
+		 class_maintenance, 1,
+		 &maintenancelist);
 
-  add_cmd ("first_component", class_maintenance, first_component_command,
+  add_cmd ("first_component",
+	   class_maintenance,
+	   first_component_command,
 	   _("Print the first class/namespace component of NAME."),
 	   &maint_cplus_cmd_list);
 }

@@ -1,5 +1,6 @@
 /* Disassemble ADI Blackfin Instructions.
-   Copyright 2005, 2007 Free Software Foundation, Inc.
+   Copyright 2005, 2006, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of libopcodes.
 
@@ -24,16 +25,6 @@
 
 #include "opcode/bfin.h"
 
-#define M_S2RND 1
-#define M_T     2
-#define M_W32   3
-#define M_FU    4
-#define M_TFU   6
-#define M_IS    8
-#define M_ISS2  9
-#define M_IH    11
-#define M_IU    12
-
 #ifndef PRINTF
 #define PRINTF printf
 #endif
@@ -51,69 +42,83 @@ typedef long TIword;
 
 #include "dis-asm.h"
 
+typedef unsigned int bu32;
+
+static char comment = 0;
+static char parallel = 0;
+
 typedef enum
 {
   c_0, c_1, c_4, c_2, c_uimm2, c_uimm3, c_imm3, c_pcrel4,
-  c_imm4, c_uimm4s4, c_uimm4, c_uimm4s2, c_negimm5s4, c_imm5, c_uimm5, c_imm6,
-  c_imm7, c_imm8, c_uimm8, c_pcrel8, c_uimm8s4, c_pcrel8s4, c_lppcrel10, c_pcrel10,
-  c_pcrel12, c_imm16s4, c_luimm16, c_imm16, c_huimm16, c_rimm16, c_imm16s2, c_uimm16s4,
-  c_uimm16, c_pcrel24,
+  c_imm4, c_uimm4s4, c_uimm4s4d, c_uimm4, c_uimm4s2, c_negimm5s4, c_imm5, c_imm5d, c_uimm5, c_imm6,
+  c_imm7, c_imm7d, c_imm8, c_uimm8, c_pcrel8, c_uimm8s4, c_pcrel8s4, c_lppcrel10, c_pcrel10,
+  c_pcrel12, c_imm16s4, c_luimm16, c_imm16, c_imm16d, c_huimm16, c_rimm16, c_imm16s2, c_uimm16s4,
+  c_uimm16s4d, c_uimm16, c_pcrel24, c_uimm32, c_imm32, c_huimm32, c_huimm32e,
 } const_forms_t;
 
-static struct
+static const struct
 {
-  char *name;
-  int nbits;
-  char reloc;
-  char issigned;
-  char pcrel;
-  char scale;
-  char offset;
-  char negative;
-  char positive;
+  const char *name;
+  const int nbits;
+  const char reloc;
+  const char issigned;
+  const char pcrel;
+  const char scale;
+  const char offset;
+  const char negative;
+  const char positive;
+  const char decimal;
+  const char leading;
+  const char exact;
 } constant_formats[] =
 {
-  { "0", 0, 0, 1, 0, 0, 0, 0, 0},
-  { "1", 0, 0, 1, 0, 0, 0, 0, 0},
-  { "4", 0, 0, 1, 0, 0, 0, 0, 0},
-  { "2", 0, 0, 1, 0, 0, 0, 0, 0},
-  { "uimm2", 2, 0, 0, 0, 0, 0, 0, 0},
-  { "uimm3", 3, 0, 0, 0, 0, 0, 0, 0},
-  { "imm3", 3, 0, 1, 0, 0, 0, 0, 0},
-  { "pcrel4", 4, 1, 0, 1, 1, 0, 0, 0},
-  { "imm4", 4, 0, 1, 0, 0, 0, 0, 0},
-  { "uimm4s4", 4, 0, 0, 0, 2, 0, 0, 1},
-  { "uimm4", 4, 0, 0, 0, 0, 0, 0, 0},
-  { "uimm4s2", 4, 0, 0, 0, 1, 0, 0, 1},
-  { "negimm5s4", 5, 0, 1, 0, 2, 0, 1, 0},
-  { "imm5", 5, 0, 1, 0, 0, 0, 0, 0},
-  { "uimm5", 5, 0, 0, 0, 0, 0, 0, 0},
-  { "imm6", 6, 0, 1, 0, 0, 0, 0, 0},
-  { "imm7", 7, 0, 1, 0, 0, 0, 0, 0},
-  { "imm8", 8, 0, 1, 0, 0, 0, 0, 0},
-  { "uimm8", 8, 0, 0, 0, 0, 0, 0, 0},
-  { "pcrel8", 8, 1, 0, 1, 1, 0, 0, 0},
-  { "uimm8s4", 8, 0, 0, 0, 2, 0, 0, 0},
-  { "pcrel8s4", 8, 1, 1, 1, 2, 0, 0, 0},
-  { "lppcrel10", 10, 1, 0, 1, 1, 0, 0, 0},
-  { "pcrel10", 10, 1, 1, 1, 1, 0, 0, 0},
-  { "pcrel12", 12, 1, 1, 1, 1, 0, 0, 0},
-  { "imm16s4", 16, 0, 1, 0, 2, 0, 0, 0},
-  { "luimm16", 16, 1, 0, 0, 0, 0, 0, 0},
-  { "imm16", 16, 0, 1, 0, 0, 0, 0, 0},
-  { "huimm16", 16, 1, 0, 0, 0, 0, 0, 0},
-  { "rimm16", 16, 1, 1, 0, 0, 0, 0, 0},
-  { "imm16s2", 16, 0, 1, 0, 1, 0, 0, 0},
-  { "uimm16s4", 16, 0, 0, 0, 2, 0, 0, 0},
-  { "uimm16", 16, 0, 0, 0, 0, 0, 0, 0},
-  { "pcrel24", 24, 1, 1, 1, 1, 0, 0, 0}
+  { "0",          0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0},
+  { "1",          0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0},
+  { "4",          0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0},
+  { "2",          0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0},
+  { "uimm2",      2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+  { "uimm3",      3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+  { "imm3",       3, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0},
+  { "pcrel4",     4, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0},
+  { "imm4",       4, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0},
+  { "uimm4s4",    4, 0, 0, 0, 2, 0, 0, 1, 0, 0, 0},
+  { "uimm4s4d",   4, 0, 0, 0, 2, 0, 0, 1, 1, 0, 0},
+  { "uimm4",      4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+  { "uimm4s2",    4, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0},
+  { "negimm5s4",  5, 0, 1, 0, 2, 0, 1, 0, 0, 0, 0},
+  { "imm5",       5, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0},
+  { "imm5d",      5, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0},
+  { "uimm5",      5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+  { "imm6",       6, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0},
+  { "imm7",       7, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0},
+  { "imm7d",      7, 0, 1, 0, 0, 0, 0, 0, 1, 3, 0},
+  { "imm8",       8, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0},
+  { "uimm8",      8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+  { "pcrel8",     8, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0},
+  { "uimm8s4",    8, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0},
+  { "pcrel8s4",   8, 1, 1, 1, 2, 0, 0, 0, 0, 0, 0},
+  { "lppcrel10", 10, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0},
+  { "pcrel10",   10, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0},
+  { "pcrel12",   12, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0},
+  { "imm16s4",   16, 0, 1, 0, 2, 0, 0, 0, 0, 0, 0},
+  { "luimm16",   16, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+  { "imm16",     16, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0},
+  { "imm16d",    16, 0, 1, 0, 0, 0, 0, 0, 1, 3, 0},
+  { "huimm16",   16, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+  { "rimm16",    16, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0},
+  { "imm16s2",   16, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0},
+  { "uimm16s4",  16, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0},
+  { "uimm16s4d", 16, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0},
+  { "uimm16",    16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+  { "pcrel24",   24, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0},
+  { "uimm32",    32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+  { "imm32",     32, 0, 1, 0, 0, 0, 0, 0, 1, 3, 0},
+  { "huimm32",   32, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+  { "huimm32e",  32, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1},
 };
 
-int _print_insn_bfin (bfd_vma pc, disassemble_info * outf);
-int print_insn_bfin (bfd_vma pc, disassemble_info * outf);
-
-static char *
-fmtconst (const_forms_t cf, TIword x, bfd_vma pc, disassemble_info * outf)
+static const char *
+fmtconst (const_forms_t cf, TIword x, bfd_vma pc, disassemble_info *outf)
 {
   static char buf[60];
 
@@ -124,8 +129,19 @@ fmtconst (const_forms_t cf, TIword x, bfd_vma pc, disassemble_info * outf)
       if (constant_formats[cf].pcrel)
 	ea += pc;
 
-      outf->print_address_func (ea, outf);
-      return "";
+      /* truncate to 32-bits for proper symbol lookup/matching */
+      ea = (bu32)ea;
+
+      if (outf->symbol_at_address_func (ea, outf) || !constant_formats[cf].exact)
+	{
+	  outf->print_address_func (ea, outf);
+	  return "";
+	}
+      else
+	{
+	  sprintf (buf, "%lx", (unsigned long) x);
+	  return buf;
+	}
     }
 
   /* Negative constants have an implied sign bit.  */
@@ -145,12 +161,57 @@ fmtconst (const_forms_t cf, TIword x, bfd_vma pc, disassemble_info * outf)
   if (constant_formats[cf].scale)
     x <<= constant_formats[cf].scale;
 
-  if (constant_formats[cf].issigned && x < 0)
-    sprintf (buf, "%ld", x);
+  if (constant_formats[cf].decimal)
+    {
+      if (constant_formats[cf].leading)
+	{
+	  char ps[10];
+	  sprintf (ps, "%%%ii", constant_formats[cf].leading);
+	  sprintf (buf, ps, x);
+	}
+      else
+	sprintf (buf, "%li", x);
+    }
   else
-    sprintf (buf, "0x%lx", x);
+    {
+      if (constant_formats[cf].issigned && x < 0)
+	sprintf (buf, "-0x%x", abs (x));
+      else
+	sprintf (buf, "0x%lx", (unsigned long) x);
+    }
 
   return buf;
+}
+
+static bu32
+fmtconst_val (const_forms_t cf, unsigned int x, unsigned int pc)
+{
+  if (0 && constant_formats[cf].reloc)
+    {
+      bu32 ea = (((constant_formats[cf].pcrel
+		   ? SIGNEXTEND (x, constant_formats[cf].nbits)
+		   : x) + constant_formats[cf].offset)
+		 << constant_formats[cf].scale);
+      if (constant_formats[cf].pcrel)
+	ea += pc;
+
+      return ea;
+    }
+
+  /* Negative constants have an implied sign bit.  */
+  if (constant_formats[cf].negative)
+    {
+      int nb = constant_formats[cf].nbits + 1;
+      x = x | (1 << constant_formats[cf].nbits);
+      x = SIGNEXTEND (x, nb);
+    }
+  else if (constant_formats[cf].issigned)
+    x = SIGNEXTEND (x, constant_formats[cf].nbits);
+
+  x += constant_formats[cf].offset;
+  x <<= constant_formats[cf].scale;
+
+  return x;
 }
 
 enum machine_registers
@@ -166,7 +227,7 @@ enum machine_registers
   REG_AZ, REG_AN, REG_AC0, REG_AC1, REG_AV0, REG_AV1, REG_AV0S, REG_AV1S,
   REG_AQ, REG_V, REG_VS,
   REG_sftreset, REG_omode, REG_excause, REG_emucause, REG_idle_req, REG_hwerrcause, REG_CC, REG_LC0,
-  REG_LC1, REG_GP, REG_ASTAT, REG_RETS, REG_LT0, REG_LB0, REG_LT1, REG_LB1,
+  REG_LC1, REG_ASTAT, REG_RETS, REG_LT0, REG_LB0, REG_LT1, REG_LB1,
   REG_CYCLES, REG_CYCLES2, REG_USP, REG_SEQSTAT, REG_SYSCFG, REG_RETI, REG_RETX, REG_RETN,
   REG_RETE, REG_EMUDAT, REG_BR0, REG_BR1, REG_BR2, REG_BR3, REG_BR4, REG_BR5, REG_BR6,
   REG_BR7, REG_PL0, REG_PL1, REG_PL2, REG_PL3, REG_PL4, REG_PL5, REG_SLP, REG_FLP,
@@ -175,6 +236,7 @@ enum machine_registers
   REG_BL0, REG_BL1, REG_BL2, REG_BL3, REG_LL0, REG_LL1, REG_LL2, REG_LL3,
   REG_IH0, REG_IH1, REG_IH2, REG_IH3, REG_MH0, REG_MH1, REG_MH2, REG_MH3,
   REG_BH0, REG_BH1, REG_BH2, REG_BH3, REG_LH0, REG_LH1, REG_LH2, REG_LH3,
+  REG_AC0_COPY, REG_V_COPY, REG_RND_MOD,
   REG_LASTREG,
 };
 
@@ -187,20 +249,20 @@ enum reg_class
   LIM_REG_CLASSES
 };
 
-static char *reg_names[] =
+static const char * const reg_names[] =
 {
   "R0.L", "R1.L", "R2.L", "R3.L", "R4.L", "R5.L", "R6.L", "R7.L",
   "R0.H", "R1.H", "R2.H", "R3.H", "R4.H", "R5.H", "R6.H", "R7.H",
   "R0", "R1", "R2", "R3", "R4", "R5", "R6", "R7",
   "R1:0", "R3:2", "R5:4", "R7:6", "P0", "P1", "P2", "P3",
-  "P4", "P5", "SP", "FP", "A0.x", "A1.x", "A0.w", "A1.w",
+  "P4", "P5", "SP", "FP", "A0.X", "A1.X", "A0.W", "A1.W",
   "A0", "A1", "I0", "I1", "I2", "I3", "M0", "M1",
   "M2", "M3", "B0", "B1", "B2", "B3", "L0", "L1",
   "L2", "L3",
   "AZ", "AN", "AC0", "AC1", "AV0", "AV1", "AV0S", "AV1S",
   "AQ", "V", "VS",
   "sftreset", "omode", "excause", "emucause", "idle_req", "hwerrcause", "CC", "LC0",
-  "LC1", "GP", "ASTAT", "RETS", "LT0", "LB0", "LT1", "LB1",
+  "LC1", "ASTAT", "RETS", "LT0", "LB0", "LT1", "LB1",
   "CYCLES", "CYCLES2", "USP", "SEQSTAT", "SYSCFG", "RETI", "RETX", "RETN",
   "RETE", "EMUDAT",
   "R0.B", "R1.B", "R2.B", "R3.B", "R4.B", "R5.B", "R6.B", "R7.B",
@@ -210,6 +272,7 @@ static char *reg_names[] =
   "B0.L", "B1.L", "B2.L", "B3.L", "L0.L", "L1.L", "L2.L", "L3.L",
   "I0.H", "I1.H", "I2.H", "I3.H", "M0.H", "M1.H", "M2.H", "M3.H",
   "B0.H", "B1.H", "B2.H", "B3.H", "L0.H", "L1.H", "L2.H", "L3.H",
+  "AC0_COPY", "V_COPY", "RND_MOD",
   "LASTREG",
   0
 };
@@ -217,7 +280,7 @@ static char *reg_names[] =
 #define REGNAME(x) ((x) < REG_LASTREG ? (reg_names[x]) : "...... Illegal register .......")
 
 /* RL(0..7).  */
-static enum machine_registers decode_dregs_lo[] =
+static const enum machine_registers decode_dregs_lo[] =
 {
   REG_RL0, REG_RL1, REG_RL2, REG_RL3, REG_RL4, REG_RL5, REG_RL6, REG_RL7,
 };
@@ -225,7 +288,7 @@ static enum machine_registers decode_dregs_lo[] =
 #define dregs_lo(x) REGNAME (decode_dregs_lo[(x) & 7])
 
 /* RH(0..7).  */
-static enum machine_registers decode_dregs_hi[] =
+static const enum machine_registers decode_dregs_hi[] =
 {
   REG_RH0, REG_RH1, REG_RH2, REG_RH3, REG_RH4, REG_RH5, REG_RH6, REG_RH7,
 };
@@ -233,7 +296,7 @@ static enum machine_registers decode_dregs_hi[] =
 #define dregs_hi(x) REGNAME (decode_dregs_hi[(x) & 7])
 
 /* R(0..7).  */
-static enum machine_registers decode_dregs[] =
+static const enum machine_registers decode_dregs[] =
 {
   REG_R0, REG_R1, REG_R2, REG_R3, REG_R4, REG_R5, REG_R6, REG_R7,
 };
@@ -241,29 +304,28 @@ static enum machine_registers decode_dregs[] =
 #define dregs(x) REGNAME (decode_dregs[(x) & 7])
 
 /* R BYTE(0..7).  */
-static enum machine_registers decode_dregs_byte[] =
+static const enum machine_registers decode_dregs_byte[] =
 {
   REG_BR0, REG_BR1, REG_BR2, REG_BR3, REG_BR4, REG_BR5, REG_BR6, REG_BR7,
 };
 
 #define dregs_byte(x) REGNAME (decode_dregs_byte[(x) & 7])
-#define dregs_pair(x) REGNAME (decode_dregs_pair[(x) & 7])
 
 /* P(0..5) SP FP.  */
-static enum machine_registers decode_pregs[] =
+static const enum machine_registers decode_pregs[] =
 {
   REG_P0, REG_P1, REG_P2, REG_P3, REG_P4, REG_P5, REG_SP, REG_FP,
 };
 
 #define pregs(x)	REGNAME (decode_pregs[(x) & 7])
 #define spfp(x)		REGNAME (decode_spfp[(x) & 1])
-#define dregs_hilo(x,i)	REGNAME (decode_dregs_hilo[((i) << 3)|x])
+#define dregs_hilo(x, i)	REGNAME (decode_dregs_hilo[((i) << 3) | (x)])
 #define accum_ext(x)	REGNAME (decode_accum_ext[(x) & 1])
 #define accum_word(x)	REGNAME (decode_accum_word[(x) & 1])
 #define accum(x)	REGNAME (decode_accum[(x) & 1])
 
 /* I(0..3).  */
-static enum machine_registers decode_iregs[] =
+static const enum machine_registers decode_iregs[] =
 {
   REG_I0, REG_I1, REG_I2, REG_I3,
 };
@@ -271,7 +333,7 @@ static enum machine_registers decode_iregs[] =
 #define iregs(x) REGNAME (decode_iregs[(x) & 3])
 
 /* M(0..3).  */
-static enum machine_registers decode_mregs[] =
+static const enum machine_registers decode_mregs[] =
 {
   REG_M0, REG_M1, REG_M2, REG_M3,
 };
@@ -281,7 +343,7 @@ static enum machine_registers decode_mregs[] =
 #define lregs(x) REGNAME (decode_lregs[(x) & 3])
 
 /* dregs pregs.  */
-static enum machine_registers decode_dpregs[] =
+static const enum machine_registers decode_dpregs[] =
 {
   REG_R0, REG_R1, REG_R2, REG_R3, REG_R4, REG_R5, REG_R6, REG_R7,
   REG_P0, REG_P1, REG_P2, REG_P3, REG_P4, REG_P5, REG_SP, REG_FP,
@@ -290,16 +352,16 @@ static enum machine_registers decode_dpregs[] =
 #define dpregs(x) REGNAME (decode_dpregs[(x) & 15])
 
 /* [dregs pregs].  */
-static enum machine_registers decode_gregs[] =
+static const enum machine_registers decode_gregs[] =
 {
   REG_R0, REG_R1, REG_R2, REG_R3, REG_R4, REG_R5, REG_R6, REG_R7,
   REG_P0, REG_P1, REG_P2, REG_P3, REG_P4, REG_P5, REG_SP, REG_FP,
 };
 
-#define gregs(x,i) REGNAME (decode_gregs[((i) << 3)|x])
+#define gregs(x, i) REGNAME (decode_gregs[((i) << 3) | (x)])
 
 /* [dregs pregs (iregs mregs) (bregs lregs)].  */
-static enum machine_registers decode_regs[] =
+static const enum machine_registers decode_regs[] =
 {
   REG_R0, REG_R1, REG_R2, REG_R3, REG_R4, REG_R5, REG_R6, REG_R7,
   REG_P0, REG_P1, REG_P2, REG_P3, REG_P4, REG_P5, REG_SP, REG_FP,
@@ -307,10 +369,10 @@ static enum machine_registers decode_regs[] =
   REG_B0, REG_B1, REG_B2, REG_B3, REG_L0, REG_L1, REG_L2, REG_L3,
 };
 
-#define regs(x,i) REGNAME (decode_regs[((i) << 3)|x])
+#define regs(x, i) REGNAME (decode_regs[((i) << 3) | (x)])
 
 /* [dregs pregs (iregs mregs) (bregs lregs) Low Half].  */
-static enum machine_registers decode_regs_lo[] =
+static const enum machine_registers decode_regs_lo[] =
 {
   REG_RL0, REG_RL1, REG_RL2, REG_RL3, REG_RL4, REG_RL5, REG_RL6, REG_RL7,
   REG_PL0, REG_PL1, REG_PL2, REG_PL3, REG_PL4, REG_PL5, REG_SLP, REG_FLP,
@@ -318,32 +380,35 @@ static enum machine_registers decode_regs_lo[] =
   REG_BL0, REG_BL1, REG_BL2, REG_BL3, REG_LL0, REG_LL1, REG_LL2, REG_LL3,
 };
 
-#define regs_lo(x,i) REGNAME (decode_regs_lo[((i) << 3)|x])
+#define regs_lo(x, i) REGNAME (decode_regs_lo[((i) << 3) | (x)])
+
 /* [dregs pregs (iregs mregs) (bregs lregs) High Half].  */
-static enum machine_registers decode_regs_hi[] =
+static const enum machine_registers decode_regs_hi[] =
 {
   REG_RH0, REG_RH1, REG_RH2, REG_RH3, REG_RH4, REG_RH5, REG_RH6, REG_RH7,
   REG_PH0, REG_PH1, REG_PH2, REG_PH3, REG_PH4, REG_PH5, REG_SHP, REG_FHP,
-  REG_IH0, REG_IH1, REG_IH2, REG_IH3, REG_MH0, REG_MH1, REG_LH2, REG_MH3,
+  REG_IH0, REG_IH1, REG_IH2, REG_IH3, REG_MH0, REG_MH1, REG_MH2, REG_MH3,
   REG_BH0, REG_BH1, REG_BH2, REG_BH3, REG_LH0, REG_LH1, REG_LH2, REG_LH3,
 };
 
-#define regs_hi(x,i) REGNAME (decode_regs_hi[((i) << 3)|x])
+#define regs_hi(x, i) REGNAME (decode_regs_hi[((i) << 3) | (x)])
 
-static enum machine_registers decode_statbits[] =
+static const enum machine_registers decode_statbits[] =
 {
-  REG_AZ, REG_AN, REG_LASTREG, REG_LASTREG, REG_LASTREG, REG_LASTREG, REG_AQ, REG_LASTREG,
-  REG_LASTREG, REG_LASTREG, REG_LASTREG, REG_LASTREG, REG_AC0, REG_AC1, REG_LASTREG, REG_LASTREG,
-  REG_AV0, REG_AV0S, REG_AV1, REG_AV1S, REG_LASTREG, REG_LASTREG, REG_LASTREG, REG_LASTREG,
-  REG_V, REG_VS, REG_LASTREG, REG_LASTREG, REG_LASTREG, REG_LASTREG, REG_LASTREG, REG_LASTREG,
+  REG_AZ,        REG_AN,        REG_AC0_COPY,    REG_V_COPY,
+  REG_LASTREG,   REG_LASTREG,   REG_AQ,          REG_LASTREG,
+  REG_RND_MOD,   REG_LASTREG,   REG_LASTREG,     REG_LASTREG,
+  REG_AC0,       REG_AC1,       REG_LASTREG,     REG_LASTREG,
+  REG_AV0,       REG_AV0S,      REG_AV1,         REG_AV1S,
+  REG_LASTREG,   REG_LASTREG,   REG_LASTREG,     REG_LASTREG,
+  REG_V,         REG_VS,        REG_LASTREG,     REG_LASTREG,
+  REG_LASTREG,   REG_LASTREG,   REG_LASTREG,     REG_LASTREG,
 };
 
-#define statbits(x)	REGNAME (decode_statbits[(x) & 31])
-#define ignore_bits(x)	REGNAME (decode_ignore_bits[(x) & 7])
-#define ccstat(x)	REGNAME (decode_ccstat[(x) & 0])
+#define statbits(x) REGNAME (decode_statbits[(x) & 31])
 
 /* LC0 LC1.  */
-static enum machine_registers decode_counters[] =
+static const enum machine_registers decode_counters[] =
 {
   REG_LC0, REG_LC1,
 };
@@ -353,20 +418,35 @@ static enum machine_registers decode_counters[] =
 
 /* [dregs pregs (iregs mregs) (bregs lregs)
    dregs2_sysregs1 open sysregs2 sysregs3].  */
-static enum machine_registers decode_allregs[] =
+static const enum machine_registers decode_allregs[] =
 {
   REG_R0, REG_R1, REG_R2, REG_R3, REG_R4, REG_R5, REG_R6, REG_R7,
   REG_P0, REG_P1, REG_P2, REG_P3, REG_P4, REG_P5, REG_SP, REG_FP,
   REG_I0, REG_I1, REG_I2, REG_I3, REG_M0, REG_M1, REG_M2, REG_M3,
   REG_B0, REG_B1, REG_B2, REG_B3, REG_L0, REG_L1, REG_L2, REG_L3,
-  REG_A0x, REG_A0w, REG_A1x, REG_A1w, REG_GP, REG_LASTREG, REG_ASTAT, REG_RETS,
+  REG_A0x, REG_A0w, REG_A1x, REG_A1w, REG_LASTREG, REG_LASTREG, REG_ASTAT, REG_RETS,
   REG_LASTREG, REG_LASTREG, REG_LASTREG, REG_LASTREG, REG_LASTREG, REG_LASTREG, REG_LASTREG, REG_LASTREG,
   REG_LC0, REG_LT0, REG_LB0, REG_LC1, REG_LT1, REG_LB1, REG_CYCLES, REG_CYCLES2,
-  REG_USP, REG_SEQSTAT, REG_SYSCFG, REG_RETI, REG_RETX, REG_RETN, REG_RETE, REG_EMUDAT, REG_LASTREG,
+  REG_USP, REG_SEQSTAT, REG_SYSCFG, REG_RETI, REG_RETX, REG_RETN, REG_RETE, REG_EMUDAT,
+  REG_LASTREG,
 };
 
-#define allregs(x,i)	REGNAME (decode_allregs[((i) << 3) | x])
+#define IS_DREG(g,r)	((g) == 0 && (r) < 8)
+#define IS_PREG(g,r)	((g) == 1 && (r) < 8)
+#define IS_AREG(g,r)	((g) == 4 && (r) >= 0 && (r) < 4)
+#define IS_GENREG(g,r)	((((g) == 0 || (g) == 1) && (r) < 8) || IS_AREG (g, r))
+#define IS_DAGREG(g,r)	(((g) == 2 || (g) == 3) && (r) < 8)
+#define IS_SYSREG(g,r) \
+  (((g) == 4 && ((r) == 6 || (r) == 7)) || (g) == 6 || (g) == 7)
+#define IS_RESERVEDREG(g,r) \
+  (((r) > 7) || ((g) == 4 && ((r) == 4 || (r) == 5)) || (g) == 5)
+
+#define allreg(r,g)	(!IS_RESERVEDREG (g, r))
+#define mostreg(r,g)	(!(IS_DREG (g, r) || IS_PREG (g, r) || IS_RESERVEDREG (g, r)))
+
+#define allregs(x, i)	REGNAME (decode_allregs[((i) << 3) | (x)])
 #define uimm16s4(x)	fmtconst (c_uimm16s4, x, 0, outf)
+#define uimm16s4d(x)	fmtconst (c_uimm16s4d, x, 0, outf)
 #define pcrel4(x)	fmtconst (c_pcrel4, x, pc, outf)
 #define pcrel8(x)	fmtconst (c_pcrel8, x, pc, outf)
 #define pcrel8s4(x)	fmtconst (c_pcrel8s4, x, pc, outf)
@@ -376,6 +456,7 @@ static enum machine_registers decode_allregs[] =
 #define rimm16(x)	fmtconst (c_rimm16, x, 0, outf)
 #define huimm16(x)	fmtconst (c_huimm16, x, 0, outf)
 #define imm16(x)	fmtconst (c_imm16, x, 0, outf)
+#define imm16d(x)	fmtconst (c_imm16d, x, 0, outf)
 #define uimm2(x)	fmtconst (c_uimm2, x, 0, outf)
 #define uimm3(x)	fmtconst (c_uimm3, x, 0, outf)
 #define luimm16(x)	fmtconst (c_luimm16, x, 0, outf)
@@ -386,67 +467,77 @@ static enum machine_registers decode_allregs[] =
 #define imm16s4(x)	fmtconst (c_imm16s4, x, 0, outf)
 #define uimm4s2(x)	fmtconst (c_uimm4s2, x, 0, outf)
 #define uimm4s4(x)	fmtconst (c_uimm4s4, x, 0, outf)
+#define uimm4s4d(x)	fmtconst (c_uimm4s4d, x, 0, outf)
 #define lppcrel10(x)	fmtconst (c_lppcrel10, x, pc, outf)
 #define imm3(x)		fmtconst (c_imm3, x, 0, outf)
 #define imm4(x)		fmtconst (c_imm4, x, 0, outf)
 #define uimm8s4(x)	fmtconst (c_uimm8s4, x, 0, outf)
 #define imm5(x)		fmtconst (c_imm5, x, 0, outf)
+#define imm5d(x)	fmtconst (c_imm5d, x, 0, outf)
 #define imm6(x)		fmtconst (c_imm6, x, 0, outf)
 #define imm7(x)		fmtconst (c_imm7, x, 0, outf)
+#define imm7d(x)	fmtconst (c_imm7d, x, 0, outf)
 #define imm8(x)		fmtconst (c_imm8, x, 0, outf)
 #define pcrel24(x)	fmtconst (c_pcrel24, x, pc, outf)
 #define uimm16(x)	fmtconst (c_uimm16, x, 0, outf)
+#define uimm32(x)	fmtconst (c_uimm32, x, 0, outf)
+#define imm32(x)	fmtconst (c_imm32, x, 0, outf)
+#define huimm32(x)	fmtconst (c_huimm32, x, 0, outf)
+#define huimm32e(x)	fmtconst (c_huimm32e, x, 0, outf)
+#define imm7_val(x)	fmtconst_val (c_imm7, x, 0)
+#define imm16_val(x)	fmtconst_val (c_uimm16, x, 0)
+#define luimm16_val(x)	fmtconst_val (c_luimm16, x, 0)
 
 /* (arch.pm)arch_disassembler_functions.  */
 #ifndef OUTS
-#define OUTS(p, txt) ((p) ? (((txt)[0]) ? (p->fprintf_func)(p->stream, txt) :0) :0)
+#define OUTS(p, txt) (p)->fprintf_func ((p)->stream, "%s", txt)
 #endif
 
 static void
 amod0 (int s0, int x0, disassemble_info *outf)
 {
   if (s0 == 1 && x0 == 0)
-    OUTS (outf, "(S)");
+    OUTS (outf, " (S)");
   else if (s0 == 0 && x0 == 1)
-    OUTS (outf, "(CO)");
+    OUTS (outf, " (CO)");
   else if (s0 == 1 && x0 == 1)
-    OUTS (outf, "(SCO)");
+    OUTS (outf, " (SCO)");
 }
 
 static void
 amod1 (int s0, int x0, disassemble_info *outf)
 {
   if (s0 == 0 && x0 == 0)
-    OUTS (outf, "(NS)");
+    OUTS (outf, " (NS)");
   else if (s0 == 1 && x0 == 0)
-    OUTS (outf, "(S)");
+    OUTS (outf, " (S)");
 }
 
 static void
 amod0amod2 (int s0, int x0, int aop0, disassemble_info *outf)
 {
   if (s0 == 1 && x0 == 0 && aop0 == 0)
-    OUTS (outf, "(S)");
+    OUTS (outf, " (S)");
   else if (s0 == 0 && x0 == 1 && aop0 == 0)
-    OUTS (outf, "(CO)");
+    OUTS (outf, " (CO)");
   else if (s0 == 1 && x0 == 1 && aop0 == 0)
-    OUTS (outf, "(SCO)");
+    OUTS (outf, " (SCO)");
   else if (s0 == 0 && x0 == 0 && aop0 == 2)
-    OUTS (outf, "(ASR)");
+    OUTS (outf, " (ASR)");
   else if (s0 == 1 && x0 == 0 && aop0 == 2)
-    OUTS (outf, "(S,ASR)");
+    OUTS (outf, " (S, ASR)");
   else if (s0 == 0 && x0 == 1 && aop0 == 2)
-    OUTS (outf, "(CO,ASR)");
+    OUTS (outf, " (CO, ASR)");
   else if (s0 == 1 && x0 == 1 && aop0 == 2)
-    OUTS (outf, "(SCO,ASR)");
+    OUTS (outf, " (SCO, ASR)");
   else if (s0 == 0 && x0 == 0 && aop0 == 3)
-    OUTS (outf, "(ASL)");
+    OUTS (outf, " (ASL)");
   else if (s0 == 1 && x0 == 0 && aop0 == 3)
-    OUTS (outf, "(S,ASL)");
+    OUTS (outf, " (S, ASL)");
   else if (s0 == 0 && x0 == 1 && aop0 == 3)
-    OUTS (outf, "(CO,ASL)");
+    OUTS (outf, " (CO, ASL)");
   else if (s0 == 1 && x0 == 1 && aop0 == 3)
-    OUTS (outf, "(SCO,ASL)");
+    OUTS (outf, " (SCO, ASL)");
 }
 
 static void
@@ -466,13 +557,13 @@ static void
 aligndir (int r0, disassemble_info *outf)
 {
   if (r0 == 1)
-    OUTS (outf, "(R)");
+    OUTS (outf, " (R)");
 }
 
 static int
-decode_multfunc (int h0, int h1, int src0, int src1, disassemble_info * outf)
+decode_multfunc (int h0, int h1, int src0, int src1, disassemble_info *outf)
 {
-  char *s0, *s1;
+  const char *s0, *s1;
 
   if (h0)
     s0 = dregs_hi (src0);
@@ -491,15 +582,15 @@ decode_multfunc (int h0, int h1, int src0, int src1, disassemble_info * outf)
 }
 
 static int
-decode_macfunc (int which, int op, int h0, int h1, int src0, int src1, disassemble_info * outf)
+decode_macfunc (int which, int op, int h0, int h1, int src0, int src1, disassemble_info *outf)
 {
-  char *a;
-  char *sop = "<unknown op>";
+  const char *a;
+  const char *sop = "<unknown op>";
 
   if (which)
-    a = "a1";
+    a = "A1";
   else
-    a = "a0";
+    a = "A0";
 
   if (op == 3)
     {
@@ -509,16 +600,14 @@ decode_macfunc (int which, int op, int h0, int h1, int src0, int src1, disassemb
 
   switch (op)
     {
-    case 0: sop = "=";   break;
-    case 1: sop = "+=";  break;
-    case 2: sop = "-=";  break;
+    case 0: sop = " = ";   break;
+    case 1: sop = " += ";  break;
+    case 2: sop = " -= ";  break;
     default: break;
     }
 
   OUTS (outf, a);
-  OUTS (outf, " ");
   OUTS (outf, sop);
-  OUTS (outf, " ");
   decode_multfunc (h0, h1, src0, src1, outf);
 
   return 0;
@@ -565,6 +654,73 @@ decode_optmode (int mod, int MM, disassemble_info *outf)
   OUTS (outf, ")");
 }
 
+static struct saved_state
+{
+  bu32 dpregs[16], iregs[4], mregs[4], bregs[4], lregs[4];
+  bu32 ax[2], aw[2];
+  bu32 lt[2], lc[2], lb[2];
+  bu32 rets;
+} saved_state;
+
+#define DREG(x)         (saved_state.dpregs[x])
+#define GREG(x, i)      DPREG ((x) | ((i) << 3))
+#define DPREG(x)        (saved_state.dpregs[x])
+#define DREG(x)         (saved_state.dpregs[x])
+#define PREG(x)         (saved_state.dpregs[(x) + 8])
+#define SPREG           PREG (6)
+#define FPREG           PREG (7)
+#define IREG(x)         (saved_state.iregs[x])
+#define MREG(x)         (saved_state.mregs[x])
+#define BREG(x)         (saved_state.bregs[x])
+#define LREG(x)         (saved_state.lregs[x])
+#define AXREG(x)        (saved_state.ax[x])
+#define AWREG(x)        (saved_state.aw[x])
+#define LCREG(x)        (saved_state.lc[x])
+#define LTREG(x)        (saved_state.lt[x])
+#define LBREG(x)        (saved_state.lb[x])
+#define RETSREG         (saved_state.rets)
+
+static bu32 *
+get_allreg (int grp, int reg)
+{
+  int fullreg = (grp << 3) | reg;
+  /* REG_R0, REG_R1, REG_R2, REG_R3, REG_R4, REG_R5, REG_R6, REG_R7,
+     REG_P0, REG_P1, REG_P2, REG_P3, REG_P4, REG_P5, REG_SP, REG_FP,
+     REG_I0, REG_I1, REG_I2, REG_I3, REG_M0, REG_M1, REG_M2, REG_M3,
+     REG_B0, REG_B1, REG_B2, REG_B3, REG_L0, REG_L1, REG_L2, REG_L3,
+     REG_A0x, REG_A0w, REG_A1x, REG_A1w, , , REG_ASTAT, REG_RETS,
+     , , , , , , , ,
+     REG_LC0, REG_LT0, REG_LB0, REG_LC1, REG_LT1, REG_LB1, REG_CYCLES,
+     REG_CYCLES2,
+     REG_USP, REG_SEQSTAT, REG_SYSCFG, REG_RETI, REG_RETX, REG_RETN, REG_RETE,
+     REG_LASTREG */
+  switch (fullreg >> 2)
+    {
+    case 0: case 1: return &DREG (reg);
+    case 2: case 3: return &PREG (reg);
+    case 4: return &IREG (reg & 3);
+    case 5: return &MREG (reg & 3);
+    case 6: return &BREG (reg & 3);
+    case 7: return &LREG (reg & 3);
+    default:
+      switch (fullreg)
+	{
+	case 32: return &AXREG (0);
+	case 33: return &AWREG (0);
+	case 34: return &AXREG (1);
+	case 35: return &AWREG (1);
+	case 39: return &RETSREG;
+	case 48: return &LCREG (0);
+	case 49: return &LTREG (0);
+	case 50: return &LBREG (0);
+	case 51: return &LCREG (1);
+	case 52: return &LTREG (1);
+	case 53: return &LBREG (1);
+	}
+    }
+  abort ();
+}
+
 static int
 decode_ProgCtrl_0 (TIword iw0, disassemble_info *outf)
 {
@@ -577,6 +733,8 @@ decode_ProgCtrl_0 (TIword iw0, disassemble_info *outf)
 
   if (prgfunc == 0 && poprnd == 0)
     OUTS (outf, "NOP");
+  else if (parallel)
+    return 0;
   else if (prgfunc == 1 && poprnd == 0)
     OUTS (outf, "RTS");
   else if (prgfunc == 1 && poprnd == 1)
@@ -595,53 +753,53 @@ decode_ProgCtrl_0 (TIword iw0, disassemble_info *outf)
     OUTS (outf, "SSYNC");
   else if (prgfunc == 2 && poprnd == 5)
     OUTS (outf, "EMUEXCPT");
-  else if (prgfunc == 3)
+  else if (prgfunc == 3 && IS_DREG (0, poprnd))
     {
-      OUTS (outf, "CLI  ");
+      OUTS (outf, "CLI ");
       OUTS (outf, dregs (poprnd));
     }
-  else if (prgfunc == 4)
+  else if (prgfunc == 4 && IS_DREG (0, poprnd))
     {
-      OUTS (outf, "STI  ");
+      OUTS (outf, "STI ");
       OUTS (outf, dregs (poprnd));
     }
-  else if (prgfunc == 5)
+  else if (prgfunc == 5 && IS_PREG (1, poprnd))
     {
-      OUTS (outf, "JUMP  (");
+      OUTS (outf, "JUMP (");
       OUTS (outf, pregs (poprnd));
       OUTS (outf, ")");
     }
-  else if (prgfunc == 6)
+  else if (prgfunc == 6 && IS_PREG (1, poprnd))
     {
-      OUTS (outf, "CALL  (");
+      OUTS (outf, "CALL (");
       OUTS (outf, pregs (poprnd));
       OUTS (outf, ")");
     }
-  else if (prgfunc == 7)
+  else if (prgfunc == 7 && IS_PREG (1, poprnd))
     {
-      OUTS (outf, "CALL  (PC+");
+      OUTS (outf, "CALL (PC + ");
       OUTS (outf, pregs (poprnd));
       OUTS (outf, ")");
     }
-  else if (prgfunc == 8)
+  else if (prgfunc == 8 && IS_PREG (1, poprnd))
     {
-      OUTS (outf, "JUMP  (PC+");
+      OUTS (outf, "JUMP (PC + ");
       OUTS (outf, pregs (poprnd));
       OUTS (outf, ")");
     }
   else if (prgfunc == 9)
     {
-      OUTS (outf, "RAISE  ");
+      OUTS (outf, "RAISE ");
       OUTS (outf, uimm4 (poprnd));
     }
   else if (prgfunc == 10)
     {
-      OUTS (outf, "EXCPT  ");
+      OUTS (outf, "EXCPT ");
       OUTS (outf, uimm4 (poprnd));
     }
-  else if (prgfunc == 11)
+  else if (prgfunc == 11 && IS_PREG (1, poprnd) && poprnd <= 5)
     {
-      OUTS (outf, "TESTSET  (");
+      OUTS (outf, "TESTSET (");
       OUTS (outf, pregs (poprnd));
       OUTS (outf, ")");
     }
@@ -660,6 +818,9 @@ decode_CaCTRL_0 (TIword iw0, disassemble_info *outf)
   int a   = ((iw0 >> CaCTRL_a_bits) & CaCTRL_a_mask);
   int op  = ((iw0 >> CaCTRL_op_bits) & CaCTRL_op_mask);
   int reg = ((iw0 >> CaCTRL_reg_bits) & CaCTRL_reg_mask);
+
+  if (parallel)
+    return 0;
 
   if (a == 0 && op == 0)
     {
@@ -725,12 +886,15 @@ decode_PushPopReg_0 (TIword iw0, disassemble_info *outf)
   int grp = ((iw0 >> PushPopReg_grp_bits) & PushPopReg_grp_mask);
   int reg = ((iw0 >> PushPopReg_reg_bits) & PushPopReg_reg_mask);
 
-  if (W == 0)
+  if (parallel)
+    return 0;
+
+  if (W == 0 && mostreg (reg, grp))
     {
       OUTS (outf, allregs (reg, grp));
       OUTS (outf, " = [SP++]");
     }
-  else if (W == 1)
+  else if (W == 1 && allreg (reg, grp) && !(grp == 1 && reg == 6))
     {
       OUTS (outf, "[--SP] = ");
       OUTS (outf, allregs (reg, grp));
@@ -752,49 +916,51 @@ decode_PushPopMultiple_0 (TIword iw0, disassemble_info *outf)
   int W  = ((iw0 >> PushPopMultiple_W_bits) & PushPopMultiple_W_mask);
   int dr = ((iw0 >> PushPopMultiple_dr_bits) & PushPopMultiple_dr_mask);
   int pr = ((iw0 >> PushPopMultiple_pr_bits) & PushPopMultiple_pr_mask);
-  char ps[5], ds[5];
 
-  sprintf (ps, "%d", pr);
-  sprintf (ds, "%d", dr);
+  if (parallel)
+    return 0;
+
+  if (pr > 5)
+    return 0;
 
   if (W == 1 && d == 1 && p == 1)
     {
       OUTS (outf, "[--SP] = (R7:");
-      OUTS (outf, ds);
+      OUTS (outf, imm5d (dr));
       OUTS (outf, ", P5:");
-      OUTS (outf, ps);
+      OUTS (outf, imm5d (pr));
       OUTS (outf, ")");
     }
-  else if (W == 1 && d == 1 && p == 0)
+  else if (W == 1 && d == 1 && p == 0 && pr == 0)
     {
       OUTS (outf, "[--SP] = (R7:");
-      OUTS (outf, ds);
+      OUTS (outf, imm5d (dr));
       OUTS (outf, ")");
     }
-  else if (W == 1 && d == 0 && p == 1)
+  else if (W == 1 && d == 0 && p == 1 && dr == 0)
     {
       OUTS (outf, "[--SP] = (P5:");
-      OUTS (outf, ps);
+      OUTS (outf, imm5d (pr));
       OUTS (outf, ")");
     }
   else if (W == 0 && d == 1 && p == 1)
     {
       OUTS (outf, "(R7:");
-      OUTS (outf, ds);
+      OUTS (outf, imm5d (dr));
       OUTS (outf, ", P5:");
-      OUTS (outf, ps);
+      OUTS (outf, imm5d (pr));
       OUTS (outf, ") = [SP++]");
     }
-  else if (W == 0 && d == 1 && p == 0)
+  else if (W == 0 && d == 1 && p == 0 && pr == 0)
     {
       OUTS (outf, "(R7:");
-      OUTS (outf, ds);
+      OUTS (outf, imm5d (dr));
       OUTS (outf, ") = [SP++]");
     }
-  else if (W == 0 && d == 0 && p == 1)
+  else if (W == 0 && d == 0 && p == 1 && dr == 0)
     {
       OUTS (outf, "(P5:");
-      OUTS (outf, ps);
+      OUTS (outf, imm5d (pr));
       OUTS (outf, ") = [SP++]");
     }
   else
@@ -815,6 +981,9 @@ decode_ccMV_0 (TIword iw0, disassemble_info *outf)
   int src = ((iw0 >> CCmv_src_bits) & CCmv_src_mask);
   int dst = ((iw0 >> CCmv_dst_bits) & CCmv_dst_mask);
 
+  if (parallel)
+    return 0;
+
   if (T == 1)
     {
       OUTS (outf, "IF CC ");
@@ -824,7 +993,7 @@ decode_ccMV_0 (TIword iw0, disassemble_info *outf)
     }
   else if (T == 0)
     {
-      OUTS (outf, "IF ! CC ");
+      OUTS (outf, "IF !CC ");
       OUTS (outf, gregs (dst, d));
       OUTS (outf, " = ");
       OUTS (outf, gregs (src, s));
@@ -847,162 +1016,165 @@ decode_CCflag_0 (TIword iw0, disassemble_info *outf)
   int G = ((iw0 >> CCflag_G_bits) & CCflag_G_mask);
   int opc = ((iw0 >> CCflag_opc_bits) & CCflag_opc_mask);
 
+  if (parallel)
+    return 0;
+
   if (opc == 0 && I == 0 && G == 0)
     {
-      OUTS (outf, "CC=");
+      OUTS (outf, "CC = ");
       OUTS (outf, dregs (x));
-      OUTS (outf, "==");
+      OUTS (outf, " == ");
       OUTS (outf, dregs (y));
     }
   else if (opc == 1 && I == 0 && G == 0)
     {
-      OUTS (outf, "CC=");
+      OUTS (outf, "CC = ");
       OUTS (outf, dregs (x));
-      OUTS (outf, "<");
+      OUTS (outf, " < ");
       OUTS (outf, dregs (y));
     }
   else if (opc == 2 && I == 0 && G == 0)
     {
-      OUTS (outf, "CC=");
+      OUTS (outf, "CC = ");
       OUTS (outf, dregs (x));
-      OUTS (outf, "<=");
+      OUTS (outf, " <= ");
       OUTS (outf, dregs (y));
     }
   else if (opc == 3 && I == 0 && G == 0)
     {
-      OUTS (outf, "CC=");
+      OUTS (outf, "CC = ");
       OUTS (outf, dregs (x));
-      OUTS (outf, "<");
+      OUTS (outf, " < ");
       OUTS (outf, dregs (y));
-      OUTS (outf, "(IU)");
+      OUTS (outf, " (IU)");
     }
   else if (opc == 4 && I == 0 && G == 0)
     {
-      OUTS (outf, "CC=");
+      OUTS (outf, "CC = ");
       OUTS (outf, dregs (x));
-      OUTS (outf, "<=");
+      OUTS (outf, " <= ");
       OUTS (outf, dregs (y));
-      OUTS (outf, "(IU)");
+      OUTS (outf, " (IU)");
     }
   else if (opc == 0 && I == 1 && G == 0)
     {
-      OUTS (outf, "CC=");
+      OUTS (outf, "CC = ");
       OUTS (outf, dregs (x));
-      OUTS (outf, "==");
+      OUTS (outf, " == ");
       OUTS (outf, imm3 (y));
     }
   else if (opc == 1 && I == 1 && G == 0)
     {
-      OUTS (outf, "CC=");
+      OUTS (outf, "CC = ");
       OUTS (outf, dregs (x));
-      OUTS (outf, "<");
+      OUTS (outf, " < ");
       OUTS (outf, imm3 (y));
     }
   else if (opc == 2 && I == 1 && G == 0)
     {
-      OUTS (outf, "CC=");
+      OUTS (outf, "CC = ");
       OUTS (outf, dregs (x));
-      OUTS (outf, "<=");
+      OUTS (outf, " <= ");
       OUTS (outf, imm3 (y));
     }
   else if (opc == 3 && I == 1 && G == 0)
     {
-      OUTS (outf, "CC=");
+      OUTS (outf, "CC = ");
       OUTS (outf, dregs (x));
-      OUTS (outf, "<");
+      OUTS (outf, " < ");
       OUTS (outf, uimm3 (y));
-      OUTS (outf, "(IU)");
+      OUTS (outf, " (IU)");
     }
   else if (opc == 4 && I == 1 && G == 0)
     {
-      OUTS (outf, "CC=");
+      OUTS (outf, "CC = ");
       OUTS (outf, dregs (x));
-      OUTS (outf, "<=");
+      OUTS (outf, " <= ");
       OUTS (outf, uimm3 (y));
-      OUTS (outf, "(IU)");
+      OUTS (outf, " (IU)");
     }
   else if (opc == 0 && I == 0 && G == 1)
     {
-      OUTS (outf, "CC=");
+      OUTS (outf, "CC = ");
       OUTS (outf, pregs (x));
-      OUTS (outf, "==");
+      OUTS (outf, " == ");
       OUTS (outf, pregs (y));
     }
   else if (opc == 1 && I == 0 && G == 1)
     {
-      OUTS (outf, "CC=");
+      OUTS (outf, "CC = ");
       OUTS (outf, pregs (x));
-      OUTS (outf, "<");
+      OUTS (outf, " < ");
       OUTS (outf, pregs (y));
     }
   else if (opc == 2 && I == 0 && G == 1)
     {
-      OUTS (outf, "CC=");
+      OUTS (outf, "CC = ");
       OUTS (outf, pregs (x));
-      OUTS (outf, "<=");
+      OUTS (outf, " <= ");
       OUTS (outf, pregs (y));
     }
   else if (opc == 3 && I == 0 && G == 1)
     {
-      OUTS (outf, "CC=");
+      OUTS (outf, "CC = ");
       OUTS (outf, pregs (x));
-      OUTS (outf, "<");
+      OUTS (outf, " < ");
       OUTS (outf, pregs (y));
-      OUTS (outf, "(IU)");
+      OUTS (outf, " (IU)");
     }
   else if (opc == 4 && I == 0 && G == 1)
     {
-      OUTS (outf, "CC=");
+      OUTS (outf, "CC = ");
       OUTS (outf, pregs (x));
-      OUTS (outf, "<=");
+      OUTS (outf, " <= ");
       OUTS (outf, pregs (y));
-      OUTS (outf, "(IU)");
+      OUTS (outf, " (IU)");
     }
   else if (opc == 0 && I == 1 && G == 1)
     {
-      OUTS (outf, "CC=");
+      OUTS (outf, "CC = ");
       OUTS (outf, pregs (x));
-      OUTS (outf, "==");
+      OUTS (outf, " == ");
       OUTS (outf, imm3 (y));
     }
   else if (opc == 1 && I == 1 && G == 1)
     {
-      OUTS (outf, "CC=");
+      OUTS (outf, "CC = ");
       OUTS (outf, pregs (x));
-      OUTS (outf, "<");
+      OUTS (outf, " < ");
       OUTS (outf, imm3 (y));
     }
   else if (opc == 2 && I == 1 && G == 1)
     {
-      OUTS (outf, "CC=");
+      OUTS (outf, "CC = ");
       OUTS (outf, pregs (x));
-      OUTS (outf, "<=");
+      OUTS (outf, " <= ");
       OUTS (outf, imm3 (y));
     }
   else if (opc == 3 && I == 1 && G == 1)
     {
-      OUTS (outf, "CC=");
+      OUTS (outf, "CC = ");
       OUTS (outf, pregs (x));
-      OUTS (outf, "<");
+      OUTS (outf, " < ");
       OUTS (outf, uimm3 (y));
-      OUTS (outf, "(IU)");
+      OUTS (outf, " (IU)");
     }
   else if (opc == 4 && I == 1 && G == 1)
     {
-      OUTS (outf, "CC=");
+      OUTS (outf, "CC = ");
       OUTS (outf, pregs (x));
-      OUTS (outf, "<=");
+      OUTS (outf, " <= ");
       OUTS (outf, uimm3 (y));
-      OUTS (outf, "(IU)");
+      OUTS (outf, " (IU)");
     }
-  else if (opc == 5 && I == 0 && G == 0)
-    OUTS (outf, "CC=A0==A1");
+  else if (opc == 5 && I == 0 && G == 0 && x == 0 && y == 0)
+    OUTS (outf, "CC = A0 == A1");
 
-  else if (opc == 6 && I == 0 && G == 0)
-    OUTS (outf, "CC=A0<A1");
+  else if (opc == 6 && I == 0 && G == 0 && x == 0 && y == 0)
+    OUTS (outf, "CC = A0 < A1");
 
-  else if (opc == 7 && I == 0 && G == 0)
-    OUTS (outf, "CC=A0<=A1");
+  else if (opc == 7 && I == 0 && G == 0 && x == 0 && y == 0)
+    OUTS (outf, "CC = A0 <= A1");
 
   else
     return 0;
@@ -1019,18 +1191,21 @@ decode_CC2dreg_0 (TIword iw0, disassemble_info *outf)
   int op  = ((iw0 >> CC2dreg_op_bits) & CC2dreg_op_mask);
   int reg = ((iw0 >> CC2dreg_reg_bits) & CC2dreg_reg_mask);
 
+  if (parallel)
+    return 0;
+
   if (op == 0)
     {
       OUTS (outf, dregs (reg));
-      OUTS (outf, "=CC");
+      OUTS (outf, " = CC");
     }
   else if (op == 1)
     {
-      OUTS (outf, "CC=");
+      OUTS (outf, "CC = ");
       OUTS (outf, dregs (reg));
     }
-  else if (op == 3)
-    OUTS (outf, "CC=!CC");
+  else if (op == 3 && reg == 0)
+    OUTS (outf, "CC = !CC");
   else
     return 0;
 
@@ -1048,45 +1223,63 @@ decode_CC2stat_0 (TIword iw0, disassemble_info *outf)
   int op   = ((iw0 >> CC2stat_op_bits) & CC2stat_op_mask);
   int cbit = ((iw0 >> CC2stat_cbit_bits) & CC2stat_cbit_mask);
 
+  const char *bitname = statbits (cbit);
+
+  if (parallel)
+    return 0;
+
+  if (decode_statbits[cbit] == REG_LASTREG)
+    {
+      /* All ASTAT bits except CC may be operated on in hardware, but may
+         not have a dedicated insn, so still decode "valid" insns.  */
+      static char bitnames[64];
+      if (cbit != 5)
+	sprintf (bitnames, "ASTAT[%i /* unused bit */]", cbit);
+      else
+	return 0;
+
+      bitname = bitnames;
+    }
+
   if (op == 0 && D == 0)
     {
       OUTS (outf, "CC = ");
-      OUTS (outf, statbits (cbit));
+      OUTS (outf, bitname);
     }
   else if (op == 1 && D == 0)
     {
-      OUTS (outf, "CC|=");
-      OUTS (outf, statbits (cbit));
+      OUTS (outf, "CC |= ");
+      OUTS (outf, bitname);
     }
   else if (op == 2 && D == 0)
     {
-      OUTS (outf, "CC&=");
-      OUTS (outf, statbits (cbit));
+      OUTS (outf, "CC &= ");
+      OUTS (outf, bitname);
     }
   else if (op == 3 && D == 0)
     {
-      OUTS (outf, "CC^=");
-      OUTS (outf, statbits (cbit));
+      OUTS (outf, "CC ^= ");
+      OUTS (outf, bitname);
     }
   else if (op == 0 && D == 1)
     {
-      OUTS (outf, statbits (cbit));
-      OUTS (outf, "=CC");
+      OUTS (outf, bitname);
+      OUTS (outf, " = CC");
     }
   else if (op == 1 && D == 1)
     {
-      OUTS (outf, statbits (cbit));
-      OUTS (outf, "|=CC");
+      OUTS (outf, bitname);
+      OUTS (outf, " |= CC");
     }
   else if (op == 2 && D == 1)
     {
-      OUTS (outf, statbits (cbit));
-      OUTS (outf, "&=CC");
+      OUTS (outf, bitname);
+      OUTS (outf, " &= CC");
     }
   else if (op == 3 && D == 1)
     {
-      OUTS (outf, statbits (cbit));
-      OUTS (outf, "^=CC");
+      OUTS (outf, bitname);
+      OUTS (outf, " ^= CC");
     }
   else
     return 0;
@@ -1105,26 +1298,29 @@ decode_BRCC_0 (TIword iw0, bfd_vma pc, disassemble_info *outf)
   int T = ((iw0 >> BRCC_T_bits) & BRCC_T_mask);
   int offset = ((iw0 >> BRCC_offset_bits) & BRCC_offset_mask);
 
+  if (parallel)
+    return 0;
+
   if (T == 1 && B == 1)
     {
-      OUTS (outf, "IF CC JUMP ");
+      OUTS (outf, "IF CC JUMP 0x");
       OUTS (outf, pcrel10 (offset));
-      OUTS (outf, "(BP)");
+      OUTS (outf, " (BP)");
     }
   else if (T == 0 && B == 1)
     {
-      OUTS (outf, "IF ! CC JUMP ");
+      OUTS (outf, "IF !CC JUMP 0x");
       OUTS (outf, pcrel10 (offset));
-      OUTS (outf, "(BP)");
+      OUTS (outf, " (BP)");
     }
   else if (T == 1)
     {
-      OUTS (outf, "IF CC JUMP ");
+      OUTS (outf, "IF CC JUMP 0x");
       OUTS (outf, pcrel10 (offset));
     }
   else if (T == 0)
     {
-      OUTS (outf, "IF ! CC JUMP ");
+      OUTS (outf, "IF !CC JUMP 0x");
       OUTS (outf, pcrel10 (offset));
     }
   else
@@ -1142,7 +1338,10 @@ decode_UJUMP_0 (TIword iw0, bfd_vma pc, disassemble_info *outf)
      +---+---+---+---|---+---+---+---|---+---+---+---|---+---+---+---+  */
   int offset = ((iw0 >> UJump_offset_bits) & UJump_offset_mask);
 
-  OUTS (outf, "JUMP.S  ");
+  if (parallel)
+    return 0;
+
+  OUTS (outf, "JUMP.S 0x");
   OUTS (outf, pcrel12 (offset));
   return 2;
 }
@@ -1159,8 +1358,39 @@ decode_REGMV_0 (TIword iw0, disassemble_info *outf)
   int src = ((iw0 >> RegMv_src_bits) & RegMv_src_mask);
   int dst = ((iw0 >> RegMv_dst_bits) & RegMv_dst_mask);
 
+  /* Reserved slots cannot be a src/dst.  */
+  if (IS_RESERVEDREG (gs, src) || IS_RESERVEDREG (gd, dst))
+    goto invalid_move;
+
+  /* Standard register moves  */
+  if ((gs < 2) ||                               /* Dregs/Pregs as source  */
+      (gd < 2) ||                               /* Dregs/Pregs as dest    */
+      (gs == 4 && src < 4) ||                   /* Accumulators as source */
+      (gd == 4 && dst < 4 && (gs < 4)) ||       /* Accumulators as dest   */
+      (gs == 7 && src == 7 && !(gd == 4 && dst < 4)) || /* EMUDAT as src  */
+      (gd == 7 && dst == 7))                    /* EMUDAT as dest         */
+    goto valid_move;
+
+  /* dareg = dareg (IMBL) */
+  if (gs < 4 && gd < 4)
+    goto valid_move;
+
+  /* USP can be src to sysregs, but not dagregs.  */
+  if ((gs == 7 && src == 0) && (gd >= 4))
+    goto valid_move;
+
+  /* USP can move between genregs (only check Accumulators).  */
+  if (((gs == 7 && src == 0) && (gd == 4 && dst < 4)) ||
+      ((gd == 7 && dst == 0) && (gs == 4 && src < 4)))
+    goto valid_move;
+
+  /* Still here ?  Invalid reg pair.  */
+ invalid_move:
+  return 0;
+
+ valid_move:
   OUTS (outf, allregs (dst, gd));
-  OUTS (outf, "=");
+  OUTS (outf, " = ");
   OUTS (outf, allregs (src, gs));
   return 2;
 }
@@ -1179,99 +1409,99 @@ decode_ALU2op_0 (TIword iw0, disassemble_info *outf)
   if (opc == 0)
     {
       OUTS (outf, dregs (dst));
-      OUTS (outf, ">>>=");
+      OUTS (outf, " >>>= ");
       OUTS (outf, dregs (src));
     }
   else if (opc == 1)
     {
       OUTS (outf, dregs (dst));
-      OUTS (outf, ">>=");
+      OUTS (outf, " >>= ");
       OUTS (outf, dregs (src));
     }
   else if (opc == 2)
     {
       OUTS (outf, dregs (dst));
-      OUTS (outf, "<<=");
+      OUTS (outf, " <<= ");
       OUTS (outf, dregs (src));
     }
   else if (opc == 3)
     {
       OUTS (outf, dregs (dst));
-      OUTS (outf, "*=");
+      OUTS (outf, " *= ");
       OUTS (outf, dregs (src));
     }
   else if (opc == 4)
     {
       OUTS (outf, dregs (dst));
-      OUTS (outf, "=(");
+      OUTS (outf, " = (");
       OUTS (outf, dregs (dst));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, dregs (src));
-      OUTS (outf, ")<<1");
+      OUTS (outf, ") << 0x1");
     }
   else if (opc == 5)
     {
       OUTS (outf, dregs (dst));
-      OUTS (outf, "=(");
+      OUTS (outf, " = (");
       OUTS (outf, dregs (dst));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, dregs (src));
-      OUTS (outf, ")<<2");
+      OUTS (outf, ") << 0x2");
     }
   else if (opc == 8)
     {
-      OUTS (outf, "DIVQ(");
+      OUTS (outf, "DIVQ (");
       OUTS (outf, dregs (dst));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, dregs (src));
       OUTS (outf, ")");
     }
   else if (opc == 9)
     {
-      OUTS (outf, "DIVS(");
+      OUTS (outf, "DIVS (");
       OUTS (outf, dregs (dst));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, dregs (src));
       OUTS (outf, ")");
     }
   else if (opc == 10)
     {
       OUTS (outf, dregs (dst));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs_lo (src));
-      OUTS (outf, "(X)");
+      OUTS (outf, " (X)");
     }
   else if (opc == 11)
     {
       OUTS (outf, dregs (dst));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs_lo (src));
-      OUTS (outf, "(Z)");
+      OUTS (outf, " (Z)");
     }
   else if (opc == 12)
     {
       OUTS (outf, dregs (dst));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs_byte (src));
-      OUTS (outf, "(X)");
+      OUTS (outf, " (X)");
     }
   else if (opc == 13)
     {
       OUTS (outf, dregs (dst));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs_byte (src));
-      OUTS (outf, "(Z)");
+      OUTS (outf, " (Z)");
     }
   else if (opc == 14)
     {
       OUTS (outf, dregs (dst));
-      OUTS (outf, "=-");
+      OUTS (outf, " = -");
       OUTS (outf, dregs (src));
     }
   else if (opc == 15)
     {
       OUTS (outf, dregs (dst));
-      OUTS (outf, "=~");
+      OUTS (outf, " =~ ");
       OUTS (outf, dregs (src));
     }
   else
@@ -1294,54 +1524,54 @@ decode_PTR2op_0 (TIword iw0, disassemble_info *outf)
   if (opc == 0)
     {
       OUTS (outf, pregs (dst));
-      OUTS (outf, "-=");
+      OUTS (outf, " -= ");
       OUTS (outf, pregs (src));
     }
   else if (opc == 1)
     {
       OUTS (outf, pregs (dst));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, pregs (src));
-      OUTS (outf, "<<2");
+      OUTS (outf, " << 0x2");
     }
   else if (opc == 3)
     {
       OUTS (outf, pregs (dst));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, pregs (src));
-      OUTS (outf, ">>2");
+      OUTS (outf, " >> 0x2");
     }
   else if (opc == 4)
     {
       OUTS (outf, pregs (dst));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, pregs (src));
-      OUTS (outf, ">>1");
+      OUTS (outf, " >> 0x1");
     }
   else if (opc == 5)
     {
       OUTS (outf, pregs (dst));
-      OUTS (outf, "+=");
+      OUTS (outf, " += ");
       OUTS (outf, pregs (src));
-      OUTS (outf, "(BREV)");
+      OUTS (outf, " (BREV)");
     }
   else if (opc == 6)
     {
       OUTS (outf, pregs (dst));
-      OUTS (outf, "=(");
+      OUTS (outf, " = (");
       OUTS (outf, pregs (dst));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, pregs (src));
-      OUTS (outf, ")<<1");
+      OUTS (outf, ") << 0x1");
     }
   else if (opc == 7)
     {
       OUTS (outf, pregs (dst));
-      OUTS (outf, "=(");
+      OUTS (outf, " = (");
       OUTS (outf, pregs (dst));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, pregs (src));
-      OUTS (outf, ")<<2");
+      OUTS (outf, ") << 0x2");
     }
   else
     return 0;
@@ -1360,62 +1590,80 @@ decode_LOGI2op_0 (TIword iw0, disassemble_info *outf)
   int opc = ((iw0 >> LOGI2op_opc_bits) & LOGI2op_opc_mask);
   int dst = ((iw0 >> LOGI2op_dst_bits) & LOGI2op_dst_mask);
 
+  if (parallel)
+    return 0;
+
   if (opc == 0)
     {
-      OUTS (outf, "CC = ! BITTST (");
+      OUTS (outf, "CC = !BITTST (");
       OUTS (outf, dregs (dst));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, uimm5 (src));
-      OUTS (outf, ")");
+      OUTS (outf, ");\t\t/* bit");
+      OUTS (outf, imm7d (src));
+      OUTS (outf, " */");
+      comment = 1;
     }
   else if (opc == 1)
     {
       OUTS (outf, "CC = BITTST (");
       OUTS (outf, dregs (dst));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, uimm5 (src));
-      OUTS (outf, ")");
+      OUTS (outf, ");\t\t/* bit");
+      OUTS (outf, imm7d (src));
+      OUTS (outf, " */");
+      comment = 1;
     }
   else if (opc == 2)
     {
       OUTS (outf, "BITSET (");
       OUTS (outf, dregs (dst));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, uimm5 (src));
-      OUTS (outf, ")");
+      OUTS (outf, ");\t\t/* bit");
+      OUTS (outf, imm7d (src));
+      OUTS (outf, " */");
+      comment = 1;
     }
   else if (opc == 3)
     {
       OUTS (outf, "BITTGL (");
       OUTS (outf, dregs (dst));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, uimm5 (src));
-      OUTS (outf, ")");
+      OUTS (outf, ");\t\t/* bit");
+      OUTS (outf, imm7d (src));
+      OUTS (outf, " */");
+      comment = 1;
     }
   else if (opc == 4)
     {
       OUTS (outf, "BITCLR (");
       OUTS (outf, dregs (dst));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, uimm5 (src));
-      OUTS (outf, ")");
+      OUTS (outf, ");\t\t/* bit");
+      OUTS (outf, imm7d (src));
+      OUTS (outf, " */");
+      comment = 1;
     }
   else if (opc == 5)
     {
       OUTS (outf, dregs (dst));
-      OUTS (outf, ">>>=");
+      OUTS (outf, " >>>= ");
       OUTS (outf, uimm5 (src));
     }
   else if (opc == 6)
     {
       OUTS (outf, dregs (dst));
-      OUTS (outf, ">>=");
+      OUTS (outf, " >>= ");
       OUTS (outf, uimm5 (src));
     }
   else if (opc == 7)
     {
       OUTS (outf, dregs (dst));
-      OUTS (outf, "<<=");
+      OUTS (outf, " <<= ");
       OUTS (outf, uimm5 (src));
     }
   else
@@ -1439,74 +1687,74 @@ decode_COMP3op_0 (TIword iw0, disassemble_info *outf)
   if (opc == 5 && src1 == src0)
     {
       OUTS (outf, pregs (dst));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, pregs (src0));
-      OUTS (outf, "<<1");
+      OUTS (outf, " << 0x1");
     }
   else if (opc == 1)
     {
       OUTS (outf, dregs (dst));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src0));
-      OUTS (outf, "-");
+      OUTS (outf, " - ");
       OUTS (outf, dregs (src1));
     }
   else if (opc == 2)
     {
       OUTS (outf, dregs (dst));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src0));
-      OUTS (outf, "&");
+      OUTS (outf, " & ");
       OUTS (outf, dregs (src1));
     }
   else if (opc == 3)
     {
       OUTS (outf, dregs (dst));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src0));
-      OUTS (outf, "|");
+      OUTS (outf, " | ");
       OUTS (outf, dregs (src1));
     }
   else if (opc == 4)
     {
       OUTS (outf, dregs (dst));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src0));
-      OUTS (outf, "^");
+      OUTS (outf, " ^ ");
       OUTS (outf, dregs (src1));
     }
   else if (opc == 5)
     {
       OUTS (outf, pregs (dst));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, pregs (src0));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, pregs (src1));
     }
   else if (opc == 6)
     {
       OUTS (outf, pregs (dst));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, pregs (src0));
-      OUTS (outf, "+(");
+      OUTS (outf, " + (");
       OUTS (outf, pregs (src1));
-      OUTS (outf, "<<1)");
+      OUTS (outf, " << 0x1)");
     }
   else if (opc == 7)
     {
       OUTS (outf, pregs (dst));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, pregs (src0));
-      OUTS (outf, "+(");
+      OUTS (outf, " + (");
       OUTS (outf, pregs (src1));
-      OUTS (outf, "<<2)");
+      OUTS (outf, " << 0x2)");
     }
   else if (opc == 0)
     {
       OUTS (outf, dregs (dst));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src0));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, dregs (src1));
     }
   else
@@ -1526,18 +1774,46 @@ decode_COMPI2opD_0 (TIword iw0, disassemble_info *outf)
   int dst = ((iw0 >> COMPI2opD_dst_bits) & COMPI2opD_dst_mask);
   int src = ((iw0 >> COMPI2opD_src_bits) & COMPI2opD_src_mask);
 
+  bu32 *pval = get_allreg (0, dst);
+
+  if (parallel)
+    return 0;
+
+  /* Since we don't have 32-bit immediate loads, we allow the disassembler
+     to combine them, so it prints out the right values.
+     Here we keep track of the registers.  */
+  if (op == 0)
+    {
+      *pval = imm7_val (src);
+      if (src & 0x40)
+	*pval |= 0xFFFFFF80;
+      else
+	*pval &= 0x7F;
+    }
+
   if (op == 0)
     {
       OUTS (outf, dregs (dst));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, imm7 (src));
-      OUTS (outf, "(x)");
+      OUTS (outf, " (X);\t\t/*\t\t");
+      OUTS (outf, dregs (dst));
+      OUTS (outf, "=");
+      OUTS (outf, uimm32 (*pval));
+      OUTS (outf, "(");
+      OUTS (outf, imm32 (*pval));
+      OUTS (outf, ") */");
+      comment = 1;
     }
   else if (op == 1)
     {
       OUTS (outf, dregs (dst));
-      OUTS (outf, "+=");
+      OUTS (outf, " += ");
       OUTS (outf, imm7 (src));
+      OUTS (outf, ";\t\t/* (");
+      OUTS (outf, imm7d (src));
+      OUTS (outf, ") */");
+      comment = 1;
     }
   else
     return 0;
@@ -1556,17 +1832,43 @@ decode_COMPI2opP_0 (TIword iw0, disassemble_info *outf)
   int src = ((iw0 >> COMPI2opP_src_bits) & COMPI2opP_src_mask);
   int dst = ((iw0 >> COMPI2opP_dst_bits) & COMPI2opP_dst_mask);
 
+  bu32 *pval = get_allreg (1, dst);
+
+  if (parallel)
+    return 0;
+
+  if (op == 0)
+    {
+      *pval = imm7_val (src);
+      if (src & 0x40)
+	*pval |= 0xFFFFFF80;
+      else
+	*pval &= 0x7F;
+    }
+
   if (op == 0)
     {
       OUTS (outf, pregs (dst));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, imm7 (src));
+      OUTS (outf, " (X);\t\t/*\t\t");
+      OUTS (outf, pregs (dst));
+      OUTS (outf, "=");
+      OUTS (outf, uimm32 (*pval));
+      OUTS (outf, "(");
+      OUTS (outf, imm32 (*pval));
+      OUTS (outf, ") */");
+      comment = 1;
     }
   else if (op == 1)
     {
       OUTS (outf, pregs (dst));
-      OUTS (outf, "+=");
+      OUTS (outf, " += ");
       OUTS (outf, imm7 (src));
+      OUTS (outf, ";\t\t/* (");
+      OUTS (outf, imm7d (src));
+      OUTS (outf, ") */");
+      comment = 1;
     }
   else
     return 0;
@@ -1590,14 +1892,14 @@ decode_LDSTpmod_0 (TIword iw0, disassemble_info *outf)
   if (aop == 1 && W == 0 && idx == ptr)
     {
       OUTS (outf, dregs_lo (reg));
-      OUTS (outf, "=W[");
+      OUTS (outf, " = W[");
       OUTS (outf, pregs (ptr));
       OUTS (outf, "]");
     }
   else if (aop == 2 && W == 0 && idx == ptr)
     {
       OUTS (outf, dregs_hi (reg));
-      OUTS (outf, "=W[");
+      OUTS (outf, " = W[");
       OUTS (outf, pregs (ptr));
       OUTS (outf, "]");
     }
@@ -1605,86 +1907,86 @@ decode_LDSTpmod_0 (TIword iw0, disassemble_info *outf)
     {
       OUTS (outf, "W[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "]=");
+      OUTS (outf, "] = ");
       OUTS (outf, dregs_lo (reg));
     }
   else if (aop == 2 && W == 1 && idx == ptr)
     {
       OUTS (outf, "W[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "]=");
+      OUTS (outf, "] = ");
       OUTS (outf, dregs_hi (reg));
     }
   else if (aop == 0 && W == 0)
     {
       OUTS (outf, dregs (reg));
-      OUTS (outf, "=[");
+      OUTS (outf, " = [");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "++");
+      OUTS (outf, " ++ ");
       OUTS (outf, pregs (idx));
       OUTS (outf, "]");
     }
   else if (aop == 1 && W == 0)
     {
       OUTS (outf, dregs_lo (reg));
-      OUTS (outf, "=W[");
+      OUTS (outf, " = W[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "++");
+      OUTS (outf, " ++ ");
       OUTS (outf, pregs (idx));
       OUTS (outf, "]");
     }
   else if (aop == 2 && W == 0)
     {
       OUTS (outf, dregs_hi (reg));
-      OUTS (outf, "=W[");
+      OUTS (outf, " = W[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "++");
+      OUTS (outf, " ++ ");
       OUTS (outf, pregs (idx));
       OUTS (outf, "]");
     }
   else if (aop == 3 && W == 0)
     {
       OUTS (outf, dregs (reg));
-      OUTS (outf, "=W[");
+      OUTS (outf, " = W[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "++");
+      OUTS (outf, " ++ ");
       OUTS (outf, pregs (idx));
       OUTS (outf, "] (Z)");
     }
   else if (aop == 3 && W == 1)
     {
       OUTS (outf, dregs (reg));
-      OUTS (outf, "=W[");
+      OUTS (outf, " = W[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "++");
+      OUTS (outf, " ++ ");
       OUTS (outf, pregs (idx));
-      OUTS (outf, "](X)");
+      OUTS (outf, "] (X)");
     }
   else if (aop == 0 && W == 1)
     {
       OUTS (outf, "[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "++");
+      OUTS (outf, " ++ ");
       OUTS (outf, pregs (idx));
-      OUTS (outf, "]=");
+      OUTS (outf, "] = ");
       OUTS (outf, dregs (reg));
     }
   else if (aop == 1 && W == 1)
     {
       OUTS (outf, "W[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "++");
+      OUTS (outf, " ++ ");
       OUTS (outf, pregs (idx));
-      OUTS (outf, "]=");
+      OUTS (outf, "] = ");
       OUTS (outf, dregs_lo (reg));
     }
   else if (aop == 2 && W == 1)
     {
       OUTS (outf, "W[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "++");
+      OUTS (outf, " ++ ");
       OUTS (outf, pregs (idx));
-      OUTS (outf, "]=");
+      OUTS (outf, "] = ");
       OUTS (outf, dregs_hi (reg));
     }
   else
@@ -1708,20 +2010,20 @@ decode_dagMODim_0 (TIword iw0, disassemble_info *outf)
   if (op == 0 && br == 1)
     {
       OUTS (outf, iregs (i));
-      OUTS (outf, "+=");
+      OUTS (outf, " += ");
       OUTS (outf, mregs (m));
-      OUTS (outf, "(BREV)");
+      OUTS (outf, " (BREV)");
     }
   else if (op == 0)
     {
       OUTS (outf, iregs (i));
-      OUTS (outf, "+=");
+      OUTS (outf, " += ");
       OUTS (outf, mregs (m));
     }
-  else if (op == 1)
+  else if (op == 1 && br == 0)
     {
       OUTS (outf, iregs (i));
-      OUTS (outf, "-=");
+      OUTS (outf, " -= ");
       OUTS (outf, mregs (m));
     }
   else
@@ -1743,25 +2045,36 @@ decode_dagMODik_0 (TIword iw0, disassemble_info *outf)
   if (op == 0)
     {
       OUTS (outf, iregs (i));
-      OUTS (outf, "+=2");
+      OUTS (outf, " += 0x2");
     }
   else if (op == 1)
     {
       OUTS (outf, iregs (i));
-      OUTS (outf, "-=2");
+      OUTS (outf, " -= 0x2");
     }
   else if (op == 2)
     {
       OUTS (outf, iregs (i));
-      OUTS (outf, "+=4");
+      OUTS (outf, " += 0x4");
     }
   else if (op == 3)
     {
       OUTS (outf, iregs (i));
-      OUTS (outf, "-=4");
+      OUTS (outf, " -= 0x4");
     }
   else
     return 0;
+
+  if (! parallel)
+    {
+      OUTS (outf, ";\t\t/* (  ");
+      if (op == 0 || op == 1)
+	OUTS (outf, "2");
+      else if (op == 2 || op == 3)
+	OUTS (outf, "4");
+      OUTS (outf, ") */");
+      comment = 1;
+    }
 
   return 2;
 }
@@ -1782,63 +2095,63 @@ decode_dspLDST_0 (TIword iw0, disassemble_info *outf)
   if (aop == 0 && W == 0 && m == 0)
     {
       OUTS (outf, dregs (reg));
-      OUTS (outf, "=[");
+      OUTS (outf, " = [");
       OUTS (outf, iregs (i));
       OUTS (outf, "++]");
     }
   else if (aop == 0 && W == 0 && m == 1)
     {
       OUTS (outf, dregs_lo (reg));
-      OUTS (outf, "=W[");
+      OUTS (outf, " = W[");
       OUTS (outf, iregs (i));
       OUTS (outf, "++]");
     }
   else if (aop == 0 && W == 0 && m == 2)
     {
       OUTS (outf, dregs_hi (reg));
-      OUTS (outf, "=W[");
+      OUTS (outf, " = W[");
       OUTS (outf, iregs (i));
       OUTS (outf, "++]");
     }
   else if (aop == 1 && W == 0 && m == 0)
     {
       OUTS (outf, dregs (reg));
-      OUTS (outf, "=[");
+      OUTS (outf, " = [");
       OUTS (outf, iregs (i));
       OUTS (outf, "--]");
     }
   else if (aop == 1 && W == 0 && m == 1)
     {
       OUTS (outf, dregs_lo (reg));
-      OUTS (outf, "=W[");
+      OUTS (outf, " = W[");
       OUTS (outf, iregs (i));
       OUTS (outf, "--]");
     }
   else if (aop == 1 && W == 0 && m == 2)
     {
       OUTS (outf, dregs_hi (reg));
-      OUTS (outf, "=W[");
+      OUTS (outf, " = W[");
       OUTS (outf, iregs (i));
       OUTS (outf, "--]");
     }
   else if (aop == 2 && W == 0 && m == 0)
     {
       OUTS (outf, dregs (reg));
-      OUTS (outf, "=[");
+      OUTS (outf, " = [");
       OUTS (outf, iregs (i));
       OUTS (outf, "]");
     }
   else if (aop == 2 && W == 0 && m == 1)
     {
       OUTS (outf, dregs_lo (reg));
-      OUTS (outf, "=W[");
+      OUTS (outf, " = W[");
       OUTS (outf, iregs (i));
       OUTS (outf, "]");
     }
   else if (aop == 2 && W == 0 && m == 2)
     {
       OUTS (outf, dregs_hi (reg));
-      OUTS (outf, "=W[");
+      OUTS (outf, " = W[");
       OUTS (outf, iregs (i));
       OUTS (outf, "]");
     }
@@ -1846,71 +2159,71 @@ decode_dspLDST_0 (TIword iw0, disassemble_info *outf)
     {
       OUTS (outf, "[");
       OUTS (outf, iregs (i));
-      OUTS (outf, "++]=");
+      OUTS (outf, "++] = ");
       OUTS (outf, dregs (reg));
     }
   else if (aop == 0 && W == 1 && m == 1)
     {
       OUTS (outf, "W[");
       OUTS (outf, iregs (i));
-      OUTS (outf, "++]=");
+      OUTS (outf, "++] = ");
       OUTS (outf, dregs_lo (reg));
     }
   else if (aop == 0 && W == 1 && m == 2)
     {
       OUTS (outf, "W[");
       OUTS (outf, iregs (i));
-      OUTS (outf, "++]=");
+      OUTS (outf, "++] = ");
       OUTS (outf, dregs_hi (reg));
     }
   else if (aop == 1 && W == 1 && m == 0)
     {
       OUTS (outf, "[");
       OUTS (outf, iregs (i));
-      OUTS (outf, "--]=");
+      OUTS (outf, "--] = ");
       OUTS (outf, dregs (reg));
     }
   else if (aop == 1 && W == 1 && m == 1)
     {
       OUTS (outf, "W[");
       OUTS (outf, iregs (i));
-      OUTS (outf, "--]=");
+      OUTS (outf, "--] = ");
       OUTS (outf, dregs_lo (reg));
     }
   else if (aop == 1 && W == 1 && m == 2)
     {
       OUTS (outf, "W[");
       OUTS (outf, iregs (i));
-      OUTS (outf, "--]=");
+      OUTS (outf, "--] = ");
       OUTS (outf, dregs_hi (reg));
     }
   else if (aop == 2 && W == 1 && m == 0)
     {
       OUTS (outf, "[");
       OUTS (outf, iregs (i));
-      OUTS (outf, "]=");
+      OUTS (outf, "] = ");
       OUTS (outf, dregs (reg));
     }
   else if (aop == 2 && W == 1 && m == 1)
     {
       OUTS (outf, "W[");
       OUTS (outf, iregs (i));
-      OUTS (outf, "]=");
+      OUTS (outf, "] = ");
       OUTS (outf, dregs_lo (reg));
     }
   else if (aop == 2 && W == 1 && m == 2)
     {
       OUTS (outf, "W[");
       OUTS (outf, iregs (i));
-      OUTS (outf, "]=");
+      OUTS (outf, "] = ");
       OUTS (outf, dregs_hi (reg));
     }
   else if (aop == 3 && W == 0)
     {
       OUTS (outf, dregs (reg));
-      OUTS (outf, "=[");
+      OUTS (outf, " = [");
       OUTS (outf, iregs (i));
-      OUTS (outf, "++");
+      OUTS (outf, " ++ ");
       OUTS (outf, mregs (m));
       OUTS (outf, "]");
     }
@@ -1918,9 +2231,9 @@ decode_dspLDST_0 (TIword iw0, disassemble_info *outf)
     {
       OUTS (outf, "[");
       OUTS (outf, iregs (i));
-      OUTS (outf, "++");
+      OUTS (outf, " ++ ");
       OUTS (outf, mregs (m));
-      OUTS (outf, "]=");
+      OUTS (outf, "] = ");
       OUTS (outf, dregs (reg));
     }
   else
@@ -1946,211 +2259,211 @@ decode_LDST_0 (TIword iw0, disassemble_info *outf)
   if (aop == 0 && sz == 0 && Z == 0 && W == 0)
     {
       OUTS (outf, dregs (reg));
-      OUTS (outf, "=[");
+      OUTS (outf, " = [");
       OUTS (outf, pregs (ptr));
       OUTS (outf, "++]");
     }
-  else if (aop == 0 && sz == 0 && Z == 1 && W == 0)
+  else if (aop == 0 && sz == 0 && Z == 1 && W == 0 && reg != ptr)
     {
       OUTS (outf, pregs (reg));
-      OUTS (outf, "=[");
+      OUTS (outf, " = [");
       OUTS (outf, pregs (ptr));
       OUTS (outf, "++]");
     }
   else if (aop == 0 && sz == 1 && Z == 0 && W == 0)
     {
       OUTS (outf, dregs (reg));
-      OUTS (outf, "=W[");
+      OUTS (outf, " = W[");
       OUTS (outf, pregs (ptr));
       OUTS (outf, "++] (Z)");
     }
   else if (aop == 0 && sz == 1 && Z == 1 && W == 0)
     {
       OUTS (outf, dregs (reg));
-      OUTS (outf, "=W[");
+      OUTS (outf, " = W[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "++](X)");
+      OUTS (outf, "++] (X)");
     }
   else if (aop == 0 && sz == 2 && Z == 0 && W == 0)
     {
       OUTS (outf, dregs (reg));
-      OUTS (outf, "=B[");
+      OUTS (outf, " = B[");
       OUTS (outf, pregs (ptr));
       OUTS (outf, "++] (Z)");
     }
   else if (aop == 0 && sz == 2 && Z == 1 && W == 0)
     {
       OUTS (outf, dregs (reg));
-      OUTS (outf, "=B[");
+      OUTS (outf, " = B[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "++](X)");
+      OUTS (outf, "++] (X)");
     }
   else if (aop == 1 && sz == 0 && Z == 0 && W == 0)
     {
       OUTS (outf, dregs (reg));
-      OUTS (outf, "=[");
+      OUTS (outf, " = [");
       OUTS (outf, pregs (ptr));
       OUTS (outf, "--]");
     }
-  else if (aop == 1 && sz == 0 && Z == 1 && W == 0)
+  else if (aop == 1 && sz == 0 && Z == 1 && W == 0 && reg != ptr)
     {
       OUTS (outf, pregs (reg));
-      OUTS (outf, "=[");
+      OUTS (outf, " = [");
       OUTS (outf, pregs (ptr));
       OUTS (outf, "--]");
     }
   else if (aop == 1 && sz == 1 && Z == 0 && W == 0)
     {
       OUTS (outf, dregs (reg));
-      OUTS (outf, "=W[");
+      OUTS (outf, " = W[");
       OUTS (outf, pregs (ptr));
       OUTS (outf, "--] (Z)");
     }
   else if (aop == 1 && sz == 1 && Z == 1 && W == 0)
     {
       OUTS (outf, dregs (reg));
-      OUTS (outf, "=W[");
+      OUTS (outf, " = W[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "--](X)");
+      OUTS (outf, "--] (X)");
     }
   else if (aop == 1 && sz == 2 && Z == 0 && W == 0)
     {
       OUTS (outf, dregs (reg));
-      OUTS (outf, "=B[");
+      OUTS (outf, " = B[");
       OUTS (outf, pregs (ptr));
       OUTS (outf, "--] (Z)");
     }
   else if (aop == 1 && sz == 2 && Z == 1 && W == 0)
     {
       OUTS (outf, dregs (reg));
-      OUTS (outf, "=B[");
+      OUTS (outf, " = B[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "--](X)");
+      OUTS (outf, "--] (X)");
     }
   else if (aop == 2 && sz == 0 && Z == 0 && W == 0)
     {
       OUTS (outf, dregs (reg));
-      OUTS (outf, "=[");
+      OUTS (outf, " = [");
       OUTS (outf, pregs (ptr));
       OUTS (outf, "]");
     }
   else if (aop == 2 && sz == 0 && Z == 1 && W == 0)
     {
       OUTS (outf, pregs (reg));
-      OUTS (outf, "=[");
+      OUTS (outf, " = [");
       OUTS (outf, pregs (ptr));
       OUTS (outf, "]");
     }
   else if (aop == 2 && sz == 1 && Z == 0 && W == 0)
     {
       OUTS (outf, dregs (reg));
-      OUTS (outf, "=W[");
+      OUTS (outf, " = W[");
       OUTS (outf, pregs (ptr));
       OUTS (outf, "] (Z)");
     }
   else if (aop == 2 && sz == 1 && Z == 1 && W == 0)
     {
       OUTS (outf, dregs (reg));
-      OUTS (outf, "=W[");
+      OUTS (outf, " = W[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "](X)");
+      OUTS (outf, "] (X)");
     }
   else if (aop == 2 && sz == 2 && Z == 0 && W == 0)
     {
       OUTS (outf, dregs (reg));
-      OUTS (outf, "=B[");
+      OUTS (outf, " = B[");
       OUTS (outf, pregs (ptr));
       OUTS (outf, "] (Z)");
     }
   else if (aop == 2 && sz == 2 && Z == 1 && W == 0)
     {
       OUTS (outf, dregs (reg));
-      OUTS (outf, "=B[");
+      OUTS (outf, " = B[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "](X)");
+      OUTS (outf, "] (X)");
     }
   else if (aop == 0 && sz == 0 && Z == 0 && W == 1)
     {
       OUTS (outf, "[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "++]=");
+      OUTS (outf, "++] = ");
       OUTS (outf, dregs (reg));
     }
   else if (aop == 0 && sz == 0 && Z == 1 && W == 1)
     {
       OUTS (outf, "[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "++]=");
+      OUTS (outf, "++] = ");
       OUTS (outf, pregs (reg));
     }
   else if (aop == 0 && sz == 1 && Z == 0 && W == 1)
     {
       OUTS (outf, "W[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "++]=");
+      OUTS (outf, "++] = ");
       OUTS (outf, dregs (reg));
     }
   else if (aop == 0 && sz == 2 && Z == 0 && W == 1)
     {
       OUTS (outf, "B[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "++]=");
+      OUTS (outf, "++] = ");
       OUTS (outf, dregs (reg));
     }
   else if (aop == 1 && sz == 0 && Z == 0 && W == 1)
     {
       OUTS (outf, "[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "--]=");
+      OUTS (outf, "--] = ");
       OUTS (outf, dregs (reg));
     }
   else if (aop == 1 && sz == 0 && Z == 1 && W == 1)
     {
       OUTS (outf, "[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "--]=");
+      OUTS (outf, "--] = ");
       OUTS (outf, pregs (reg));
     }
   else if (aop == 1 && sz == 1 && Z == 0 && W == 1)
     {
       OUTS (outf, "W[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "--]=");
+      OUTS (outf, "--] = ");
       OUTS (outf, dregs (reg));
     }
   else if (aop == 1 && sz == 2 && Z == 0 && W == 1)
     {
       OUTS (outf, "B[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "--]=");
+      OUTS (outf, "--] = ");
       OUTS (outf, dregs (reg));
     }
   else if (aop == 2 && sz == 0 && Z == 0 && W == 1)
     {
       OUTS (outf, "[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "]=");
+      OUTS (outf, "] = ");
       OUTS (outf, dregs (reg));
     }
   else if (aop == 2 && sz == 0 && Z == 1 && W == 1)
     {
       OUTS (outf, "[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "]=");
+      OUTS (outf, "] = ");
       OUTS (outf, pregs (reg));
     }
   else if (aop == 2 && sz == 1 && Z == 0 && W == 1)
     {
       OUTS (outf, "W[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "]=");
+      OUTS (outf, "] = ");
       OUTS (outf, dregs (reg));
     }
   else if (aop == 2 && sz == 2 && Z == 0 && W == 1)
     {
       OUTS (outf, "B[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "]=");
+      OUTS (outf, "] = ");
       OUTS (outf, dregs (reg));
     }
   else
@@ -2173,15 +2486,15 @@ decode_LDSTiiFP_0 (TIword iw0, disassemble_info *outf)
   if (W == 0)
     {
       OUTS (outf, dpregs (reg));
-      OUTS (outf, "=[FP");
+      OUTS (outf, " = [FP ");
       OUTS (outf, negimm5s4 (offset));
       OUTS (outf, "]");
     }
   else if (W == 1)
     {
-      OUTS (outf, "[FP");
+      OUTS (outf, "[FP ");
       OUTS (outf, negimm5s4 (offset));
-      OUTS (outf, "]=");
+      OUTS (outf, "] = ");
       OUTS (outf, dpregs (reg));
     }
   else
@@ -2206,36 +2519,36 @@ decode_LDSTii_0 (TIword iw0, disassemble_info *outf)
   if (W == 0 && op == 0)
     {
       OUTS (outf, dregs (reg));
-      OUTS (outf, "=[");
+      OUTS (outf, " = [");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, uimm4s4 (offset));
       OUTS (outf, "]");
     }
   else if (W == 0 && op == 1)
     {
       OUTS (outf, dregs (reg));
-      OUTS (outf, "=W[");
+      OUTS (outf, " = W[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, uimm4s2 (offset));
       OUTS (outf, "] (Z)");
     }
   else if (W == 0 && op == 2)
     {
       OUTS (outf, dregs (reg));
-      OUTS (outf, "=W[");
+      OUTS (outf, " = W[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, uimm4s2 (offset));
-      OUTS (outf, "](X)");
+      OUTS (outf, "] (X)");
     }
   else if (W == 0 && op == 3)
     {
       OUTS (outf, pregs (reg));
-      OUTS (outf, "=[");
+      OUTS (outf, " = [");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, uimm4s4 (offset));
       OUTS (outf, "]");
     }
@@ -2243,29 +2556,27 @@ decode_LDSTii_0 (TIword iw0, disassemble_info *outf)
     {
       OUTS (outf, "[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, uimm4s4 (offset));
-      OUTS (outf, "]=");
+      OUTS (outf, "] = ");
       OUTS (outf, dregs (reg));
     }
   else if (W == 1 && op == 1)
     {
-      OUTS (outf, "W");
-      OUTS (outf, "[");
+      OUTS (outf, "W[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, uimm4s2 (offset));
-      OUTS (outf, "]");
-      OUTS (outf, "=");
+      OUTS (outf, "] = ");
       OUTS (outf, dregs (reg));
     }
   else if (W == 1 && op == 3)
     {
       OUTS (outf, "[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, uimm4s4 (offset));
-      OUTS (outf, "]=");
+      OUTS (outf, "] = ");
       OUTS (outf, pregs (reg));
     }
   else
@@ -2288,40 +2599,46 @@ decode_LoopSetup_0 (TIword iw0, TIword iw1, bfd_vma pc, disassemble_info *outf)
   int soffset = ((iw0 >> (LoopSetup_soffset_bits - 16)) & LoopSetup_soffset_mask);
   int eoffset = ((iw1 >> LoopSetup_eoffset_bits) & LoopSetup_eoffset_mask);
 
+  if (parallel)
+    return 0;
+
+  if (reg > 7)
+    return 0;
+
   if (rop == 0)
     {
       OUTS (outf, "LSETUP");
-      OUTS (outf, "(");
+      OUTS (outf, "(0x");
       OUTS (outf, pcrel4 (soffset));
-      OUTS (outf, ",");
+      OUTS (outf, ", 0x");
       OUTS (outf, lppcrel10 (eoffset));
-      OUTS (outf, ")");
+      OUTS (outf, ") ");
       OUTS (outf, counters (c));
     }
   else if (rop == 1)
     {
       OUTS (outf, "LSETUP");
-      OUTS (outf, "(");
+      OUTS (outf, "(0x");
       OUTS (outf, pcrel4 (soffset));
-      OUTS (outf, ",");
+      OUTS (outf, ", 0x");
       OUTS (outf, lppcrel10 (eoffset));
-      OUTS (outf, ")");
+      OUTS (outf, ") ");
       OUTS (outf, counters (c));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, pregs (reg));
     }
   else if (rop == 3)
     {
       OUTS (outf, "LSETUP");
-      OUTS (outf, "(");
+      OUTS (outf, "(0x");
       OUTS (outf, pcrel4 (soffset));
-      OUTS (outf, ",");
+      OUTS (outf, ", 0x");
       OUTS (outf, lppcrel10 (eoffset));
-      OUTS (outf, ")");
+      OUTS (outf, ") ");
       OUTS (outf, counters (c));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, pregs (reg));
-      OUTS (outf, ">>1");
+      OUTS (outf, " >> 0x1");
     }
   else
     return 0;
@@ -2344,54 +2661,129 @@ decode_LDIMMhalf_0 (TIword iw0, TIword iw1, disassemble_info *outf)
   int grp = ((iw0 >> (LDIMMhalf_grp_bits - 16)) & LDIMMhalf_grp_mask);
   int hword = ((iw1 >> LDIMMhalf_hword_bits) & LDIMMhalf_hword_mask);
 
+  bu32 *pval = get_allreg (grp, reg);
+
+  if (parallel)
+    return 0;
+
+  /* Since we don't have 32-bit immediate loads, we allow the disassembler
+     to combine them, so it prints out the right values.
+     Here we keep track of the registers.  */
+  if (H == 0 && S == 1 && Z == 0)
+    {
+      /* regs = imm16 (x) */
+      *pval = imm16_val (hword);
+      if (hword & 0x8000)
+	*pval |= 0xFFFF0000;
+      else
+	*pval &= 0xFFFF;
+    }
+  else if (H == 0 && S == 0 && Z == 1)
+    {
+      /* regs = luimm16 (Z) */
+      *pval = luimm16_val (hword);
+      *pval &= 0xFFFF;
+    }
+  else if (H == 0 && S == 0 && Z == 0)
+    {
+      /* regs_lo = luimm16 */
+      *pval &= 0xFFFF0000;
+      *pval |= luimm16_val (hword);
+    }
+  else if (H == 1 && S == 0 && Z == 0)
+    {
+      /* regs_hi = huimm16 */
+      *pval &= 0xFFFF;
+      *pval |= luimm16_val (hword) << 16;
+    }
+
+  /* Here we do the disassembly */
   if (grp == 0 && H == 0 && S == 0 && Z == 0)
     {
       OUTS (outf, dregs_lo (reg));
-      OUTS (outf, "=");
-      OUTS (outf, imm16 (hword));
+      OUTS (outf, " = ");
+      OUTS (outf, uimm16 (hword));
     }
   else if (grp == 0 && H == 1 && S == 0 && Z == 0)
     {
       OUTS (outf, dregs_hi (reg));
-      OUTS (outf, "=");
-      OUTS (outf, imm16 (hword));
+      OUTS (outf, " = ");
+      OUTS (outf, uimm16 (hword));
     }
   else if (grp == 0 && H == 0 && S == 1 && Z == 0)
     {
       OUTS (outf, dregs (reg));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, imm16 (hword));
       OUTS (outf, " (X)");
     }
   else if (H == 0 && S == 1 && Z == 0)
     {
       OUTS (outf, regs (reg, grp));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, imm16 (hword));
       OUTS (outf, " (X)");
     }
   else if (H == 0 && S == 0 && Z == 1)
     {
       OUTS (outf, regs (reg, grp));
-      OUTS (outf, "=");
-      OUTS (outf, luimm16 (hword));
-      OUTS (outf, "(Z)");
+      OUTS (outf, " = ");
+      OUTS (outf, uimm16 (hword));
+      OUTS (outf, " (Z)");
     }
   else if (H == 0 && S == 0 && Z == 0)
     {
       OUTS (outf, regs_lo (reg, grp));
-      OUTS (outf, "=");
-      OUTS (outf, luimm16 (hword));
+      OUTS (outf, " = ");
+      OUTS (outf, uimm16 (hword));
     }
   else if (H == 1 && S == 0 && Z == 0)
     {
       OUTS (outf, regs_hi (reg, grp));
-      OUTS (outf, "=");
-      OUTS (outf, huimm16 (hword));
+      OUTS (outf, " = ");
+      OUTS (outf, uimm16 (hword));
     }
   else
     return 0;
 
+  /* And we print out the 32-bit value if it is a pointer.  */
+  if (S == 0 && Z == 0)
+    {
+      OUTS (outf, ";\t\t/* (");
+      OUTS (outf, imm16d (hword));
+      OUTS (outf, ")\t");
+
+      /* If it is an MMR, don't print the symbol.  */
+      if (*pval < 0xFFC00000 && grp == 1)
+	{
+	  OUTS (outf, regs (reg, grp));
+	  OUTS (outf, "=0x");
+	  OUTS (outf, huimm32e (*pval));
+	}
+      else
+	{
+	  OUTS (outf, regs (reg, grp));
+	  OUTS (outf, "=0x");
+	  OUTS (outf, huimm32e (*pval));
+	  OUTS (outf, "(");
+	  OUTS (outf, imm32 (*pval));
+	  OUTS (outf, ")");
+	}
+
+      OUTS (outf, " */");
+      comment = 1;
+    }
+  if (S == 1 || Z == 1)
+    {
+      OUTS (outf, ";\t\t/*\t\t");
+      OUTS (outf, regs (reg, grp));
+      OUTS (outf, "=0x");
+      OUTS (outf, huimm32e (*pval));
+      OUTS (outf, "(");
+      OUTS (outf, imm32 (*pval));
+      OUTS (outf, ") */");
+      comment = 1;
+    }
   return 4;
 }
 
@@ -2407,10 +2799,13 @@ decode_CALLa_0 (TIword iw0, TIword iw1, bfd_vma pc, disassemble_info *outf)
   int lsw = ((iw1 >> 0) & 0xffff);
   int msw = ((iw0 >> 0) & 0xff);
 
+  if (parallel)
+    return 0;
+
   if (S == 1)
-    OUTS (outf, "CALL  ");
+    OUTS (outf, "CALL 0x");
   else if (S == 0)
-    OUTS (outf, "JUMP.L  ");
+    OUTS (outf, "JUMP.L 0x");
   else
     return 0;
 
@@ -2436,91 +2831,91 @@ decode_LDSTidxI_0 (TIword iw0, TIword iw1, disassemble_info *outf)
   if (W == 0 && sz == 0 && Z == 0)
     {
       OUTS (outf, dregs (reg));
-      OUTS (outf, "=[");
+      OUTS (outf, " = [");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, imm16s4 (offset));
       OUTS (outf, "]");
     }
   else if (W == 0 && sz == 0 && Z == 1)
     {
       OUTS (outf, pregs (reg));
-      OUTS (outf, "=[");
+      OUTS (outf, " = [");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, imm16s4 (offset));
       OUTS (outf, "]");
     }
   else if (W == 0 && sz == 1 && Z == 0)
     {
       OUTS (outf, dregs (reg));
-      OUTS (outf, "=W[");
+      OUTS (outf, " = W[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, imm16s2 (offset));
       OUTS (outf, "] (Z)");
     }
   else if (W == 0 && sz == 1 && Z == 1)
     {
       OUTS (outf, dregs (reg));
-      OUTS (outf, "=W[");
+      OUTS (outf, " = W[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, imm16s2 (offset));
-      OUTS (outf, "](X)");
+      OUTS (outf, "] (X)");
     }
   else if (W == 0 && sz == 2 && Z == 0)
     {
       OUTS (outf, dregs (reg));
-      OUTS (outf, "=B[");
+      OUTS (outf, " = B[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, imm16 (offset));
       OUTS (outf, "] (Z)");
     }
   else if (W == 0 && sz == 2 && Z == 1)
     {
       OUTS (outf, dregs (reg));
-      OUTS (outf, "=B[");
+      OUTS (outf, " = B[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, imm16 (offset));
-      OUTS (outf, "](X)");
+      OUTS (outf, "] (X)");
     }
   else if (W == 1 && sz == 0 && Z == 0)
     {
       OUTS (outf, "[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, imm16s4 (offset));
-      OUTS (outf, "]=");
+      OUTS (outf, "] = ");
       OUTS (outf, dregs (reg));
     }
   else if (W == 1 && sz == 0 && Z == 1)
     {
       OUTS (outf, "[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, imm16s4 (offset));
-      OUTS (outf, "]=");
+      OUTS (outf, "] = ");
       OUTS (outf, pregs (reg));
     }
   else if (W == 1 && sz == 1 && Z == 0)
     {
       OUTS (outf, "W[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, imm16s2 (offset));
-      OUTS (outf, "]=");
+      OUTS (outf, "] = ");
       OUTS (outf, dregs (reg));
     }
   else if (W == 1 && sz == 2 && Z == 0)
     {
       OUTS (outf, "B[");
       OUTS (outf, pregs (ptr));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, imm16 (offset));
-      OUTS (outf, "]=");
+      OUTS (outf, "] = ");
       OUTS (outf, dregs (reg));
     }
   else
@@ -2540,10 +2935,17 @@ decode_linkage_0 (TIword iw0, TIword iw1, disassemble_info *outf)
   int R = ((iw0 >> (Linkage_R_bits - 16)) & Linkage_R_mask);
   int framesize = ((iw1 >> Linkage_framesize_bits) & Linkage_framesize_mask);
 
+  if (parallel)
+    return 0;
+
   if (R == 0)
     {
       OUTS (outf, "LINK ");
       OUTS (outf, uimm16s4 (framesize));
+      OUTS (outf, ";\t\t/* (");
+      OUTS (outf, uimm16s4d (framesize));
+      OUTS (outf, ") */");
+      comment = 1;
     }
   else if (R == 1)
     OUTS (outf, "UNLINK");
@@ -2585,7 +2987,7 @@ decode_dsp32mac_0 (TIword iw0, TIword iw1, disassemble_info *outf)
   if ((w1 || w0) && mmod == M_W32)
     return 0;
 
-  if (((1 << mmod) & (P ? 0x31b : 0x1b5f)) == 0)
+  if (((1 << mmod) & (P ? 0x131b : 0x1b5f)) == 0)
     return 0;
 
   if (w1 == 1 || op1 != 3)
@@ -2608,13 +3010,16 @@ decode_dsp32mac_0 (TIword iw0, TIword iw1, disassemble_info *outf)
 	{
 	  if (MM)
 	    OUTS (outf, " (M)");
-	  MM = 0;
 	  OUTS (outf, ", ");
 	}
     }
 
   if (w0 == 1 || op0 != 3)
     {
+      /* Clear MM option since it only matters for MAC1, and if we made
+         it this far, we've already shown it or we want to ignore it.  */
+      MM = 0;
+
       if (w0)
 	OUTS (outf, P ? dregs (dst) : dregs_lo (dst));
 
@@ -2664,7 +3069,7 @@ decode_dsp32mult_0 (TIword iw0, TIword iw1, disassemble_info *outf)
 
   if (w1)
     {
-      OUTS (outf, P ? dregs (dst | 1) : dregs_hi (dst));
+      OUTS (outf, P ? dregs (dst + 1) : dregs_hi (dst));
       OUTS (outf, " = ");
       decode_multfunc (h01, h11, src0, src1, outf);
 
@@ -2679,7 +3084,7 @@ decode_dsp32mult_0 (TIword iw0, TIword iw1, disassemble_info *outf)
 
   if (w0)
     {
-      OUTS (outf, dregs (dst));
+      OUTS (outf, P ? dregs (dst) : dregs_lo (dst));
       OUTS (outf, " = ");
       decode_multfunc (h00, h10, src0, src1, outf);
     }
@@ -2708,347 +3113,263 @@ decode_dsp32alu_0 (TIword iw0, TIword iw1, disassemble_info *outf)
 
   if (aop == 0 && aopcde == 9 && HL == 0 && s == 0)
     {
-      OUTS (outf, "A0.L=");
+      OUTS (outf, "A0.L = ");
       OUTS (outf, dregs_lo (src0));
     }
   else if (aop == 2 && aopcde == 9 && HL == 1 && s == 0)
     {
-      OUTS (outf, "A1.H=");
+      OUTS (outf, "A1.H = ");
       OUTS (outf, dregs_hi (src0));
     }
   else if (aop == 2 && aopcde == 9 && HL == 0 && s == 0)
     {
-      OUTS (outf, "A1.L=");
+      OUTS (outf, "A1.L = ");
       OUTS (outf, dregs_lo (src0));
     }
   else if (aop == 0 && aopcde == 9 && HL == 1 && s == 0)
     {
-      OUTS (outf, "A0.H=");
+      OUTS (outf, "A0.H = ");
       OUTS (outf, dregs_hi (src0));
     }
   else if (x == 1 && HL == 1 && aop == 3 && aopcde == 5)
     {
       OUTS (outf, dregs_hi (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src0));
-      OUTS (outf, "-");
+      OUTS (outf, " - ");
       OUTS (outf, dregs (src1));
-      OUTS (outf, "(RND20)");
+      OUTS (outf, " (RND20)");
     }
   else if (x == 1 && HL == 1 && aop == 2 && aopcde == 5)
     {
       OUTS (outf, dregs_hi (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src0));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, dregs (src1));
-      OUTS (outf, "(RND20)");
+      OUTS (outf, " (RND20)");
     }
   else if (x == 0 && HL == 0 && aop == 1 && aopcde == 5)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src0));
-      OUTS (outf, "-");
+      OUTS (outf, " - ");
       OUTS (outf, dregs (src1));
-      OUTS (outf, "(RND12)");
+      OUTS (outf, " (RND12)");
     }
   else if (x == 0 && HL == 0 && aop == 0 && aopcde == 5)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src0));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, dregs (src1));
-      OUTS (outf, "(RND12)");
+      OUTS (outf, " (RND12)");
     }
   else if (x == 1 && HL == 0 && aop == 3 && aopcde == 5)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src0));
-      OUTS (outf, "-");
+      OUTS (outf, " - ");
       OUTS (outf, dregs (src1));
-      OUTS (outf, "(RND20)");
+      OUTS (outf, " (RND20)");
     }
   else if (x == 0 && HL == 1 && aop == 0 && aopcde == 5)
     {
       OUTS (outf, dregs_hi (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src0));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, dregs (src1));
-      OUTS (outf, "(RND12)");
+      OUTS (outf, " (RND12)");
     }
   else if (x == 1 && HL == 0 && aop == 2 && aopcde == 5)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src0));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, dregs (src1));
-      OUTS (outf, "(RND20)");
+      OUTS (outf, " (RND20)");
     }
   else if (x == 0 && HL == 1 && aop == 1 && aopcde == 5)
     {
       OUTS (outf, dregs_hi (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src0));
-      OUTS (outf, "-");
+      OUTS (outf, " - ");
       OUTS (outf, dregs (src1));
-      OUTS (outf, "(RND12)");
+      OUTS (outf, " (RND12)");
     }
   else if (HL == 1 && aop == 0 && aopcde == 2)
     {
       OUTS (outf, dregs_hi (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs_lo (src0));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, dregs_lo (src1));
-      OUTS (outf, " ");
       amod1 (s, x, outf);
     }
   else if (HL == 1 && aop == 1 && aopcde == 2)
     {
       OUTS (outf, dregs_hi (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs_lo (src0));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, dregs_hi (src1));
-      OUTS (outf, " ");
       amod1 (s, x, outf);
     }
   else if (HL == 1 && aop == 2 && aopcde == 2)
     {
       OUTS (outf, dregs_hi (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs_hi (src0));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, dregs_lo (src1));
-      OUTS (outf, " ");
       amod1 (s, x, outf);
     }
   else if (HL == 1 && aop == 3 && aopcde == 2)
     {
       OUTS (outf, dregs_hi (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs_hi (src0));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, dregs_hi (src1));
-      OUTS (outf, " ");
       amod1 (s, x, outf);
     }
   else if (HL == 0 && aop == 0 && aopcde == 3)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs_lo (src0));
-      OUTS (outf, "-");
+      OUTS (outf, " - ");
       OUTS (outf, dregs_lo (src1));
-      OUTS (outf, " ");
       amod1 (s, x, outf);
     }
   else if (HL == 0 && aop == 1 && aopcde == 3)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs_lo (src0));
-      OUTS (outf, "-");
+      OUTS (outf, " - ");
       OUTS (outf, dregs_hi (src1));
-      OUTS (outf, " ");
       amod1 (s, x, outf);
     }
   else if (HL == 0 && aop == 3 && aopcde == 2)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs_hi (src0));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, dregs_hi (src1));
-      OUTS (outf, " ");
       amod1 (s, x, outf);
     }
   else if (HL == 1 && aop == 0 && aopcde == 3)
     {
       OUTS (outf, dregs_hi (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs_lo (src0));
-      OUTS (outf, "-");
+      OUTS (outf, " - ");
       OUTS (outf, dregs_lo (src1));
-      OUTS (outf, " ");
       amod1 (s, x, outf);
     }
   else if (HL == 1 && aop == 1 && aopcde == 3)
     {
       OUTS (outf, dregs_hi (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs_lo (src0));
-      OUTS (outf, "-");
+      OUTS (outf, " - ");
       OUTS (outf, dregs_hi (src1));
-      OUTS (outf, " ");
       amod1 (s, x, outf);
     }
   else if (HL == 1 && aop == 2 && aopcde == 3)
     {
       OUTS (outf, dregs_hi (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs_hi (src0));
-      OUTS (outf, "-");
+      OUTS (outf, " - ");
       OUTS (outf, dregs_lo (src1));
-      OUTS (outf, " ");
       amod1 (s, x, outf);
     }
   else if (HL == 1 && aop == 3 && aopcde == 3)
     {
       OUTS (outf, dregs_hi (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs_hi (src0));
-      OUTS (outf, "-");
+      OUTS (outf, " - ");
       OUTS (outf, dregs_hi (src1));
-      OUTS (outf, " ");
       amod1 (s, x, outf);
     }
   else if (HL == 0 && aop == 2 && aopcde == 2)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs_hi (src0));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, dregs_lo (src1));
-      OUTS (outf, " ");
       amod1 (s, x, outf);
     }
   else if (HL == 0 && aop == 1 && aopcde == 2)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs_lo (src0));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, dregs_hi (src1));
-      OUTS (outf, " ");
       amod1 (s, x, outf);
     }
   else if (HL == 0 && aop == 2 && aopcde == 3)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs_hi (src0));
-      OUTS (outf, "-");
+      OUTS (outf, " - ");
       OUTS (outf, dregs_lo (src1));
-      OUTS (outf, " ");
       amod1 (s, x, outf);
     }
   else if (HL == 0 && aop == 3 && aopcde == 3)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs_hi (src0));
-      OUTS (outf, "-");
+      OUTS (outf, " - ");
       OUTS (outf, dregs_hi (src1));
-      OUTS (outf, " ");
       amod1 (s, x, outf);
     }
   else if (HL == 0 && aop == 0 && aopcde == 2)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs_lo (src0));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, dregs_lo (src1));
-      OUTS (outf, " ");
       amod1 (s, x, outf);
     }
   else if (aop == 0 && aopcde == 9 && s == 1)
     {
-      OUTS (outf, "A0=");
+      OUTS (outf, "A0 = ");
       OUTS (outf, dregs (src0));
     }
   else if (aop == 3 && aopcde == 11 && s == 0)
-    OUTS (outf, "A0-=A1");
+    OUTS (outf, "A0 -= A1");
 
   else if (aop == 3 && aopcde == 11 && s == 1)
-    OUTS (outf, "A0-=A1(W32)");
+    OUTS (outf, "A0 -= A1 (W32)");
 
-  else if (aop == 3 && aopcde == 22 && HL == 1)
-    {
-      OUTS (outf, dregs (dst0));
-      OUTS (outf, "=BYTEOP2M(");
-      OUTS (outf, dregs (src0 + 1));
-      OUTS (outf, ":");
-      OUTS (outf, imm5 (src0));
-      OUTS (outf, ",");
-      OUTS (outf, dregs (src1 + 1));
-      OUTS (outf, ":");
-      OUTS (outf, imm5 (src1));
-      OUTS (outf, ")(TH");
-      if (s == 1)
-	OUTS (outf, ", R)");
-      else
-	OUTS (outf, ")");
-    }
-  else if (aop == 3 && aopcde == 22 && HL == 0)
-    {
-      OUTS (outf, dregs (dst0));
-      OUTS (outf, "=BYTEOP2M(");
-      OUTS (outf, dregs (src0 + 1));
-      OUTS (outf, ":");
-      OUTS (outf, imm5 (src0));
-      OUTS (outf, ",");
-      OUTS (outf, dregs (src1 + 1));
-      OUTS (outf, ":");
-      OUTS (outf, imm5 (src1));
-      OUTS (outf, ")(TL");
-      if (s == 1)
-	OUTS (outf, ", R)");
-      else
-	OUTS (outf, ")");
-    }
-  else if (aop == 2 && aopcde == 22 && HL == 1)
-    {
-      OUTS (outf, dregs (dst0));
-      OUTS (outf, "=BYTEOP2M(");
-      OUTS (outf, dregs (src0 + 1));
-      OUTS (outf, ":");
-      OUTS (outf, imm5 (src0));
-      OUTS (outf, ",");
-      OUTS (outf, dregs (src1 + 1));
-      OUTS (outf, ":");
-      OUTS (outf, imm5 (src1));
-      OUTS (outf, ")(RNDH");
-      if (s == 1)
-	OUTS (outf, ", R)");
-      else
-	OUTS (outf, ")");
-    }
-  else if (aop == 2 && aopcde == 22 && HL == 0)
-    {
-      OUTS (outf, dregs (dst0));
-      OUTS (outf, "=BYTEOP2M(");
-      OUTS (outf, dregs (src0 + 1));
-      OUTS (outf, ":");
-      OUTS (outf, imm5 (src0));
-      OUTS (outf, ",");
-      OUTS (outf, dregs (src1 + 1));
-      OUTS (outf, ":");
-      OUTS (outf, imm5 (src1));
-      OUTS (outf, ")(RNDL");
-      if (s == 1)
-	OUTS (outf, ", R)");
-      else
-	OUTS (outf, ")");
-    }
   else if (aop == 1 && aopcde == 22 && HL == 1)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=BYTEOP2P(");
+      OUTS (outf, " = BYTEOP2P (");
       OUTS (outf, dregs (src0 + 1));
       OUTS (outf, ":");
-      OUTS (outf, imm5 (src0));
-      OUTS (outf, ",");
+      OUTS (outf, imm5d (src0));
+      OUTS (outf, ", ");
       OUTS (outf, dregs (src1 + 1));
       OUTS (outf, ":");
-      OUTS (outf, imm5 (src1));
-      OUTS (outf, ")(TH");
+      OUTS (outf, imm5d (src1));
+      OUTS (outf, ") (TH");
       if (s == 1)
 	OUTS (outf, ", R)");
       else
@@ -3057,15 +3378,15 @@ decode_dsp32alu_0 (TIword iw0, TIword iw1, disassemble_info *outf)
   else if (aop == 1 && aopcde == 22 && HL == 0)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=BYTEOP2P(");
+      OUTS (outf, " = BYTEOP2P (");
       OUTS (outf, dregs (src0 + 1));
       OUTS (outf, ":");
-      OUTS (outf, imm5 (src0));
-      OUTS (outf, ",");
+      OUTS (outf, imm5d (src0));
+      OUTS (outf, ", ");
       OUTS (outf, dregs (src1 + 1));
       OUTS (outf, ":");
-      OUTS (outf, imm5 (src1));
-      OUTS (outf, ")(TL");
+      OUTS (outf, imm5d (src1));
+      OUTS (outf, ") (TL");
       if (s == 1)
 	OUTS (outf, ", R)");
       else
@@ -3074,15 +3395,15 @@ decode_dsp32alu_0 (TIword iw0, TIword iw1, disassemble_info *outf)
   else if (aop == 0 && aopcde == 22 && HL == 1)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=BYTEOP2P(");
+      OUTS (outf, " = BYTEOP2P (");
       OUTS (outf, dregs (src0 + 1));
       OUTS (outf, ":");
-      OUTS (outf, imm5 (src0));
-      OUTS (outf, ",");
+      OUTS (outf, imm5d (src0));
+      OUTS (outf, ", ");
       OUTS (outf, dregs (src1 + 1));
       OUTS (outf, ":");
-      OUTS (outf, imm5 (src1));
-      OUTS (outf, ")(RNDH");
+      OUTS (outf, imm5d (src1));
+      OUTS (outf, ") (RNDH");
       if (s == 1)
 	OUTS (outf, ", R)");
       else
@@ -3091,69 +3412,69 @@ decode_dsp32alu_0 (TIword iw0, TIword iw1, disassemble_info *outf)
   else if (aop == 0 && aopcde == 22 && HL == 0)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=BYTEOP2P(");
+      OUTS (outf, " = BYTEOP2P (");
       OUTS (outf, dregs (src0 + 1));
       OUTS (outf, ":");
-      OUTS (outf, imm5 (src0));
-      OUTS (outf, ",");
+      OUTS (outf, imm5d (src0));
+      OUTS (outf, ", ");
       OUTS (outf, dregs (src1 + 1));
       OUTS (outf, ":");
-      OUTS (outf, imm5 (src1));
-      OUTS (outf, ")(RNDL");
+      OUTS (outf, imm5d (src1));
+      OUTS (outf, ") (RNDL");
       if (s == 1)
 	OUTS (outf, ", R)");
       else
 	OUTS (outf, ")");
     }
   else if (aop == 0 && s == 0 && aopcde == 8)
-    OUTS (outf, "A0=0");
+    OUTS (outf, "A0 = 0");
 
   else if (aop == 0 && s == 1 && aopcde == 8)
-    OUTS (outf, "A0=A0(S)");
+    OUTS (outf, "A0 = A0 (S)");
 
   else if (aop == 1 && s == 0 && aopcde == 8)
-    OUTS (outf, "A1=0");
+    OUTS (outf, "A1 = 0");
 
   else if (aop == 1 && s == 1 && aopcde == 8)
-    OUTS (outf, "A1=A1(S)");
+    OUTS (outf, "A1 = A1 (S)");
 
   else if (aop == 2 && s == 0 && aopcde == 8)
-    OUTS (outf, "A1=A0=0");
+    OUTS (outf, "A1 = A0 = 0");
 
   else if (aop == 2 && s == 1 && aopcde == 8)
-    OUTS (outf, "A1=A1(S),A0=A0(S)");
+    OUTS (outf, "A1 = A1 (S), A0 = A0 (S)");
 
   else if (aop == 3 && s == 0 && aopcde == 8)
-    OUTS (outf, "A0=A1");
+    OUTS (outf, "A0 = A1");
 
   else if (aop == 3 && s == 1 && aopcde == 8)
-    OUTS (outf, "A1=A0");
+    OUTS (outf, "A1 = A0");
 
   else if (aop == 1 && aopcde == 9 && s == 0)
     {
-      OUTS (outf, "A0.x=");
+      OUTS (outf, "A0.X = ");
       OUTS (outf, dregs_lo (src0));
     }
   else if (aop == 1 && HL == 0 && aopcde == 11)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "=(A0+=A1)");
+      OUTS (outf, " = (A0 += A1)");
     }
   else if (aop == 3 && HL == 0 && aopcde == 16)
-    OUTS (outf, "A1= ABS A0,A0= ABS A0");
+    OUTS (outf, "A1 = ABS A1, A0 = ABS A0");
 
   else if (aop == 0 && aopcde == 23 && HL == 1)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=BYTEOP3P(");
+      OUTS (outf, " = BYTEOP3P (");
       OUTS (outf, dregs (src0 + 1));
       OUTS (outf, ":");
-      OUTS (outf, imm5 (src0));
-      OUTS (outf, ",");
+      OUTS (outf, imm5d (src0));
+      OUTS (outf, ", ");
       OUTS (outf, dregs (src1 + 1));
       OUTS (outf, ":");
-      OUTS (outf, imm5 (src1));
-      OUTS (outf, ")(HI");
+      OUTS (outf, imm5d (src1));
+      OUTS (outf, ") (HI");
       if (s == 1)
 	OUTS (outf, ", R)");
       else
@@ -3161,239 +3482,233 @@ decode_dsp32alu_0 (TIword iw0, TIword iw1, disassemble_info *outf)
     }
   else if (aop == 3 && aopcde == 9 && s == 0)
     {
-      OUTS (outf, "A1.x=");
+      OUTS (outf, "A1.X = ");
       OUTS (outf, dregs_lo (src0));
     }
   else if (aop == 1 && HL == 1 && aopcde == 16)
-    OUTS (outf, "A1= ABS A1");
+    OUTS (outf, "A1 = ABS A1");
 
   else if (aop == 0 && HL == 1 && aopcde == 16)
-    OUTS (outf, "A1= ABS A0");
+    OUTS (outf, "A1 = ABS A0");
 
   else if (aop == 2 && aopcde == 9 && s == 1)
     {
-      OUTS (outf, "A1=");
+      OUTS (outf, "A1 = ");
       OUTS (outf, dregs (src0));
     }
   else if (HL == 0 && aop == 3 && aopcde == 12)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src0));
-      OUTS (outf, "(RND)");
+      OUTS (outf, " (RND)");
     }
   else if (aop == 1 && HL == 0 && aopcde == 16)
-    OUTS (outf, "A0= ABS A1");
+    OUTS (outf, "A0 = ABS A1");
 
   else if (aop == 0 && HL == 0 && aopcde == 16)
-    OUTS (outf, "A0= ABS A0");
+    OUTS (outf, "A0 = ABS A0");
 
   else if (aop == 3 && HL == 0 && aopcde == 15)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=-");
+      OUTS (outf, " = -");
       OUTS (outf, dregs (src0));
-      OUTS (outf, "(V)");
+      OUTS (outf, " (V)");
     }
   else if (aop == 3 && s == 1 && HL == 0 && aopcde == 7)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=-");
+      OUTS (outf, " = -");
       OUTS (outf, dregs (src0));
-      OUTS (outf, "(S)");
+      OUTS (outf, " (S)");
     }
   else if (aop == 3 && s == 0 && HL == 0 && aopcde == 7)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=-");
+      OUTS (outf, " = -");
       OUTS (outf, dregs (src0));
-      OUTS (outf, "(NS)");
+      OUTS (outf, " (NS)");
     }
   else if (aop == 1 && HL == 1 && aopcde == 11)
     {
       OUTS (outf, dregs_hi (dst0));
-      OUTS (outf, "=(A0+=A1)");
+      OUTS (outf, " = (A0 += A1)");
     }
   else if (aop == 2 && aopcde == 11 && s == 0)
-    OUTS (outf, "A0+=A1");
+    OUTS (outf, "A0 += A1");
 
   else if (aop == 2 && aopcde == 11 && s == 1)
-    OUTS (outf, "A0+=A1(W32)");
+    OUTS (outf, "A0 += A1 (W32)");
 
   else if (aop == 3 && HL == 0 && aopcde == 14)
-    OUTS (outf, "A1=-A1,A0=-A0");
+    OUTS (outf, "A1 = -A1, A0 = -A0");
 
   else if (HL == 1 && aop == 3 && aopcde == 12)
     {
       OUTS (outf, dregs_hi (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src0));
-      OUTS (outf, "(RND)");
+      OUTS (outf, " (RND)");
     }
   else if (aop == 0 && aopcde == 23 && HL == 0)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=BYTEOP3P(");
+      OUTS (outf, " = BYTEOP3P (");
       OUTS (outf, dregs (src0 + 1));
       OUTS (outf, ":");
-      OUTS (outf, imm5 (src0));
-      OUTS (outf, ",");
+      OUTS (outf, imm5d (src0));
+      OUTS (outf, ", ");
       OUTS (outf, dregs (src1 + 1));
       OUTS (outf, ":");
-      OUTS (outf, imm5 (src1));
-      OUTS (outf, ")(LO");
+      OUTS (outf, imm5d (src1));
+      OUTS (outf, ") (LO");
       if (s == 1)
 	OUTS (outf, ", R)");
       else
 	OUTS (outf, ")");
     }
   else if (aop == 0 && HL == 0 && aopcde == 14)
-    OUTS (outf, "A0=-A0");
+    OUTS (outf, "A0 = -A0");
 
   else if (aop == 1 && HL == 0 && aopcde == 14)
-    OUTS (outf, "A0=-A1");
+    OUTS (outf, "A0 = -A1");
 
   else if (aop == 0 && HL == 1 && aopcde == 14)
-    OUTS (outf, "A1=-A0");
+    OUTS (outf, "A1 = -A0");
 
   else if (aop == 1 && HL == 1 && aopcde == 14)
-    OUTS (outf, "A1=-A1");
+    OUTS (outf, "A1 = -A1");
 
   else if (aop == 0 && aopcde == 12)
     {
       OUTS (outf, dregs_hi (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "=SIGN(");
+      OUTS (outf, " = SIGN (");
       OUTS (outf, dregs_hi (src0));
-      OUTS (outf, ")*");
+      OUTS (outf, ") * ");
       OUTS (outf, dregs_hi (src1));
-      OUTS (outf, "+SIGN(");
+      OUTS (outf, " + SIGN (");
       OUTS (outf, dregs_lo (src0));
-      OUTS (outf, ")*");
+      OUTS (outf, ") * ");
       OUTS (outf, dregs_lo (src1));
-      OUTS (outf, ")");
     }
   else if (aop == 2 && aopcde == 0)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src0));
-      OUTS (outf, "-|+");
+      OUTS (outf, " -|+ ");
       OUTS (outf, dregs (src1));
-      OUTS (outf, " ");
       amod0 (s, x, outf);
     }
   else if (aop == 1 && aopcde == 12)
     {
       OUTS (outf, dregs (dst1));
-      OUTS (outf, "=A1.L+A1.H,");
+      OUTS (outf, " = A1.L + A1.H, ");
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=A0.L+A0.H");
+      OUTS (outf, " = A0.L + A0.H");
     }
   else if (aop == 2 && aopcde == 4)
     {
       OUTS (outf, dregs (dst1));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src0));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, dregs (src1));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src0));
-      OUTS (outf, "-");
+      OUTS (outf, " - ");
       OUTS (outf, dregs (src1));
-      OUTS (outf, " ");
       amod1 (s, x, outf);
     }
   else if (HL == 0 && aopcde == 1)
     {
       OUTS (outf, dregs (dst1));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src0));
-      OUTS (outf, "+|+");
+      OUTS (outf, " +|+ ");
       OUTS (outf, dregs (src1));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src0));
-      OUTS (outf, "-|-");
+      OUTS (outf, " -|- ");
       OUTS (outf, dregs (src1));
       amod0amod2 (s, x, aop, outf);
     }
   else if (aop == 0 && aopcde == 11)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=(A0+=A1)");
+      OUTS (outf, " = (A0 += A1)");
     }
   else if (aop == 0 && aopcde == 10)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "=A0.x");
+      OUTS (outf, " = A0.X");
     }
   else if (aop == 1 && aopcde == 10)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "=A1.x");
+      OUTS (outf, " = A1.X");
     }
   else if (aop == 1 && aopcde == 0)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src0));
-      OUTS (outf, "+|-");
+      OUTS (outf, " +|- ");
       OUTS (outf, dregs (src1));
-      OUTS (outf, " ");
       amod0 (s, x, outf);
     }
   else if (aop == 3 && aopcde == 0)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src0));
-      OUTS (outf, "-|-");
+      OUTS (outf, " -|- ");
       OUTS (outf, dregs (src1));
-      OUTS (outf, " ");
       amod0 (s, x, outf);
     }
   else if (aop == 1 && aopcde == 4)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src0));
-      OUTS (outf, "-");
+      OUTS (outf, " - ");
       OUTS (outf, dregs (src1));
-      OUTS (outf, " ");
       amod1 (s, x, outf);
     }
   else if (aop == 0 && aopcde == 17)
     {
       OUTS (outf, dregs (dst1));
-      OUTS (outf, "=A1+A0,");
+      OUTS (outf, " = A1 + A0, ");
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=A1-A0 ");
+      OUTS (outf, " = A1 - A0");
       amod1 (s, x, outf);
     }
   else if (aop == 1 && aopcde == 17)
     {
       OUTS (outf, dregs (dst1));
-      OUTS (outf, "=A0+A1,");
+      OUTS (outf, " = A0 + A1, ");
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=A0-A1 ");
+      OUTS (outf, " = A0 - A1");
       amod1 (s, x, outf);
     }
   else if (aop == 0 && aopcde == 18)
     {
-      OUTS (outf, "SAA(");
+      OUTS (outf, "SAA (");
       OUTS (outf, dregs (src0 + 1));
       OUTS (outf, ":");
-      OUTS (outf, imm5 (src0));
-      OUTS (outf, ",");
+      OUTS (outf, imm5d (src0));
+      OUTS (outf, ", ");
       OUTS (outf, dregs (src1 + 1));
       OUTS (outf, ":");
-      OUTS (outf, imm5 (src1));
-      OUTS (outf, ") ");
+      OUTS (outf, imm5d (src1));
+      OUTS (outf, ")");
       aligndir (s, outf);
     }
   else if (aop == 3 && aopcde == 18)
@@ -3402,29 +3717,29 @@ decode_dsp32alu_0 (TIword iw0, TIword iw1, disassemble_info *outf)
   else if (aop == 0 && aopcde == 20)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=BYTEOP1P(");
+      OUTS (outf, " = BYTEOP1P (");
       OUTS (outf, dregs (src0 + 1));
       OUTS (outf, ":");
-      OUTS (outf, imm5 (src0));
-      OUTS (outf, ",");
+      OUTS (outf, imm5d (src0));
+      OUTS (outf, ", ");
       OUTS (outf, dregs (src1 + 1));
       OUTS (outf, ":");
-      OUTS (outf, imm5 (src1));
+      OUTS (outf, imm5d (src1));
       OUTS (outf, ")");
       aligndir (s, outf);
     }
   else if (aop == 1 && aopcde == 20)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=BYTEOP1P(");
+      OUTS (outf, " = BYTEOP1P (");
       OUTS (outf, dregs (src0 + 1));
       OUTS (outf, ":");
-      OUTS (outf, imm5 (src0));
-      OUTS (outf, ",");
+      OUTS (outf, imm5d (src0));
+      OUTS (outf, ", ");
       OUTS (outf, dregs (src1 + 1));
       OUTS (outf, ":");
-      OUTS (outf, imm5 (src1));
-      OUTS (outf, ")(T");
+      OUTS (outf, imm5d (src1));
+      OUTS (outf, ") (T");
       if (s == 1)
 	OUTS (outf, ", R)");
       else
@@ -3434,126 +3749,124 @@ decode_dsp32alu_0 (TIword iw0, TIword iw1, disassemble_info *outf)
     {
       OUTS (outf, "(");
       OUTS (outf, dregs (dst1));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, dregs (dst0));
-      OUTS (outf, ")=BYTEOP16P(");
+      OUTS (outf, ") = BYTEOP16P (");
       OUTS (outf, dregs (src0 + 1));
       OUTS (outf, ":");
-      OUTS (outf, imm5 (src0));
-      OUTS (outf, ",");
+      OUTS (outf, imm5d (src0));
+      OUTS (outf, ", ");
       OUTS (outf, dregs (src1 + 1));
       OUTS (outf, ":");
-      OUTS (outf, imm5 (src1));
-      OUTS (outf, ") ");
+      OUTS (outf, imm5d (src1));
+      OUTS (outf, ")");
       aligndir (s, outf);
     }
   else if (aop == 1 && aopcde == 21)
     {
       OUTS (outf, "(");
       OUTS (outf, dregs (dst1));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, dregs (dst0));
-      OUTS (outf, ")=BYTEOP16M(");
+      OUTS (outf, ") = BYTEOP16M (");
       OUTS (outf, dregs (src0 + 1));
       OUTS (outf, ":");
-      OUTS (outf, imm5 (src0));
-      OUTS (outf, ",");
+      OUTS (outf, imm5d (src0));
+      OUTS (outf, ", ");
       OUTS (outf, dregs (src1 + 1));
       OUTS (outf, ":");
-      OUTS (outf, imm5 (src1));
-      OUTS (outf, ") ");
+      OUTS (outf, imm5d (src1));
+      OUTS (outf, ")");
       aligndir (s, outf);
     }
   else if (aop == 2 && aopcde == 7)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "= ABS ");
+      OUTS (outf, " = ABS ");
       OUTS (outf, dregs (src0));
     }
   else if (aop == 1 && aopcde == 7)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=MIN(");
+      OUTS (outf, " = MIN (");
       OUTS (outf, dregs (src0));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, dregs (src1));
       OUTS (outf, ")");
     }
   else if (aop == 0 && aopcde == 7)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=MAX(");
+      OUTS (outf, " = MAX (");
       OUTS (outf, dregs (src0));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, dregs (src1));
       OUTS (outf, ")");
     }
   else if (aop == 2 && aopcde == 6)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "= ABS ");
+      OUTS (outf, " = ABS ");
       OUTS (outf, dregs (src0));
-      OUTS (outf, "(V)");
+      OUTS (outf, " (V)");
     }
   else if (aop == 1 && aopcde == 6)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=MIN(");
+      OUTS (outf, " = MIN (");
       OUTS (outf, dregs (src0));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, dregs (src1));
-      OUTS (outf, ")(V)");
+      OUTS (outf, ") (V)");
     }
   else if (aop == 0 && aopcde == 6)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=MAX(");
+      OUTS (outf, " = MAX (");
       OUTS (outf, dregs (src0));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, dregs (src1));
-      OUTS (outf, ")(V)");
+      OUTS (outf, ") (V)");
     }
   else if (HL == 1 && aopcde == 1)
     {
       OUTS (outf, dregs (dst1));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src0));
-      OUTS (outf, "+|-");
+      OUTS (outf, " +|- ");
       OUTS (outf, dregs (src1));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src0));
-      OUTS (outf, "-|+");
+      OUTS (outf, " -|+ ");
       OUTS (outf, dregs (src1));
       amod0amod2 (s, x, aop, outf);
     }
   else if (aop == 0 && aopcde == 4)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src0));
-      OUTS (outf, "+");
+      OUTS (outf, " + ");
       OUTS (outf, dregs (src1));
-      OUTS (outf, " ");
       amod1 (s, x, outf);
     }
   else if (aop == 0 && aopcde == 0)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src0));
-      OUTS (outf, "+|+");
+      OUTS (outf, " +|+ ");
       OUTS (outf, dregs (src1));
-      OUTS (outf, " ");
       amod0 (s, x, outf);
     }
   else if (aop == 0 && aopcde == 24)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=BYTEPACK(");
+      OUTS (outf, " = BYTEPACK (");
       OUTS (outf, dregs (src0));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, dregs (src1));
       OUTS (outf, ")");
     }
@@ -3561,24 +3874,23 @@ decode_dsp32alu_0 (TIword iw0, TIword iw1, disassemble_info *outf)
     {
       OUTS (outf, "(");
       OUTS (outf, dregs (dst1));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, dregs (dst0));
       OUTS (outf, ") = BYTEUNPACK ");
       OUTS (outf, dregs (src0 + 1));
       OUTS (outf, ":");
-      OUTS (outf, imm5 (src0));
-      OUTS (outf, " ");
+      OUTS (outf, imm5d (src0));
       aligndir (s, outf);
     }
   else if (aopcde == 13)
     {
       OUTS (outf, "(");
       OUTS (outf, dregs (dst1));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, dregs (dst0));
       OUTS (outf, ") = SEARCH ");
       OUTS (outf, dregs (src0));
-      OUTS (outf, "(");
+      OUTS (outf, " (");
       searchmod (aop, outf);
       OUTS (outf, ")");
     }
@@ -3607,7 +3919,7 @@ decode_dsp32shift_0 (TIword iw0, TIword iw1, disassemble_info *outf)
   if (HLs == 0 && sop == 0 && sopcde == 0)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "= ASHIFT ");
+      OUTS (outf, " = ASHIFT ");
       OUTS (outf, dregs_lo (src1));
       OUTS (outf, " BY ");
       OUTS (outf, dregs_lo (src0));
@@ -3615,7 +3927,7 @@ decode_dsp32shift_0 (TIword iw0, TIword iw1, disassemble_info *outf)
   else if (HLs == 1 && sop == 0 && sopcde == 0)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "= ASHIFT ");
+      OUTS (outf, " = ASHIFT ");
       OUTS (outf, dregs_hi (src1));
       OUTS (outf, " BY ");
       OUTS (outf, dregs_lo (src0));
@@ -3623,7 +3935,7 @@ decode_dsp32shift_0 (TIword iw0, TIword iw1, disassemble_info *outf)
   else if (HLs == 2 && sop == 0 && sopcde == 0)
     {
       OUTS (outf, dregs_hi (dst0));
-      OUTS (outf, "= ASHIFT ");
+      OUTS (outf, " = ASHIFT ");
       OUTS (outf, dregs_lo (src1));
       OUTS (outf, " BY ");
       OUTS (outf, dregs_lo (src0));
@@ -3631,7 +3943,7 @@ decode_dsp32shift_0 (TIword iw0, TIword iw1, disassemble_info *outf)
   else if (HLs == 3 && sop == 0 && sopcde == 0)
     {
       OUTS (outf, dregs_hi (dst0));
-      OUTS (outf, "= ASHIFT ");
+      OUTS (outf, " = ASHIFT ");
       OUTS (outf, dregs_hi (src1));
       OUTS (outf, " BY ");
       OUTS (outf, dregs_lo (src0));
@@ -3639,43 +3951,43 @@ decode_dsp32shift_0 (TIword iw0, TIword iw1, disassemble_info *outf)
   else if (HLs == 0 && sop == 1 && sopcde == 0)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "= ASHIFT ");
+      OUTS (outf, " = ASHIFT ");
       OUTS (outf, dregs_lo (src1));
       OUTS (outf, " BY ");
       OUTS (outf, dregs_lo (src0));
-      OUTS (outf, "(S)");
+      OUTS (outf, " (S)");
     }
   else if (HLs == 1 && sop == 1 && sopcde == 0)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "= ASHIFT ");
+      OUTS (outf, " = ASHIFT ");
       OUTS (outf, dregs_hi (src1));
       OUTS (outf, " BY ");
       OUTS (outf, dregs_lo (src0));
-      OUTS (outf, "(S)");
+      OUTS (outf, " (S)");
     }
   else if (HLs == 2 && sop == 1 && sopcde == 0)
     {
       OUTS (outf, dregs_hi (dst0));
-      OUTS (outf, "= ASHIFT ");
+      OUTS (outf, " = ASHIFT ");
       OUTS (outf, dregs_lo (src1));
       OUTS (outf, " BY ");
       OUTS (outf, dregs_lo (src0));
-      OUTS (outf, "(S)");
+      OUTS (outf, " (S)");
     }
   else if (HLs == 3 && sop == 1 && sopcde == 0)
     {
       OUTS (outf, dregs_hi (dst0));
-      OUTS (outf, "= ASHIFT ");
+      OUTS (outf, " = ASHIFT ");
       OUTS (outf, dregs_hi (src1));
       OUTS (outf, " BY ");
       OUTS (outf, dregs_lo (src0));
-      OUTS (outf, "(S)");
+      OUTS (outf, " (S)");
     }
   else if (sop == 2 && sopcde == 0)
     {
       OUTS (outf, (HLs & 2) == 0 ? dregs_lo (dst0) : dregs_hi (dst0));
-      OUTS (outf, "= LSHIFT ");
+      OUTS (outf, " = LSHIFT ");
       OUTS (outf, (HLs & 1) == 0 ? dregs_lo (src1) : dregs_hi (src1));
       OUTS (outf, " BY ");
       OUTS (outf, dregs_lo (src0));
@@ -3683,7 +3995,7 @@ decode_dsp32shift_0 (TIword iw0, TIword iw1, disassemble_info *outf)
   else if (sop == 0 && sopcde == 3)
     {
       OUTS (outf, acc01);
-      OUTS (outf, "= ASHIFT ");
+      OUTS (outf, " = ASHIFT ");
       OUTS (outf, acc01);
       OUTS (outf, " BY ");
       OUTS (outf, dregs_lo (src0));
@@ -3691,7 +4003,7 @@ decode_dsp32shift_0 (TIword iw0, TIword iw1, disassemble_info *outf)
   else if (sop == 1 && sopcde == 3)
     {
       OUTS (outf, acc01);
-      OUTS (outf, "= LSHIFT ");
+      OUTS (outf, " = LSHIFT ");
       OUTS (outf, acc01);
       OUTS (outf, " BY ");
       OUTS (outf, dregs_lo (src0));
@@ -3699,7 +4011,7 @@ decode_dsp32shift_0 (TIword iw0, TIword iw1, disassemble_info *outf)
   else if (sop == 2 && sopcde == 3)
     {
       OUTS (outf, acc01);
-      OUTS (outf, "= ROT ");
+      OUTS (outf, " = ROT ");
       OUTS (outf, acc01);
       OUTS (outf, " BY ");
       OUTS (outf, dregs_lo (src0));
@@ -3707,7 +4019,7 @@ decode_dsp32shift_0 (TIword iw0, TIword iw1, disassemble_info *outf)
   else if (sop == 3 && sopcde == 3)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "= ROT ");
+      OUTS (outf, " = ROT ");
       OUTS (outf, dregs (src1));
       OUTS (outf, " BY ");
       OUTS (outf, dregs_lo (src0));
@@ -3715,25 +4027,25 @@ decode_dsp32shift_0 (TIword iw0, TIword iw1, disassemble_info *outf)
   else if (sop == 1 && sopcde == 1)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "= ASHIFT ");
+      OUTS (outf, " = ASHIFT ");
       OUTS (outf, dregs (src1));
       OUTS (outf, " BY ");
       OUTS (outf, dregs_lo (src0));
-      OUTS (outf, "(V,S)");
+      OUTS (outf, " (V, S)");
     }
   else if (sop == 0 && sopcde == 1)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "= ASHIFT ");
+      OUTS (outf, " = ASHIFT ");
       OUTS (outf, dregs (src1));
       OUTS (outf, " BY ");
       OUTS (outf, dregs_lo (src0));
-      OUTS (outf, "(V)");
+      OUTS (outf, " (V)");
     }
   else if (sop == 0 && sopcde == 2)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "= ASHIFT ");
+      OUTS (outf, " = ASHIFT ");
       OUTS (outf, dregs (src1));
       OUTS (outf, " BY ");
       OUTS (outf, dregs_lo (src0));
@@ -3741,16 +4053,16 @@ decode_dsp32shift_0 (TIword iw0, TIword iw1, disassemble_info *outf)
   else if (sop == 1 && sopcde == 2)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "= ASHIFT ");
+      OUTS (outf, " = ASHIFT ");
       OUTS (outf, dregs (src1));
       OUTS (outf, " BY ");
       OUTS (outf, dregs_lo (src0));
-      OUTS (outf, "(S)");
+      OUTS (outf, " (S)");
     }
   else if (sop == 2 && sopcde == 2)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=SHIFT ");
+      OUTS (outf, " = LSHIFT ");
       OUTS (outf, dregs (src1));
       OUTS (outf, " BY ");
       OUTS (outf, dregs_lo (src0));
@@ -3758,7 +4070,7 @@ decode_dsp32shift_0 (TIword iw0, TIword iw1, disassemble_info *outf)
   else if (sop == 3 && sopcde == 2)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "= ROT ");
+      OUTS (outf, " = ROT ");
       OUTS (outf, dregs (src1));
       OUTS (outf, " BY ");
       OUTS (outf, dregs_lo (src0));
@@ -3766,116 +4078,115 @@ decode_dsp32shift_0 (TIword iw0, TIword iw1, disassemble_info *outf)
   else if (sop == 2 && sopcde == 1)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=SHIFT ");
+      OUTS (outf, " = LSHIFT ");
       OUTS (outf, dregs (src1));
       OUTS (outf, " BY ");
       OUTS (outf, dregs_lo (src0));
-      OUTS (outf, "(V)");
+      OUTS (outf, " (V)");
     }
   else if (sop == 0 && sopcde == 4)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=PACK");
-      OUTS (outf, "(");
+      OUTS (outf, " = PACK (");
       OUTS (outf, dregs_lo (src1));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, dregs_lo (src0));
       OUTS (outf, ")");
     }
   else if (sop == 1 && sopcde == 4)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=PACK(");
+      OUTS (outf, " = PACK (");
       OUTS (outf, dregs_lo (src1));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, dregs_hi (src0));
       OUTS (outf, ")");
     }
   else if (sop == 2 && sopcde == 4)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=PACK(");
+      OUTS (outf, " = PACK (");
       OUTS (outf, dregs_hi (src1));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, dregs_lo (src0));
       OUTS (outf, ")");
     }
   else if (sop == 3 && sopcde == 4)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=PACK(");
+      OUTS (outf, " = PACK (");
       OUTS (outf, dregs_hi (src1));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, dregs_hi (src0));
       OUTS (outf, ")");
     }
   else if (sop == 0 && sopcde == 5)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "=SIGNBITS ");
+      OUTS (outf, " = SIGNBITS ");
       OUTS (outf, dregs (src1));
     }
   else if (sop == 1 && sopcde == 5)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "=SIGNBITS ");
+      OUTS (outf, " = SIGNBITS ");
       OUTS (outf, dregs_lo (src1));
     }
   else if (sop == 2 && sopcde == 5)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "=SIGNBITS ");
+      OUTS (outf, " = SIGNBITS ");
       OUTS (outf, dregs_hi (src1));
     }
   else if (sop == 0 && sopcde == 6)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "=SIGNBITS A0");
+      OUTS (outf, " = SIGNBITS A0");
     }
   else if (sop == 1 && sopcde == 6)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "=SIGNBITS A1");
+      OUTS (outf, " = SIGNBITS A1");
     }
   else if (sop == 3 && sopcde == 6)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "=ONES ");
+      OUTS (outf, " = ONES ");
       OUTS (outf, dregs (src1));
     }
   else if (sop == 0 && sopcde == 7)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "=EXPADJ (");
+      OUTS (outf, " = EXPADJ (");
       OUTS (outf, dregs (src1));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, dregs_lo (src0));
       OUTS (outf, ")");
     }
   else if (sop == 1 && sopcde == 7)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "=EXPADJ (");
+      OUTS (outf, " = EXPADJ (");
       OUTS (outf, dregs (src1));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, dregs_lo (src0));
       OUTS (outf, ") (V)");
     }
   else if (sop == 2 && sopcde == 7)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "=EXPADJ (");
+      OUTS (outf, " = EXPADJ (");
       OUTS (outf, dregs_lo (src1));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, dregs_lo (src0));
       OUTS (outf, ")");
     }
   else if (sop == 3 && sopcde == 7)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "=EXPADJ (");
+      OUTS (outf, " = EXPADJ (");
       OUTS (outf, dregs_hi (src1));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, dregs_lo (src0));
       OUTS (outf, ")");
     }
@@ -3883,132 +4194,132 @@ decode_dsp32shift_0 (TIword iw0, TIword iw1, disassemble_info *outf)
     {
       OUTS (outf, "BITMUX (");
       OUTS (outf, dregs (src0));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, dregs (src1));
-      OUTS (outf, ",A0 )(ASR)");
+      OUTS (outf, ", A0) (ASR)");
     }
   else if (sop == 1 && sopcde == 8)
     {
       OUTS (outf, "BITMUX (");
       OUTS (outf, dregs (src0));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, dregs (src1));
-      OUTS (outf, ",A0 )(ASL)");
+      OUTS (outf, ", A0) (ASL)");
     }
   else if (sop == 0 && sopcde == 9)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "=VIT_MAX (");
+      OUTS (outf, " = VIT_MAX (");
       OUTS (outf, dregs (src1));
       OUTS (outf, ") (ASL)");
     }
   else if (sop == 1 && sopcde == 9)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "=VIT_MAX (");
+      OUTS (outf, " = VIT_MAX (");
       OUTS (outf, dregs (src1));
       OUTS (outf, ") (ASR)");
     }
   else if (sop == 2 && sopcde == 9)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=VIT_MAX(");
+      OUTS (outf, " = VIT_MAX (");
       OUTS (outf, dregs (src1));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, dregs (src0));
-      OUTS (outf, ")(ASL)");
+      OUTS (outf, ") (ASL)");
     }
   else if (sop == 3 && sopcde == 9)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=VIT_MAX(");
+      OUTS (outf, " = VIT_MAX (");
       OUTS (outf, dregs (src1));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, dregs (src0));
-      OUTS (outf, ")(ASR)");
+      OUTS (outf, ") (ASR)");
     }
   else if (sop == 0 && sopcde == 10)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=EXTRACT(");
+      OUTS (outf, " = EXTRACT (");
       OUTS (outf, dregs (src1));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, dregs_lo (src0));
       OUTS (outf, ") (Z)");
     }
   else if (sop == 1 && sopcde == 10)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=EXTRACT(");
+      OUTS (outf, " = EXTRACT (");
       OUTS (outf, dregs (src1));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, dregs_lo (src0));
-      OUTS (outf, ")(X)");
+      OUTS (outf, ") (X)");
     }
   else if (sop == 2 && sopcde == 10)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=DEPOSIT(");
+      OUTS (outf, " = DEPOSIT (");
       OUTS (outf, dregs (src1));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, dregs (src0));
       OUTS (outf, ")");
     }
   else if (sop == 3 && sopcde == 10)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=DEPOSIT(");
+      OUTS (outf, " = DEPOSIT (");
       OUTS (outf, dregs (src1));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, dregs (src0));
-      OUTS (outf, ")(X)");
+      OUTS (outf, ") (X)");
     }
   else if (sop == 0 && sopcde == 11)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "=CC=BXORSHIFT(A0,");
+      OUTS (outf, " = CC = BXORSHIFT (A0, ");
       OUTS (outf, dregs (src0));
       OUTS (outf, ")");
     }
   else if (sop == 1 && sopcde == 11)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "=CC=BXOR(A0,");
+      OUTS (outf, " = CC = BXOR (A0, ");
       OUTS (outf, dregs (src0));
       OUTS (outf, ")");
     }
   else if (sop == 0 && sopcde == 12)
-    OUTS (outf, "A0=BXORSHIFT(A0,A1 ,CC)");
+    OUTS (outf, "A0 = BXORSHIFT (A0, A1, CC)");
 
   else if (sop == 1 && sopcde == 12)
     {
       OUTS (outf, dregs_lo (dst0));
-      OUTS (outf, "=CC=BXOR( A0,A1 ,CC )");
+      OUTS (outf, " = CC = BXOR (A0, A1, CC)");
     }
   else if (sop == 0 && sopcde == 13)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=ALIGN8(");
+      OUTS (outf, " = ALIGN8 (");
       OUTS (outf, dregs (src1));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, dregs (src0));
       OUTS (outf, ")");
     }
   else if (sop == 1 && sopcde == 13)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=ALIGN16(");
+      OUTS (outf, " = ALIGN16 (");
       OUTS (outf, dregs (src1));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, dregs (src0));
       OUTS (outf, ")");
     }
   else if (sop == 2 && sopcde == 13)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=ALIGN24(");
+      OUTS (outf, " = ALIGN24 (");
       OUTS (outf, dregs (src1));
-      OUTS (outf, ",");
+      OUTS (outf, ", ");
       OUTS (outf, dregs (src0));
       OUTS (outf, ")");
     }
@@ -4034,7 +4345,6 @@ decode_dsp32shiftimm_0 (TIword iw0, TIword iw1, disassemble_info *outf)
   int dst0     = ((iw1 >> DSP32ShiftImm_dst0_bits) & DSP32ShiftImm_dst0_mask);
   int sopcde   = ((iw0 >> (DSP32ShiftImm_sopcde_bits - 16)) & DSP32ShiftImm_sopcde_mask);
   int HLs      = ((iw1 >> DSP32ShiftImm_HLs_bits) & DSP32ShiftImm_HLs_mask);
-
 
   if (sop == 0 && sopcde == 0)
     {
@@ -4080,66 +4390,66 @@ decode_dsp32shiftimm_0 (TIword iw0, TIword iw1, disassemble_info *outf)
     }
   else if (sop == 2 && sopcde == 3 && HLs == 1)
     {
-      OUTS (outf, "A1= ROT A1 BY ");
+      OUTS (outf, "A1 = ROT A1 BY ");
       OUTS (outf, imm6 (immag));
     }
   else if (sop == 0 && sopcde == 3 && HLs == 0 && bit8 == 0)
     {
-      OUTS (outf, "A0=A0<<");
+      OUTS (outf, "A0 = A0 << ");
       OUTS (outf, uimm5 (immag));
     }
   else if (sop == 0 && sopcde == 3 && HLs == 0 && bit8 == 1)
     {
-      OUTS (outf, "A0=A0>>>");
+      OUTS (outf, "A0 = A0 >>> ");
       OUTS (outf, uimm5 (newimmag));
     }
   else if (sop == 0 && sopcde == 3 && HLs == 1 && bit8 == 0)
     {
-      OUTS (outf, "A1=A1<<");
+      OUTS (outf, "A1 = A1 << ");
       OUTS (outf, uimm5 (immag));
     }
   else if (sop == 0 && sopcde == 3 && HLs == 1 && bit8 == 1)
     {
-      OUTS (outf, "A1=A1>>>");
+      OUTS (outf, "A1 = A1 >>> ");
       OUTS (outf, uimm5 (newimmag));
     }
   else if (sop == 1 && sopcde == 3 && HLs == 0)
     {
-      OUTS (outf, "A0=A0>>");
+      OUTS (outf, "A0 = A0 >> ");
       OUTS (outf, uimm5 (newimmag));
     }
   else if (sop == 1 && sopcde == 3 && HLs == 1)
     {
-      OUTS (outf, "A1=A1>>");
+      OUTS (outf, "A1 = A1 >> ");
       OUTS (outf, uimm5 (newimmag));
     }
   else if (sop == 2 && sopcde == 3 && HLs == 0)
     {
-      OUTS (outf, "A0= ROT A0 BY ");
+      OUTS (outf, "A0 = ROT A0 BY ");
       OUTS (outf, imm6 (immag));
     }
   else if (sop == 1 && sopcde == 1 && bit8 == 0)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src1));
-      OUTS (outf, "<<");
+      OUTS (outf, " << ");
       OUTS (outf, uimm5 (immag));
       OUTS (outf, " (V, S)");
     }
   else if (sop == 1 && sopcde == 1 && bit8 == 1)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src1));
-      OUTS (outf, ">>>");
+      OUTS (outf, " >>> ");
       OUTS (outf, imm5 (-immag));
-      OUTS (outf, " (V)");
+      OUTS (outf, " (V, S)");
     }
   else if (sop == 2 && sopcde == 1 && bit8 == 1)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src1));
       OUTS (outf, " >> ");
       OUTS (outf, uimm5 (newimmag));
@@ -4148,50 +4458,50 @@ decode_dsp32shiftimm_0 (TIword iw0, TIword iw1, disassemble_info *outf)
   else if (sop == 2 && sopcde == 1 && bit8 == 0)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src1));
-      OUTS (outf, "<<");
+      OUTS (outf, " << ");
       OUTS (outf, imm5 (immag));
       OUTS (outf, " (V)");
     }
   else if (sop == 0 && sopcde == 1)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src1));
-      OUTS (outf, ">>>");
+      OUTS (outf, " >>> ");
       OUTS (outf, uimm5 (newimmag));
       OUTS (outf, " (V)");
     }
   else if (sop == 1 && sopcde == 2)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src1));
-      OUTS (outf, "<<");
+      OUTS (outf, " << ");
       OUTS (outf, uimm5 (immag));
-      OUTS (outf, "(S)");
+      OUTS (outf, " (S)");
     }
   else if (sop == 2 && sopcde == 2 && bit8 == 1)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src1));
-      OUTS (outf, ">>");
+      OUTS (outf, " >> ");
       OUTS (outf, uimm5 (newimmag));
     }
   else if (sop == 2 && sopcde == 2 && bit8 == 0)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src1));
-      OUTS (outf, "<<");
+      OUTS (outf, " << ");
       OUTS (outf, uimm5 (immag));
     }
   else if (sop == 3 && sopcde == 2)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "= ROT ");
+      OUTS (outf, " = ROT ");
       OUTS (outf, dregs (src1));
       OUTS (outf, " BY ");
       OUTS (outf, imm6 (immag));
@@ -4199,9 +4509,9 @@ decode_dsp32shiftimm_0 (TIword iw0, TIword iw1, disassemble_info *outf)
   else if (sop == 0 && sopcde == 2)
     {
       OUTS (outf, dregs (dst0));
-      OUTS (outf, "=");
+      OUTS (outf, " = ");
       OUTS (outf, dregs (src1));
-      OUTS (outf, ">>>");
+      OUTS (outf, " >>> ");
       OUTS (outf, uimm5 (newimmag));
     }
   else
@@ -4221,6 +4531,9 @@ decode_pseudoDEBUG_0 (TIword iw0, disassemble_info *outf)
   int grp = ((iw0 >> PseudoDbg_grp_bits) & PseudoDbg_grp_mask);
   int reg = ((iw0 >> PseudoDbg_reg_bits) & PseudoDbg_reg_mask);
 
+  if (parallel)
+    return 0;
+
   if (reg == 0 && fn == 3)
     OUTS (outf, "DBG A0");
 
@@ -4238,7 +4551,7 @@ decode_pseudoDEBUG_0 (TIword iw0, disassemble_info *outf)
 
   else if (reg == 6 && fn == 3)
     {
-      OUTS (outf, "DBGCMPLX(");
+      OUTS (outf, "DBGCMPLX (");
       OUTS (outf, dregs (grp));
       OUTS (outf, ")");
     }
@@ -4247,17 +4560,17 @@ decode_pseudoDEBUG_0 (TIword iw0, disassemble_info *outf)
 
   else if (grp == 0 && fn == 2)
     {
-      OUTS (outf, "OUTC");
+      OUTS (outf, "OUTC ");
       OUTS (outf, dregs (reg));
     }
   else if (fn == 0)
     {
-      OUTS (outf, "DBG");
+      OUTS (outf, "DBG ");
       OUTS (outf, allregs (reg, grp));
     }
   else if (fn == 1)
     {
-      OUTS (outf, "PRNT");
+      OUTS (outf, "PRNT ");
       OUTS (outf, allregs (reg, grp));
     }
   else
@@ -4267,46 +4580,68 @@ decode_pseudoDEBUG_0 (TIword iw0, disassemble_info *outf)
 }
 
 static int
+decode_pseudoOChar_0 (TIword iw0, disassemble_info *outf)
+{
+  /* psedoOChar
+     +---+---+---+---|---+---+---+---|---+---+---+---|---+---+---+---+
+     | 1 | 1 | 1 | 1 | 1 | 0 | 0 | 1 |.ch............................|
+     +---+---+---+---|---+---+---+---|---+---+---+---|---+---+---+---+  */
+  int ch = ((iw0 >> PseudoChr_ch_bits) & PseudoChr_ch_mask);
+
+  if (parallel)
+    return 0;
+
+  OUTS (outf, "OUTC ");
+  OUTS (outf, uimm8 (ch));
+
+  return 2;
+}
+
+static int
 decode_pseudodbg_assert_0 (TIword iw0, TIword iw1, disassemble_info *outf)
 {
   /* pseudodbg_assert
      +---+---+---+---|---+---+---+---|---+---+---+---|---+---+---+---+
-     | 1 | 1 | 1 | 1 | 0 | - | - | - | - | - |.dbgop.....|.regtest...|
+     | 1 | 1 | 1 | 1 | 0 | - | - | - | dbgop |.grp.......|.regtest...|
      |.expected......................................................|
      +---+---+---+---|---+---+---+---|---+---+---+---|---+---+---+---+  */
   int expected = ((iw1 >> PseudoDbg_Assert_expected_bits) & PseudoDbg_Assert_expected_mask);
   int dbgop    = ((iw0 >> (PseudoDbg_Assert_dbgop_bits - 16)) & PseudoDbg_Assert_dbgop_mask);
+  int grp      = ((iw0 >> (PseudoDbg_Assert_grp_bits - 16)) & PseudoDbg_Assert_grp_mask);
   int regtest  = ((iw0 >> (PseudoDbg_Assert_regtest_bits - 16)) & PseudoDbg_Assert_regtest_mask);
+
+  if (parallel)
+    return 0;
 
   if (dbgop == 0)
     {
-      OUTS (outf, "DBGA(");
-      OUTS (outf, dregs_lo (regtest));
-      OUTS (outf, ",");
+      OUTS (outf, "DBGA (");
+      OUTS (outf, regs_lo (regtest, grp));
+      OUTS (outf, ", ");
       OUTS (outf, uimm16 (expected));
       OUTS (outf, ")");
     }
   else if (dbgop == 1)
     {
-      OUTS (outf, "DBGA(");
-      OUTS (outf, dregs_hi (regtest));
-      OUTS (outf, ",");
+      OUTS (outf, "DBGA (");
+      OUTS (outf, regs_hi (regtest, grp));
+      OUTS (outf, ", ");
       OUTS (outf, uimm16 (expected));
       OUTS (outf, ")");
     }
   else if (dbgop == 2)
     {
-      OUTS (outf, "DBGAL(");
-      OUTS (outf, dregs (regtest));
-      OUTS (outf, ",");
+      OUTS (outf, "DBGAL (");
+      OUTS (outf, allregs (regtest, grp));
+      OUTS (outf, ", ");
       OUTS (outf, uimm16 (expected));
       OUTS (outf, ")");
     }
   else if (dbgop == 3)
     {
-      OUTS (outf, "DBGAH(");
-      OUTS (outf, dregs (regtest));
-      OUTS (outf, ",");
+      OUTS (outf, "DBGAH (");
+      OUTS (outf, allregs (regtest, grp));
+      OUTS (outf, ", ");
       OUTS (outf, uimm16 (expected));
       OUTS (outf, ")");
     }
@@ -4315,7 +4650,7 @@ decode_pseudodbg_assert_0 (TIword iw0, TIword iw1, disassemble_info *outf)
   return 4;
 }
 
-int
+static int
 _print_insn_bfin (bfd_vma pc, disassemble_info *outf)
 {
   bfd_byte buf[4];
@@ -4325,14 +4660,23 @@ _print_insn_bfin (bfd_vma pc, disassemble_info *outf)
   int rv = 0;
 
   status = (*outf->read_memory_func) (pc & ~0x1, buf, 2, outf);
+  /* FIXME */
+  (void) status;
   status = (*outf->read_memory_func) ((pc + 2) & ~0x1, buf + 2, 2, outf);
+  /* FIXME */
+  (void) status;
 
   iw0 = bfd_getl16 (buf);
   iw1 = bfd_getl16 (buf + 2);
 
   if ((iw0 & 0xf7ff) == 0xc003 && iw1 == 0x1800)
     {
-      OUTS (outf, "mnop");
+      if (parallel)
+	{
+	  OUTS (outf, "ILLEGAL");
+	  return 0;
+	}
+      OUTS (outf, "MNOP");
       return 4;
     }
   else if ((iw0 & 0xff00) == 0x0000)
@@ -4405,16 +4749,16 @@ _print_insn_bfin (bfd_vma pc, disassemble_info *outf)
     rv = decode_dsp32shiftimm_0 (iw0, iw1, outf);
   else if ((iw0 & 0xff00) == 0xf800)
     rv = decode_pseudoDEBUG_0 (iw0, outf);
-#if 0
   else if ((iw0 & 0xFF00) == 0xF900)
-    rv = decode_pseudoOChar_0 (iw0, iw1, pc, outf);
-#endif
-  else if ((iw0 & 0xFFC0) == 0xf000 && (iw1 & 0x0000) == 0x0000)
+    rv = decode_pseudoOChar_0 (iw0, outf);
+  else if ((iw0 & 0xFF00) == 0xf000 && (iw1 & 0x0000) == 0x0000)
     rv = decode_pseudodbg_assert_0 (iw0, iw1, outf);
+
+  if (rv == 0)
+    OUTS (outf, "ILLEGAL");
 
   return rv;
 }
-
 
 int
 print_insn_bfin (bfd_vma pc, disassemble_info *outf)
@@ -4425,25 +4769,48 @@ print_insn_bfin (bfd_vma pc, disassemble_info *outf)
   int count = 0;
 
   status = (*outf->read_memory_func) (pc & ~0x01, buf, 2, outf);
+  /* FIXME */
+  (void) status;
   iw0 = bfd_getl16 (buf);
 
   count += _print_insn_bfin (pc, outf);
 
   /* Proper display of multiple issue instructions.  */
 
-  if ((iw0 & 0xc000) == 0xc000 && (iw0 & BIT_MULTI_INS)
+  if (count == 4 && (iw0 & 0xc000) == 0xc000 && (iw0 & BIT_MULTI_INS)
       && ((iw0 & 0xe800) != 0xe800 /* Not Linkage.  */ ))
     {
-      outf->fprintf_func (outf->stream, " || ");
-      count += _print_insn_bfin (pc + 4, outf);
-      outf->fprintf_func (outf->stream, " || ");
-      count += _print_insn_bfin (pc + 6, outf);
+      int legal = 1;
+      int len;
+
+      parallel = 1;
+      OUTS (outf, " || ");
+      len = _print_insn_bfin (pc + 4, outf);
+      OUTS (outf, " || ");
+      if (len != 2)
+	legal = 0;
+      len = _print_insn_bfin (pc + 6, outf);
+      if (len != 2)
+	legal = 0;
+
+      if (legal)
+	count = 8;
+      else
+	{
+	  OUTS (outf, ";\t\t/* ILLEGAL PARALLEL INSTRUCTION */");
+	  comment = 1;
+	  count = 0;
+	}
+      parallel = 0;
     }
+
+  if (!comment)
+    OUTS (outf, ";");
+
   if (count == 0)
-    {
-      outf->fprintf_func (outf->stream, "ILLEGAL");
-      return 2;
-    }
-  outf->fprintf_func (outf->stream, ";");
+    return 2;
+
+  comment = 0;
+
   return count;
 }

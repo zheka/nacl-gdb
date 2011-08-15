@@ -1,4 +1,4 @@
-# Copyright 2000, 2002, 2003, 2004, 2005, 2006, 2007, 2008
+# Copyright 2000, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011
 # Free Software Foundation, Inc.
 
 # This program is free software; you can redistribute it and/or modify
@@ -105,6 +105,11 @@ set portnum "2345"
 
 proc find_gdbserver { } {
   global GDB
+  global GDBSERVER
+
+  if [info exists GDBSERVER] {
+    return ${GDBSERVER}
+  }
 
   if [target_info exists gdb_server_prog] {
     return [target_info gdb_server_prog]
@@ -134,8 +139,10 @@ proc skip_gdbserver_tests { } {
 
 # Download the currently loaded program to the target if necessary.
 # Return the target system filename.
+# NOTE: This was named "gdbserver_download", but that collides with the
+# dejagnu "download" API function when using load_generic_config "gdbserver".
 
-proc gdbserver_download { } {
+proc gdbserver_download_current_prog { } {
     global gdbserver_host_exec
     global gdbserver_host_mtime
     global gdbserver_server_exec
@@ -204,26 +211,39 @@ proc gdbserver_start { options arguments } {
 
     set gdbserver [find_gdbserver]
 
-    # Export the host:port pair.
-    set gdbport $debughost$portnum
+    # Loop till we find a free port.
+    while 1 {
+	# Export the host:port pair.
+	set gdbport $debughost$portnum
 
-    # Fire off the debug agent.
-    set gdbserver_command "$gdbserver"
-    if { $options != "" } {
-	append gdbserver_command " $options"
-    }
-    append gdbserver_command " :$portnum"
-    if { $arguments != "" } {
-	append gdbserver_command " $arguments"
-    }
+	# Fire off the debug agent.
+	set gdbserver_command "$gdbserver"
+	if { $options != "" } {
+	    append gdbserver_command " $options"
+	}
+	append gdbserver_command " :$portnum"
+	if { $arguments != "" } {
+	    append gdbserver_command " $arguments"
+	}
 
-    set server_spawn_id [remote_spawn target $gdbserver_command]
+	set server_spawn_id [remote_spawn target $gdbserver_command]
 
-    # Wait for the server to open its TCP socket, so that GDB can connect.
-    expect {
-	-i $server_spawn_id
-	-notransfer
-	-re "Listening on" { }
+	# Wait for the server to open its TCP socket, so that GDB can connect.
+	expect {
+	    -i $server_spawn_id
+	    -notransfer
+	    -re "Listening on" { }
+	    -re "Can't bind address: Address already in use\\.\r\n" {
+		verbose -log "Port $portnum is already in use."
+		if ![target_info exists gdb,socketport] {
+		    # Bump the port number to avoid the conflict.
+		    wait -i $expect_out(spawn_id)
+		    incr portnum
+		    continue
+		}
+	    }
+	}
+	break
     }
 
     # We can't just call close, because if gdbserver is local then that means
@@ -248,7 +268,7 @@ proc gdbserver_start { options arguments } {
 # Returns the target protocol and socket to connect to.
 
 proc gdbserver_spawn { child_args } {
-    set target_exec [gdbserver_download]
+    set target_exec [gdbserver_download_current_prog]
 
     # Fire off the debug agent.  This flavour of gdbserver takes as
     # arguments the port information, the name of the executable file to

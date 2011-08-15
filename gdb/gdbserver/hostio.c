@@ -1,5 +1,5 @@
 /* Host file transfer support for gdbserver.
-   Copyright (C) 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
 
    Contributed by CodeSourcery.
 
@@ -7,7 +7,7 @@
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
-   the Free Software Foundation; either version 2 of the License, or
+   the Free Software Foundation; either version 3 of the License, or
    (at your option) any later version.
 
    This program is distributed in the hope that it will be useful,
@@ -16,9 +16,7 @@
    GNU General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor,
-   Boston, MA 02110-1301, USA.  */
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #include "server.h"
 #include "gdb/fileio.h"
@@ -116,7 +114,7 @@ require_data (char *p, int p_len, char **data, int *data_len)
 {
   int input_index, output_index, escaped;
 
-  *data = malloc (p_len);
+  *data = xmalloc (p_len);
 
   output_index = 0;
   escaped = 0;
@@ -136,7 +134,10 @@ require_data (char *p, int p_len, char **data, int *data_len)
     }
 
   if (escaped)
-    return -1;
+    {
+      free (*data);
+      return -1;
+    }
 
   *data_len = output_index;
   return 0;
@@ -295,7 +296,7 @@ handle_open (char *own_buf)
     }
 
   /* Record the new file descriptor.  */
-  new_fd = malloc (sizeof (struct fd_list));
+  new_fd = xmalloc (sizeof (struct fd_list));
   new_fd->fd = fd;
   new_fd->next = open_fds;
   open_fds = new_fd;
@@ -323,7 +324,7 @@ handle_pread (char *own_buf, int *new_packet_len)
       return;
     }
 
-  data = malloc (len);
+  data = xmalloc (len);
 #ifdef HAVE_PREAD
   ret = pread (fd, data, len, offset);
 #else
@@ -417,7 +418,8 @@ handle_close (char *own_buf)
     }
 
   open_fd_p = &open_fds;
-  while (*open_fd_p && (*open_fd_p)->fd != fd)
+  /* We know that fd is in the list, thanks to require_valid_fd.  */
+  while ((*open_fd_p)->fd != fd)
     open_fd_p = &(*open_fd_p)->next;
 
   old_fd = *open_fd_p;

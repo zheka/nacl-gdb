@@ -1,5 +1,6 @@
 /* C preprocessor macro expansion commands for GDB.
-   Copyright (C) 2002, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2002, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
    Contributed by Red Hat, Inc.
 
    This file is part of GDB.
@@ -24,6 +25,7 @@
 #include "macroscope.h"
 #include "command.h"
 #include "gdbcmd.h"
+#include "gdb_string.h"
 
 
 /* The `macro' prefix command.  */
@@ -49,6 +51,7 @@ macro_expand_command (char *exp, int from_tty)
   struct macro_scope *ms = NULL;
   char *expanded = NULL;
   struct cleanup *cleanup_chain = make_cleanup (free_current_contents, &ms);
+
   make_cleanup (free_current_contents, &expanded);
 
   /* You know, when the user doesn't specify any expression, it would be
@@ -157,7 +160,10 @@ info_macro_command (char *name, int from_tty)
 
       fprintf_filtered (gdb_stdout, "Defined at ");
       show_pp_source_pos (gdb_stdout, file, line);
-      fprintf_filtered (gdb_stdout, "#define %s", name);
+      if (line != 0)
+	fprintf_filtered (gdb_stdout, "#define %s", name);
+      else
+	fprintf_filtered (gdb_stdout, "-D%s", name);
       if (d->kind == macro_function_like)
         {
           int i;
@@ -171,7 +177,10 @@ info_macro_command (char *name, int from_tty)
             }
           fputs_filtered (")", gdb_stdout);
         }
-      fprintf_filtered (gdb_stdout, " %s\n", d->replacement);
+      if (line != 0)
+	fprintf_filtered (gdb_stdout, " %s\n", d->replacement);
+      else
+	fprintf_filtered (gdb_stdout, "=%s\n", d->replacement);
     }
   else
     {
@@ -189,31 +198,188 @@ info_macro_command (char *name, int from_tty)
 
 /* User-defined macros.  */
 
-/* A table of user-defined macros.  Unlike the macro tables used for
-   symtabs, this one uses xmalloc for all its allocation, not an
-   obstack, and it doesn't bcache anything; it just xmallocs things.  So
-   it's perfectly possible to remove things from this, or redefine
-   things.  */
-static struct macro_table *user_macros;
+static void
+skip_ws (char **expp)
+{
+  while (macro_is_whitespace (**expp))
+    ++*expp;
+}
+
+/* Try to find the bounds of an identifier.  If an identifier is
+   found, returns a newly allocated string; otherwise returns NULL.
+   EXPP is a pointer to an input string; it is updated to point to the
+   text following the identifier.  If IS_PARAMETER is true, this
+   function will also allow "..." forms as used in varargs macro
+   parameters.  */
+
+static char *
+extract_identifier (char **expp, int is_parameter)
+{
+  char *result;
+  char *p = *expp;
+  unsigned int len;
+
+  if (is_parameter && !strncmp (p, "...", 3))
+    {
+      /* Ok.  */
+    }
+  else
+    {
+      if (! *p || ! macro_is_identifier_nondigit (*p))
+	return NULL;
+      for (++p;
+	   *p && (macro_is_identifier_nondigit (*p) || macro_is_digit (*p));
+	   ++p)
+	;
+    }
+
+  if (is_parameter && !strncmp (p, "...", 3))      
+    p += 3;
+
+  len = p - *expp;
+  result = (char *) xmalloc (len + 1);
+  memcpy (result, *expp, len);
+  result[len] = '\0';
+  *expp += len;
+  return result;
+}
+
+/* Helper function to clean up a temporarily-constructed macro object.
+   This assumes that the contents were all allocated with xmalloc.  */
+static void
+free_macro_definition_ptr (void *ptr)
+{
+  int i;
+  struct macro_definition *loc = (struct macro_definition *) ptr;
+
+  for (i = 0; i < loc->argc; ++i)
+    xfree ((char *) loc->argv[i]);
+  xfree ((char *) loc->argv);
+  /* Note that the 'replacement' field is not allocated.  */
+}
 
 static void
 macro_define_command (char *exp, int from_tty)
 {
-  error (_("Command not implemented yet."));
+  struct macro_definition new_macro;
+  char *name = NULL;
+  struct cleanup *cleanup_chain;
+
+  if (!exp)
+    error (_("usage: macro define NAME[(ARGUMENT-LIST)] [REPLACEMENT-LIST]"));
+
+  cleanup_chain = make_cleanup (free_macro_definition_ptr, &new_macro);
+  make_cleanup (free_current_contents, &name);
+
+  memset (&new_macro, 0, sizeof (struct macro_definition));
+
+  skip_ws (&exp);
+  name = extract_identifier (&exp, 0);
+  if (! name)
+    error (_("Invalid macro name."));
+  if (*exp == '(')
+    {
+      /* Function-like macro.  */
+      int alloced = 5;
+      char **argv = (char **) xmalloc (alloced * sizeof (char *));
+
+      new_macro.kind = macro_function_like;
+      new_macro.argc = 0;
+      new_macro.argv = (const char * const *) argv;
+
+      /* Skip the '(' and whitespace.  */
+      ++exp;
+      skip_ws (&exp);
+
+      while (*exp != ')')
+	{
+	  int i;
+
+	  if (new_macro.argc == alloced)
+	    {
+	      alloced *= 2;
+	      argv = (char **) xrealloc (argv, alloced * sizeof (char *));
+	      /* Must update new_macro as well...  */
+	      new_macro.argv = (const char * const *) argv;
+	    }
+	  argv[new_macro.argc] = extract_identifier (&exp, 1);
+	  if (! argv[new_macro.argc])
+	    error (_("Macro is missing an argument."));
+	  ++new_macro.argc;
+
+	  for (i = new_macro.argc - 2; i >= 0; --i)
+	    {
+	      if (! strcmp (argv[i], argv[new_macro.argc - 1]))
+		error (_("Two macro arguments with identical names."));
+	    }
+
+	  skip_ws (&exp);
+	  if (*exp == ',')
+	    {
+	      ++exp;
+	      skip_ws (&exp);
+	    }
+	  else if (*exp != ')')
+	    error (_("',' or ')' expected at end of macro arguments."));
+	}
+      /* Skip the closing paren.  */
+      ++exp;
+      skip_ws (&exp);
+
+      macro_define_function (macro_main (macro_user_macros), -1, name,
+			     new_macro.argc, (const char **) new_macro.argv,
+			     exp);
+    }
+  else
+    {
+      skip_ws (&exp);
+      macro_define_object (macro_main (macro_user_macros), -1, name, exp);
+    }
+
+  do_cleanups (cleanup_chain);
 }
 
 
 static void
 macro_undef_command (char *exp, int from_tty)
 {
-  error (_("Command not implemented yet."));
+  char *name;
+
+  if (!exp)
+    error (_("usage: macro undef NAME"));
+
+  skip_ws (&exp);
+  name = extract_identifier (&exp, 0);
+  if (! name)
+    error (_("Invalid macro name."));
+  macro_undef (macro_main (macro_user_macros), -1, name);
+  xfree (name);
+}
+
+
+static void
+print_one_macro (const char *name, const struct macro_definition *macro,
+		 void *ignore)
+{
+  fprintf_filtered (gdb_stdout, "macro define %s", name);
+  if (macro->kind == macro_function_like)
+    {
+      int i;
+
+      fprintf_filtered (gdb_stdout, "(");
+      for (i = 0; i < macro->argc; ++i)
+	fprintf_filtered (gdb_stdout, "%s%s", (i > 0) ? ", " : "",
+			  macro->argv[i]);
+      fprintf_filtered (gdb_stdout, ")");
+    }
+  fprintf_filtered (gdb_stdout, " %s\n", macro->replacement);
 }
 
 
 static void
 macro_list_command (char *exp, int from_tty)
 {
-  error (_("Command not implemented yet."));
+  macro_for_each (macro_user_macros, print_one_macro, NULL);
 }
 
 
@@ -225,8 +391,6 @@ extern initialize_file_ftype _initialize_macrocmd; /* -Wmissing-prototypes */
 void
 _initialize_macrocmd (void)
 {
-  struct cmd_list_element *c;
-
   /* We introduce a new command prefix, `macro', under which we'll put
      the various commands for working with preprocessor macros.  */
   add_prefix_cmd ("macro", class_info, macro_command,
@@ -273,6 +437,4 @@ Remove the definition of the C/C++ preprocessor macro with the given name."),
   add_cmd ("list", no_class, macro_list_command,
 	   _("List all the macros defined using the `macro define' command."),
 	   &macrolist);
-
-  user_macros = new_macro_table (0, 0);
 }

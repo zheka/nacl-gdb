@@ -1,6 +1,6 @@
 /* S-record download support for GDB, the GNU debugger.
-   Copyright (C) 1995, 1996, 1997, 1999, 2000, 2001, 2003, 2004, 2007, 2008
-   Free Software Foundation, Inc.
+   Copyright (C) 1995, 1996, 1997, 1999, 2000, 2001, 2003, 2004, 2007, 2008,
+   2009, 2010, 2011 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -90,17 +90,18 @@ load_srec (struct serial *desc, const char *file, bfd_vma load_offset,
     if (s->flags & SEC_LOAD)
       {
 	int numbytes;
+
 	bfd_vma addr = bfd_get_section_vma (abfd, s) + load_offset;
 	bfd_size_type size = bfd_get_section_size (s);
 	char *section_name = (char *) bfd_get_section_name (abfd, s);
 	/* Both GDB and BFD have mechanisms for printing addresses.
            In the below, GDB's is used so that the address is
            consistent with the rest of GDB.  BFD's printf_vma() could
-           have also been used. cagney 1999-09-01 */
-	printf_filtered ("%s\t: 0x%s .. 0x%s  ",
+           have also been used.  cagney 1999-09-01 */
+	printf_filtered ("%s\t: %s .. %s  ",
 			 section_name,
-			 paddr (addr),
-			 paddr (addr + size));
+			 paddress (target_gdbarch, addr),
+			 paddress (target_gdbarch, addr + size));
 	gdb_flush (gdb_stdout);
 
 	data_count += size;
@@ -134,7 +135,7 @@ load_srec (struct serial *desc, const char *file, bfd_vma load_offset,
 		putchar_unfiltered ('#');
 		gdb_flush (gdb_stdout);
 	      }
-	  }			/* Per-packet (or S-record) loop */
+	  }			/* Per-packet (or S-record) loop.  */
 
 	if (deprecated_ui_load_progress_hook)
 	  if (deprecated_ui_load_progress_hook (section_name,
@@ -172,7 +173,7 @@ load_srec (struct serial *desc, const char *file, bfd_vma load_offset,
 }
 
 /*
- * make_srec -- make an srecord. This writes each line, one at a
+ * make_srec -- make an srecord.  This writes each line, one at a
  *      time, each with it's own header and trailer line.
  *      An srecord looks like this:
  *
@@ -189,9 +190,9 @@ load_srec (struct serial *desc, const char *file, bfd_vma load_offset,
  *
  *      Where
  *      - length
- *        is the number of bytes following upto the checksum. Note that
- *        this is not the number of chars following, since it takes two
- *        chars to represent a byte.
+ *        is the number of bytes following upto the checksum.  Note
+ *        that this is not the number of chars following, since it
+ *        takes two chars to represent a byte.
  *      - type
  *        is one of:
  *        0) header record
@@ -252,8 +253,8 @@ make_srec (char *srec, CORE_ADDR targ_addr, bfd *abfd, asection *sect,
     addr_size = 4;
   else
     internal_error (__FILE__, __LINE__,
-		    _("make_srec:  Bad address (0x%s), or bad flags (0x%x)."),
-		    paddr (targ_addr), flags);
+		    _("make_srec:  Bad address (%s), or bad flags (0x%x)."),
+		    paddress (target_gdbarch, targ_addr), flags);
 
   /* Now that we know the address size, we can figure out how much
      data this record can hold.  */
@@ -266,7 +267,7 @@ make_srec (char *srec, CORE_ADDR targ_addr, bfd *abfd, asection *sect,
       bfd_get_section_contents (abfd, sect, binbuf, sectoff, payload_size);
     }
   else
-    payload_size = 0;		/* Term or header packets have no payload */
+    payload_size = 0;		/* Term or header packets have no payload.  */
 
   /* Output the header.  */
   snprintf (srec, (*maxrecsize) + 1, "S%c%02X%0*X",
@@ -281,7 +282,7 @@ make_srec (char *srec, CORE_ADDR targ_addr, bfd *abfd, asection *sect,
   checksum = 0;
 
   checksum += (payload_size + addr_size + 1	/* Packet length */
-	       + (targ_addr & 0xff)	/* Address... */
+	       + (targ_addr & 0xff)		/* Address...  */
 	       + ((targ_addr >> 8) & 0xff)
 	       + ((targ_addr >> 16) & 0xff)
 	       + ((targ_addr >> 24) & 0xff));

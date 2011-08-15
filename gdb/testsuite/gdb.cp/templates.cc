@@ -492,6 +492,13 @@ int
 T5<T>::value()
 { return val; }
 
+template <class T>
+T GetMax (T a, T b) {
+  T result;
+  result = (a>b)? a : b;
+  // set breakpoint on a line with no real code
+  return (result);
+}
 
 #if ! defined(__GNUC__) || defined(GCC_BUG)
 template<class T>
@@ -623,6 +630,7 @@ T Spec<T, T*>::spec (T * tp)
 template<class T, char sz>
 class Baz {
 public:
+  ~Baz () { };
   int x;
   T t;
   T baz (int, T);
@@ -635,6 +643,8 @@ template<class T, char sz> T Baz<T, sz>::baz (int i, T tt)
   else
     return 0;
 }
+
+typedef Baz<int, 1> intBazOne;
 
 // Template with char * parameter
 template<class T, char * sz>
@@ -702,10 +712,28 @@ template<class T> T Garply<T>::garply (int i, T tt)
     }
 }
 
+template<class C> class Empty
+{
+};
+
+template<class C> class FunctionArg
+{
+public:
+  int method(Empty<void (FunctionArg<C>)> &);
+};
+
+template<class C> int FunctionArg<C>::method(Empty<void (FunctionArg<C>)> &arg)
+{
+  return 75;
+}
+
+Empty<void(FunctionArg<int>)> empty;
+FunctionArg<int> arg;
 
 int main()
 {
     int i;
+    long l, m, n;
 #ifdef usestubs
     set_debug_traps();
     breakpoint();
@@ -766,20 +794,15 @@ int main()
 
   y = x + fc.x;
   
+  i=GetMax<int>(x,y);
+  n=GetMax<long>(l,m);
+
+  intBazOne ibo;
+  z = ibo.baz (2, 21);
+
+  t5i.value();
+
+  arg.method(empty);
 
   return 0;
-    
 }
-
-
-
-
-
-
-
-
-
-
-
-
-

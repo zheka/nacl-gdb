@@ -1,7 +1,7 @@
 /* Dynamic architecture support for GDB, the GNU debugger.
 
-   Copyright (C) 1998, 1999, 2000, 2002, 2003, 2004, 2007, 2008
-   Free Software Foundation, Inc.
+   Copyright (C) 1998, 1999, 2000, 2002, 2003, 2004, 2007, 2008, 2009, 2010,
+   2011 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -30,29 +30,59 @@ struct gdbarch_info;
 /* gdbarch trace variable */
 extern int gdbarch_debug;
 
-/* The only possible cases for inner_than. */
+/* An implementation of gdbarch_displaced_step_copy_insn for
+   processors that don't need to modify the instruction before
+   single-stepping the displaced copy.
+
+   Simply copy gdbarch_max_insn_length (ARCH) bytes from FROM to TO.
+   The closure is an array of that many bytes containing the
+   instruction's bytes, allocated with xmalloc.  */
+extern struct displaced_step_closure *
+  simple_displaced_step_copy_insn (struct gdbarch *gdbarch,
+                                   CORE_ADDR from, CORE_ADDR to,
+                                   struct regcache *regs);
+
+/* Simple implementation of gdbarch_displaced_step_free_closure: Call
+   xfree.
+   This is appropriate for use with simple_displaced_step_copy_insn.  */
+extern void
+  simple_displaced_step_free_closure (struct gdbarch *gdbarch,
+                                      struct displaced_step_closure *closure);
+
+/* Default implementation of gdbarch_displaced_hw_singlestep.  */
+extern int
+  default_displaced_step_hw_singlestep (struct gdbarch *,
+					struct displaced_step_closure *);
+
+/* Possible value for gdbarch_displaced_step_location:
+   Place displaced instructions at the program's entry point,
+   leaving space for inferior function call return breakpoints.  */
+extern CORE_ADDR displaced_step_at_entry_point (struct gdbarch *gdbarch);
+
+/* The only possible cases for inner_than.  */
 extern int core_addr_lessthan (CORE_ADDR lhs, CORE_ADDR rhs);
 extern int core_addr_greaterthan (CORE_ADDR lhs, CORE_ADDR rhs);
 
 /* Identity functions on a CORE_ADDR.  Just return the "addr".  */
 
-extern CORE_ADDR core_addr_identity (CORE_ADDR addr);
+extern CORE_ADDR core_addr_identity (struct gdbarch *gdbarch, CORE_ADDR addr);
 extern gdbarch_convert_from_func_ptr_addr_ftype convert_from_func_ptr_addr_identity;
 
-/* No-op conversion of reg to regnum. */
+/* No-op conversion of reg to regnum.  */
 
 extern int no_op_reg_to_regnum (struct gdbarch *gdbarch, int reg);
 
-/* Do nothing version of elf_make_msymbol_special. */
+/* Do nothing version of elf_make_msymbol_special.  */
 
-void default_elf_make_msymbol_special (asymbol *sym, struct minimal_symbol *msym);
+void default_elf_make_msymbol_special (asymbol *sym,
+				       struct minimal_symbol *msym);
 
-/* Do nothing version of coff_make_msymbol_special. */
+/* Do nothing version of coff_make_msymbol_special.  */
 
 void default_coff_make_msymbol_special (int val, struct minimal_symbol *msym);
 
 /* Version of cannot_fetch_register() / cannot_store_register() that
-   always fails. */
+   always fails.  */
 
 int cannot_register_not (struct gdbarch *gdbarch, int regnum);
 
@@ -68,9 +98,11 @@ extern CORE_ADDR generic_skip_trampoline_code (struct frame_info *frame,
 extern CORE_ADDR generic_skip_solib_resolver (struct gdbarch *gdbarch,
 					      CORE_ADDR pc);
 
-extern int generic_in_solib_return_trampoline (CORE_ADDR pc, char *name);
+extern int generic_in_solib_return_trampoline (struct gdbarch *gdbarch,
+					       CORE_ADDR pc, char *name);
 
-extern int generic_in_function_epilogue_p (struct gdbarch *gdbarch, CORE_ADDR pc);
+extern int generic_in_function_epilogue_p (struct gdbarch *gdbarch,
+					   CORE_ADDR pc);
 
 /* By default, registers are not convertible.  */
 extern int generic_convert_register_p (struct gdbarch *gdbarch, int regnum,
@@ -114,5 +146,25 @@ extern void gdbarch_info_fill (struct gdbarch_info *info);
    could be find, return NULL.  */
 
 extern struct gdbarch *gdbarch_from_bfd (bfd *abfd);
+
+/* Return "current" architecture.  If the target is running, this is the
+   architecture of the selected frame.  Otherwise, the "current" architecture
+   defaults to the target architecture.
+
+   This function should normally be called solely by the command interpreter
+   routines to determine the architecture to execute a command in.  */
+extern struct gdbarch *get_current_arch (void);
+
+extern int default_has_shared_address_space (struct gdbarch *);
+
+extern int default_fast_tracepoint_valid_at (struct gdbarch *gdbarch,
+					     CORE_ADDR addr,
+					     int *isize, char **msg);
+
+extern void default_remote_breakpoint_from_pc (struct gdbarch *,
+					       CORE_ADDR *pcptr, int *kindptr);
+
+extern const char *default_auto_charset (void);
+extern const char *default_auto_wide_charset (void);
 
 #endif

@@ -1,25 +1,26 @@
 /* mips.h.  Mips opcode list for GDB, the GNU debugger.
    Copyright 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2000, 2001, 2002,
-   2003, 2004, 2005, 2008
+   2003, 2004, 2005, 2008, 2009, 2010
    Free Software Foundation, Inc.
    Contributed by Ralph Campbell and OSF
    Commented and modified by Ian Lance Taylor, Cygnus Support
 
-This file is part of GDB, GAS, and the GNU binutils.
+   This file is part of GDB, GAS, and the GNU binutils.
 
-GDB, GAS, and the GNU binutils are free software; you can redistribute
-them and/or modify them under the terms of the GNU General Public
-License as published by the Free Software Foundation; either version
-1, or (at your option) any later version.
+   GDB, GAS, and the GNU binutils are free software; you can redistribute
+   them and/or modify them under the terms of the GNU General Public
+   License as published by the Free Software Foundation; either version 3,
+   or (at your option) any later version.
 
-GDB, GAS, and the GNU binutils are distributed in the hope that they
-will be useful, but WITHOUT ANY WARRANTY; without even the implied
-warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See
-the GNU General Public License for more details.
+   GDB, GAS, and the GNU binutils are distributed in the hope that they
+   will be useful, but WITHOUT ANY WARRANTY; without even the implied
+   warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See
+   the GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public License
-along with this file; see the file COPYING.  If not, write to the Free
-Software Foundation, 51 Franklin Street - Fifth Floor, Boston, MA 02110-1301, USA.  */
+   You should have received a copy of the GNU General Public License
+   along with this file; see the file COPYING3.  If not, write to the Free
+   Software Foundation, 51 Franklin Street - Fifth Floor, Boston,
+   MA 02110-1301, USA.  */
 
 #ifndef _MIPS_H_
 #define _MIPS_H_
@@ -215,6 +216,28 @@ Software Foundation, 51 Franklin Street - Fifth Floor, Boston, MA 02110-1301, US
 #define OP_SH_UDI4		6
 #define OP_MASK_UDI4		0xfffff
 
+/* Octeon */
+#define OP_SH_BBITIND		16
+#define OP_MASK_BBITIND		0x1f
+#define OP_SH_CINSPOS		6
+#define OP_MASK_CINSPOS		0x1f
+#define OP_SH_CINSLM1		11
+#define OP_MASK_CINSLM1		0x1f
+#define OP_SH_SEQI		6
+#define OP_MASK_SEQI		0x3ff
+
+/* Loongson */
+#define OP_SH_OFFSET_A		6
+#define OP_MASK_OFFSET_A	0xff
+#define OP_SH_OFFSET_B		3
+#define OP_MASK_OFFSET_B	0xff
+#define OP_SH_OFFSET_C		6
+#define OP_MASK_OFFSET_C	0x1ff
+#define OP_SH_RZ		0
+#define OP_MASK_RZ		0x1f
+#define OP_SH_FZ		0
+#define OP_MASK_FZ		0x1f
+
 /* This structure holds information for a particular instruction.  */
 
 struct mips_opcode
@@ -252,6 +275,7 @@ struct mips_opcode
 
    Each of these characters corresponds to a mask field defined above.
 
+   "1" 5 bit sync type (OP_*_SHAMT)
    "<" 5 bit shift amount (OP_*_SHAMT)
    ">" shift amount between 32 and 63, stored after subtracting 32 (OP_*_SHAMT)
    "a" 26 bit target address (OP_*_TARGET)
@@ -370,6 +394,27 @@ struct mips_opcode
    "+3" UDI immediate bits 6-20
    "+4" UDI immediate bits 6-25
 
+   Octeon:
+   "+x" Bit index field of bbit.  Enforces: 0 <= index < 32.
+   "+X" Bit index field of bbit aliasing bbit32.  Matches if 32 <= index < 64,
+	otherwise skips to next candidate.
+   "+p" Position field of cins/cins32/exts/exts32. Enforces 0 <= pos < 32.
+   "+P" Position field of cins/exts aliasing cins32/exts32.  Matches if
+	32 <= pos < 64, otherwise skips to next candidate.
+   "+Q" Immediate field of seqi/snei.  Enforces -512 <= imm < 512.
+   "+s" Length-minus-one field of cins/exts.  Enforces: 0 <= lenm1 < 32.
+   "+S" Length-minus-one field of cins32/exts32 or cins/exts aliasing
+	cint32/exts32.  Enforces non-negative value and that
+	pos + lenm1 < 32 or pos + lenm1 < 64 depending whether previous
+	position field is "+p" or "+P".
+
+   Loongson-3A:
+   "+a" 8-bit signed offset in bit 6 (OP_*_OFFSET_A)
+   "+b" 8-bit signed offset in bit 3 (OP_*_OFFSET_B)
+   "+c" 9-bit signed offset in bit 6 (OP_*_OFFSET_C)
+   "+z" 5-bit rz register (OP_*_RZ)
+   "+Z" 5-bit fz register (OP_*_FZ)
+
    Other:
    "()" parens surrounding optional value
    ","  separates operands
@@ -377,7 +422,7 @@ struct mips_opcode
    "+"  Start of extension sequence.
 
    Characters used so far, for quick reference when adding more:
-   "234567890"
+   "1234567890"
    "%[]<>(),+:'@!$*&"
    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
    "abcdefghijklopqrstuvwxz"
@@ -385,8 +430,8 @@ struct mips_opcode
    Extension character sequences used so far ("+" followed by the
    following), for quick reference when adding more:
    "1234"
-   "ABCDEFGHIT"
-   "t"
+   "ABCDEFGHIPQSTXZ"
+   "abcpstxz"
 */
 
 /* These are the bits which may be set in the pinfo field of an
@@ -456,6 +501,9 @@ struct mips_opcode
 #define INSN_MULT                   0x40000000
 /* Instruction synchronize shared memory.  */
 #define INSN_SYNC		    0x80000000
+/* Instruction is actually a macro.  It should be ignored by the
+   disassembler, and requires special treatment by the assembler.  */
+#define INSN_MACRO                  0xffffffff
 
 /* These are the bits which may be set in the pinfo2 field of an
    instruction. */
@@ -466,10 +514,25 @@ struct mips_opcode
 #define INSN2_READ_MDMX_ACC	    0x00000002
 /* Instruction writes MDMX accumulator. */
 #define INSN2_WRITE_MDMX_ACC	    0x00000004
+/* Macro uses single-precision floating-point instructions.  This should
+   only be set for macros.  For instructions, FP_S in pinfo carries the
+   same information.  */
+#define INSN2_M_FP_S		    0x00000008
+/* Macro uses double-precision floating-point instructions.  This should
+   only be set for macros.  For instructions, FP_D in pinfo carries the
+   same information.  */
+#define INSN2_M_FP_D		    0x00000010
+/* Modifies the general purpose register in OP_*_RZ.  */
+#define INSN2_WRITE_GPR_Z	    0x00000020
+/* Modifies the floating point register in OP_*_FZ.  */
+#define INSN2_WRITE_FPR_Z	    0x00000040
+/* Reads the general purpose register in OP_*_RZ.  */
+#define INSN2_READ_GPR_Z	    0x00000080
+/* Reads the floating point register in OP_*_FZ.  */
+#define INSN2_READ_FPR_Z	    0x00000100
+/* Reads the general purpose register in OP_*_RD.  */
+#define INSN2_READ_GPR_D	    0x00000200
 
-/* Instruction is actually a macro.  It should be ignored by the
-   disassembler, and requires special treatment by the assembler.  */
-#define INSN_MACRO                  0xffffffff
 
 /* Masks used to mark instructions to indicate which MIPS ISA level
    they were introduced in.  INSN_ISA_MASK masks an enumeration that
@@ -511,7 +574,7 @@ static const unsigned int mips_isa_table[] =
   { 0x0001, 0x0003, 0x0607, 0x1e0f, 0x3e1f, 0x0a23, 0x3e63, 0x3ebf, 0x3fff };
 
 /* Masks used for Chip specific instructions.  */
-#define INSN_CHIP_MASK		  0xc3ff0800
+#define INSN_CHIP_MASK		  0xc3ff0c20
 
 /* Cavium Networks Octeon instructions.  */
 #define INSN_OCTEON		  0x00000800
@@ -522,8 +585,9 @@ static const unsigned int mips_isa_table[] =
 /* DSP ASE */ 
 #define INSN_DSP                  0x00001000
 #define INSN_DSP64                0x00002000
-/* MIPS 16 ASE */
-#define INSN_MIPS16               0x00004000
+
+/* 0x00004000 is unused.  */
+
 /* MIPS-3D ASE */
 #define INSN_MIPS3D               0x00008000
 
@@ -560,6 +624,10 @@ static const unsigned int mips_isa_table[] =
 #define INSN_LOONGSON_2E          0x40000000
 /* ST Microelectronics Loongson 2F.  */
 #define INSN_LOONGSON_2F          0x80000000
+/* Loongson 3A.  */
+#define INSN_LOONGSON_3A          0x00000400
+/* RMI Xlr instruction */
+#define INSN_XLR              	  0x00000020
 
 /* MIPS ISA defines, use instead of hardcoding ISA level.  */
 
@@ -600,6 +668,8 @@ static const unsigned int mips_isa_table[] =
 #define CPU_RM9000	9000
 #define CPU_R10000	10000
 #define CPU_R12000	12000
+#define CPU_R14000	14000
+#define CPU_R16000	16000
 #define CPU_MIPS16	16
 #define CPU_MIPS32	32
 #define CPU_MIPS32R2	33
@@ -609,7 +679,9 @@ static const unsigned int mips_isa_table[] =
 #define CPU_SB1         12310201        /* octal 'SB', 01.  */
 #define CPU_LOONGSON_2E 3001
 #define CPU_LOONGSON_2F 3002
+#define CPU_LOONGSON_3A 3003
 #define CPU_OCTEON	6501
+#define CPU_XLR     	887682   	/* decimal 'XLR'   */
 
 /* Test for membership in an ISA including chip specific ISAs.  INSN
    is pointer to an element of the opcode table; ISA is the specified
@@ -629,7 +701,8 @@ static const unsigned int mips_isa_table[] =
      || (cpu == CPU_R4010 && ((insn)->membership & INSN_4010) != 0)	\
      || (cpu == CPU_VR4100 && ((insn)->membership & INSN_4100) != 0)	\
      || (cpu == CPU_R3900 && ((insn)->membership & INSN_3900) != 0)	\
-     || ((cpu == CPU_R10000 || cpu == CPU_R12000)			\
+     || ((cpu == CPU_R10000 || cpu == CPU_R12000 || cpu == CPU_R14000	\
+	  || cpu == CPU_R16000)						\
 	 && ((insn)->membership & INSN_10000) != 0)			\
      || (cpu == CPU_SB1 && ((insn)->membership & INSN_SB1) != 0)	\
      || (cpu == CPU_R4111 && ((insn)->membership & INSN_4111) != 0)	\
@@ -640,8 +713,11 @@ static const unsigned int mips_isa_table[] =
          && ((insn)->membership & INSN_LOONGSON_2E) != 0)               \
      || (cpu == CPU_LOONGSON_2F                                         \
          && ((insn)->membership & INSN_LOONGSON_2F) != 0)               \
+     || (cpu == CPU_LOONGSON_3A                                         \
+         && ((insn)->membership & INSN_LOONGSON_3A) != 0)               \
      || (cpu == CPU_OCTEON						\
 	 && ((insn)->membership & INSN_OCTEON) != 0)			\
+     || (cpu == CPU_XLR && ((insn)->membership & INSN_XLR) != 0)        \
      || 0)	/* Please keep this term for easier source merging.  */
 
 /* This is a list of macro expanded instructions.
@@ -774,6 +850,11 @@ enum
   M_LWR_A,
   M_LWR_AB,
   M_LWU_AB,
+  M_MSGSND,
+  M_MSGLD,
+  M_MSGLD_T,
+  M_MSGWAIT,
+  M_MSGWAIT_T,
   M_MOVE,
   M_MUL,
   M_MUL_I,
@@ -783,6 +864,7 @@ enum
   M_MULOU_I,
   M_NOR_I,
   M_OR_I,
+  M_PREF_AB,
   M_REM_3,
   M_REM_3I,
   M_REMU_3,
@@ -955,11 +1037,10 @@ extern int bfd_mips_num_opcodes;
 #define MIPS16OP_MASK_IMM6	0x3f
 #define MIPS16OP_SH_IMM6	5
 
-/* These are the characters which may appears in the args field of an
-   instruction.  They appear in the order in which the fields appear
-   when the instruction is used.  Commas and parentheses in the args
-   string are ignored when assembling, and written into the output
-   when disassembling.
+/* These are the characters which may appears in the args field of a MIPS16
+   instruction.  They appear in the order in which the fields appear when the
+   instruction is used.  Commas and parentheses in the args string are ignored
+   when assembling, and written into the output when disassembling.
 
    "y" 3 bit register (MIPS16OP_*_RY)
    "x" 3 bit register (MIPS16OP_*_RX)
@@ -1044,8 +1125,10 @@ extern int bfd_mips_num_opcodes;
 #define MIPS16_INSN_READ_PC		    0x00002000
 /* Reads the general purpose register in MIPS16OP_*_REGR32.  */
 #define MIPS16_INSN_READ_GPR_X		    0x00004000
-/* Is a branch insn. */
-#define MIPS16_INSN_BRANCH                  0x00010000
+/* Is an unconditional branch insn. */
+#define MIPS16_INSN_UNCOND_BRANCH	    0x00008000
+/* Is a conditional branch insn. */
+#define MIPS16_INSN_COND_BRANCH		    0x00010000
 
 /* The following flags have the same value for the mips16 opcode
    table:
@@ -1062,5 +1145,9 @@ extern int bfd_mips_num_opcodes;
 
 extern const struct mips_opcode mips16_opcodes[];
 extern const int bfd_mips16_num_opcodes;
+
+/* A NOP insn impemented as "or at,at,zero".
+   Used to implement -mfix-loongson2f.  */
+#define LOONGSON2F_NOP_INSN	0x00200825
 
 #endif /* _MIPS_H_ */

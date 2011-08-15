@@ -1,7 +1,7 @@
 /* Low level interface to i386 running the GNU Hurd.
 
-   Copyright (C) 1992, 1995, 1996, 1998, 2000, 2001, 2004, 2007, 2008
-   Free Software Foundation, Inc.
+   Copyright (C) 1992, 1995, 1996, 1998, 2000, 2001, 2004, 2007, 2008, 2009,
+   2010, 2011 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -110,18 +110,20 @@ supply_fpregset (struct regcache *regcache, const gdb_fpregset_t *fpregs)
 #endif
 
 /* Fetch register REGNO, or all regs if REGNO is -1.  */
-void
-gnu_fetch_registers (struct regcache *regcache, int regno)
+static void
+gnu_fetch_registers (struct target_ops *ops,
+		     struct regcache *regcache, int regno)
 {
   struct proc *thread;
 
   /* Make sure we know about new threads.  */
-  inf_update_procs (current_inferior);
+  inf_update_procs (gnu_current_inf);
 
-  thread = inf_tid_to_thread (current_inferior, PIDGET (inferior_ptid));
+  thread = inf_tid_to_thread (gnu_current_inf,
+			      ptid_get_tid (inferior_ptid));
   if (!thread)
-    error (_("Can't fetch registers from thread %d: No such thread"),
-	   PIDGET (inferior_ptid));
+    error (_("Can't fetch registers from thread %s: No such thread"),
+	   target_pid_to_str (inferior_ptid));
 
   if (regno < I386_NUM_GREGS || regno == -1)
     {
@@ -200,19 +202,21 @@ store_fpregs (const struct regcache *regcache, struct proc *thread, int regno)
 }
 
 /* Store at least register REGNO, or all regs if REGNO == -1.  */
-void
-gnu_store_registers (struct regcache *regcache, int regno)
+static void
+gnu_store_registers (struct target_ops *ops,
+		     struct regcache *regcache, int regno)
 {
   struct proc *thread;
   struct gdbarch *gdbarch = get_regcache_arch (regcache);
 
   /* Make sure we know about new threads.  */
-  inf_update_procs (current_inferior);
+  inf_update_procs (gnu_current_inf);
 
-  thread = inf_tid_to_thread (current_inferior, PIDGET (inferior_ptid));
+  thread = inf_tid_to_thread (gnu_current_inf,
+			      ptid_get_tid (inferior_ptid));
   if (!thread)
-    error (_("Couldn't store registers into thread %d: No such thread"),
-	   PIDGET (inferior_ptid));
+    error (_("Couldn't store registers into thread %s: No such thread"),
+	   target_pid_to_str (inferior_ptid));
 
   if (regno < I386_NUM_GREGS || regno == -1)
     {
@@ -228,7 +232,8 @@ gnu_store_registers (struct regcache *regcache, int regno)
       state = proc_get_state (thread, 1);
       if (!state)
 	{
-	  warning (_("Couldn't store registers into %s"), proc_string (thread));
+	  warning (_("Couldn't store registers into %s"),
+		   proc_string (thread));
 	  return;
 	}
 
@@ -255,7 +260,8 @@ gnu_store_registers (struct regcache *regcache, int regno)
 		  regcache_raw_supply (regcache, check_regno,
 				       REG_ADDR (state, check_regno));
 		else
-		  warning (_("... also writing this register!  Suspicious..."));
+		  warning (_("... also writing this register!  "
+			     "Suspicious..."));
 	      }
 	}
 
@@ -266,7 +272,7 @@ gnu_store_registers (struct regcache *regcache, int regno)
 	  proc_debug (thread, "storing all registers");
 
 	  for (i = 0; i < I386_NUM_GREGS; i++)
-	    if (regcache_valid_p (regcache, i))
+	    if (REG_VALID == regcache_register_status (regcache, i))
 	      regcache_raw_collect (regcache, i, REG_ADDR (state, i));
 	}
       else
@@ -274,7 +280,7 @@ gnu_store_registers (struct regcache *regcache, int regno)
 	  proc_debug (thread, "storing register %s",
 		      gdbarch_register_name (gdbarch, regno));
 
-	  gdb_assert (regcache_valid_p (regcache, regno));
+	  gdb_assert (REG_VALID == regcache_register_status (regcache, regno));
 	  regcache_raw_collect (regcache, regno, REG_ADDR (state, regno));
 	}
 
@@ -289,4 +295,22 @@ gnu_store_registers (struct regcache *regcache, int regno)
 
       store_fpregs (regcache, thread, regno);
     }
+}
+
+/* Provide a prototype to silence -Wmissing-prototypes.  */
+extern initialize_file_ftype _initialize_i386gnu_nat;
+
+void
+_initialize_i386gnu_nat (void)
+{
+  struct target_ops *t;
+
+  /* Fill in the generic GNU/Hurd methods.  */
+  t = gnu_target ();
+
+  t->to_fetch_registers = gnu_fetch_registers;
+  t->to_store_registers = gnu_store_registers;
+
+  /* Register the target.  */
+  add_target (t);
 }

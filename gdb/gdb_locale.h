@@ -1,5 +1,6 @@
 /* GDB-friendly replacement for <locale.h>.
-   Copyright (C) 2002, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2002, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -39,6 +40,10 @@
 # define bindtextdomain(Domainname, Dirname) while (0) /* nothing */
 # define _(String) (String)
 # define N_(String) (String)
+#endif
+
+#ifdef HAVE_LANGINFO_CODESET
+#include <langinfo.h>
 #endif
 
 #endif /* GDB_LOCALE_H */

@@ -1,6 +1,7 @@
 /* Native-dependent code for modern i386 BSD's.
 
-   Copyright (C) 2004, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -24,5 +25,15 @@
    with local methods.  */
 
 extern struct target_ops *i386bsd_target (void);
+
+/* low level i386 debug register functions used in i386fbsd-nat.c.  */
+
+extern void i386bsd_dr_set_control (unsigned long control);
+
+extern void i386bsd_dr_set_addr (int regnum, CORE_ADDR addr);
+
+extern void i386bsd_dr_reset_addr (int regnum);
+
+extern unsigned long i386bsd_dr_get_status (void);
 
 #endif /* i386bsd-nat.h */

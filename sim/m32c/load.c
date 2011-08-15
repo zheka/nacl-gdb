@@ -1,6 +1,7 @@
 /* load.c --- loading object files into the M32C simulator.
 
-Copyright (C) 2005, 2007, 2008 Free Software Foundation, Inc.
+Copyright (C) 2005, 2007, 2008, 2009, 2010, 2011
+Free Software Foundation, Inc.
 Contributed by Red Hat, Inc.
 
 This file is part of the GNU simulators.
@@ -54,7 +55,7 @@ m32c_set_mach (unsigned long mach)
 }
 
 void
-m32c_load (bfd *prog)
+m32c_load (bfd * prog)
 {
   asection *s;
   unsigned long mach = bfd_get_mach (prog);

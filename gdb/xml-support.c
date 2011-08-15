@@ -1,6 +1,7 @@
 /* Helper routines for parsing XML using Expat.
 
-   Copyright (C) 2006, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2006, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -135,6 +136,22 @@ gdb_xml_error (struct gdb_xml_parser *parser, const char *format, ...)
   parser->last_line = line;
   va_start (ap, format);
   throw_verror (XML_PARSE_ERROR, format, ap);
+}
+
+/* Find the attribute named NAME in the set of parsed attributes
+   ATTRIBUTES.  Returns NULL if not found.  */
+
+struct gdb_xml_value *
+xml_find_attribute (VEC(gdb_xml_value_s) *attributes, const char *name)
+{
+  struct gdb_xml_value *value;
+  int ix;
+
+  for (ix = 0; VEC_iterate (gdb_xml_value_s, attributes, ix, value); ix++)
+    if (strcmp (value->name, name) == 0)
+      return value;
+
+  return NULL;
 }
 
 /* Clean up a vector of parsed attribute values.  */
@@ -338,7 +355,7 @@ gdb_xml_end_element (void *data, const XML_Char *name)
       gdb_xml_error (parser, _("Required element <%s> is missing"),
 		     element->name);
 
-  /* Call the element processor. */
+  /* Call the element processor.  */
   if (scope->element != NULL && scope->element->end_handler)
     {
       char *body;
@@ -426,13 +443,14 @@ gdb_xml_cleanup (void *arg)
 /* Initialize and return a parser.  Register a cleanup to destroy the
    parser.  */
 
-struct gdb_xml_parser *
-gdb_xml_create_parser_and_cleanup (const char *name,
-				   const struct gdb_xml_element *elements,
-				   void *user_data)
+static struct gdb_xml_parser *
+gdb_xml_create_parser_and_cleanup_1 (const char *name,
+				     const struct gdb_xml_element *elements,
+				     void *user_data, struct cleanup **old_chain)
 {
   struct gdb_xml_parser *parser;
   struct scope_level start_scope;
+  struct cleanup *dummy;
 
   /* Initialize the parser.  */
   parser = XZALLOC (struct gdb_xml_parser);
@@ -458,9 +476,25 @@ gdb_xml_create_parser_and_cleanup (const char *name,
   start_scope.elements = elements;
   VEC_safe_push (scope_level_s, parser->scopes, &start_scope);
 
-  make_cleanup (gdb_xml_cleanup, parser);
+  if (old_chain == NULL)
+    old_chain = &dummy;
 
+  *old_chain = make_cleanup (gdb_xml_cleanup, parser);
   return parser;
+}
+
+/* Initialize and return a parser.  Register a cleanup to destroy the
+   parser.  */
+
+struct gdb_xml_parser *
+gdb_xml_create_parser_and_cleanup (const char *name,
+				   const struct gdb_xml_element *elements,
+				   void *user_data)
+{
+  struct cleanup *old_chain;
+
+  return gdb_xml_create_parser_and_cleanup_1 (name, elements, user_data,
+					      &old_chain);
 }
 
 /* External entity handler.  The only external entities we support
@@ -483,7 +517,8 @@ gdb_xml_fetch_external_entity (XML_Parser expat_parser,
     {
       text = fetch_xml_builtin (parser->dtd_name);
       if (text == NULL)
-	internal_error (__FILE__, __LINE__, "could not locate built-in DTD %s",
+	internal_error (__FILE__, __LINE__,
+			_("could not locate built-in DTD %s"),
 			parser->dtd_name);
     }
   else
@@ -528,7 +563,8 @@ gdb_xml_use_dtd (struct gdb_xml_parser *parser, const char *dtd_name)
   err = XML_UseForeignDTD (parser->expat_parser, XML_TRUE);
   if (err != XML_ERROR_NONE)
     internal_error (__FILE__, __LINE__,
-		    "XML_UseForeignDTD failed: %s", XML_ErrorString (err));
+		    _("XML_UseForeignDTD failed: %s"),
+		    XML_ErrorString (err));
 }
 
 /* Invoke PARSER on BUFFER.  BUFFER is the data to parse, which
@@ -560,6 +596,7 @@ gdb_xml_parse (struct gdb_xml_parser *parser, const char *buffer)
   else if (status == XML_STATUS_ERROR)
     {
       enum XML_Error err = XML_GetErrorCode (parser->expat_parser);
+
       error_string = XML_ErrorString (err);
     }
   else
@@ -575,6 +612,26 @@ gdb_xml_parse (struct gdb_xml_parser *parser, const char *buffer)
     warning (_("while parsing %s: %s"), parser->name, error_string);
 
   return -1;
+}
+
+int
+gdb_xml_parse_quick (const char *name, const char *dtd_name,
+		     const struct gdb_xml_element *elements,
+		     const char *document, void *user_data)
+{
+  struct gdb_xml_parser *parser;
+  struct cleanup *back_to;
+  int result;
+
+  parser = gdb_xml_create_parser_and_cleanup_1 (name, elements,
+						user_data, &back_to);
+  if (dtd_name != NULL)
+    gdb_xml_use_dtd (parser, dtd_name);
+  result = gdb_xml_parse (parser, document);
+
+  do_cleanups (back_to);
+
+  return result;
 }
 
 /* Parse a field VALSTR that we expect to contain an integer value.
@@ -717,10 +774,9 @@ xinclude_start_include (struct gdb_xml_parser *parser,
 			void *user_data, VEC(gdb_xml_value_s) *attributes)
 {
   struct xinclude_parsing_data *data = user_data;
-  char *href = VEC_index (gdb_xml_value_s, attributes, 0)->value;
+  char *href = xml_find_attribute (attributes, "href")->value;
   struct cleanup *back_to;
   char *text, *output;
-  int ret;
 
   gdb_xml_debug (parser, _("Processing XInclude of \"%s\""), href);
 
@@ -832,7 +888,6 @@ xml_process_xincludes (const char *name, const char *text,
 		       xml_fetch_another fetcher, void *fetcher_baton,
 		       int depth)
 {
-  enum XML_Error err;
   struct gdb_xml_parser *parser;
   struct xinclude_parsing_data *data;
   struct cleanup *back_to;
@@ -995,6 +1050,107 @@ xml_escape_text (const char *text)
   result[i + special] = '\0';
 
   return result;
+}
+
+void
+obstack_xml_printf (struct obstack *obstack, const char *format, ...)
+{
+  va_list ap;
+  const char *f;
+  const char *prev;
+  int percent = 0;
+
+  va_start (ap, format);
+
+  prev = format;
+  for (f = format; *f; f++)
+    {
+      if (percent)
+       {
+         switch (*f)
+           {
+           case 's':
+             {
+               char *p;
+               char *a = va_arg (ap, char *);
+
+               obstack_grow (obstack, prev, f - prev - 1);
+               p = xml_escape_text (a);
+               obstack_grow_str (obstack, p);
+               xfree (p);
+               prev = f + 1;
+             }
+             break;
+           }
+         percent = 0;
+       }
+      else if (*f == '%')
+       percent = 1;
+    }
+
+  obstack_grow_str (obstack, prev);
+  va_end (ap);
+}
+
+char *
+xml_fetch_content_from_file (const char *filename, void *baton)
+{
+  const char *dirname = baton;
+  FILE *file;
+  struct cleanup *back_to;
+  char *text;
+  size_t len, offset;
+
+  if (dirname && *dirname)
+    {
+      char *fullname = concat (dirname, "/", filename, (char *) NULL);
+
+      if (fullname == NULL)
+	nomem (0);
+      file = fopen (fullname, FOPEN_RT);
+      xfree (fullname);
+    }
+  else
+    file = fopen (filename, FOPEN_RT);
+
+  if (file == NULL)
+    return NULL;
+
+  back_to = make_cleanup_fclose (file);
+
+  /* Read in the whole file, one chunk at a time.  */
+  len = 4096;
+  offset = 0;
+  text = xmalloc (len);
+  make_cleanup (free_current_contents, &text);
+  while (1)
+    {
+      size_t bytes_read;
+
+      /* Continue reading where the last read left off.  Leave at least
+	 one byte so that we can NUL-terminate the result.  */
+      bytes_read = fread (text + offset, 1, len - offset - 1, file);
+      if (ferror (file))
+	{
+	  warning (_("Read error from \"%s\""), filename);
+	  do_cleanups (back_to);
+	  return NULL;
+	}
+
+      offset += bytes_read;
+
+      if (feof (file))
+	break;
+
+      len = len * 2;
+      text = xrealloc (text, len);
+    }
+
+  fclose (file);
+  discard_cleanups (back_to);
+
+  text[offset] = '\0';
+  return text;
 }
 
 void _initialize_xml_support (void);

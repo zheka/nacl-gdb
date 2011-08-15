@@ -1,5 +1,5 @@
 /* BFD back-end for ARM WINCE PE files.
-   Copyright 2006, 2007 Free Software Foundation, Inc.
+   Copyright 2006, 2007, 2008 Free Software Foundation, Inc.
 
    This file is part of BFD, the Binary File Descriptor library.
 
@@ -35,4 +35,11 @@
 
 #define LOCAL_LABEL_PREFIX "."
 
+#include "sysdep.h"
+#include "bfd.h"
+
+#undef  bfd_pe_print_pdata
+#define	bfd_pe_print_pdata   _bfd_pe_print_ce_compressed_pdata
+
 #include "pe-arm.c"
+

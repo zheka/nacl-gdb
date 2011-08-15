@@ -1,6 +1,7 @@
 /* Common target-dependent code for NetBSD systems.
 
-   Copyright (C) 2002, 2006, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2002, 2006, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    Contributed by Wasabi Systems, Inc.
   
@@ -22,6 +23,7 @@
 #include "defs.h"
 #include "gdb_string.h"
 #include "solib-svr4.h"
+#include "nbsd-tdep.h"
 
 /* FIXME: kettenis/20060115: We should really eliminate the next two
    functions completely.  */

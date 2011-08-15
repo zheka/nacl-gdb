@@ -1,6 +1,7 @@
 /* opc2c.c --- generate C simulator code from from .opc file
 
-Copyright (C) 2005, 2007, 2008 Free Software Foundation, Inc.
+Copyright (C) 2005, 2007, 2008, 2009, 2010, 2011
+Free Software Foundation, Inc.
 Contributed by Red Hat, Inc.
 
 This file is part of the GNU simulators.
@@ -472,8 +473,6 @@ log_indirect (Indirect * ind, int byte)
 
   for (i = 0; i < 256; i++)
     {
-      if (ind[i].type == T_unused)
-	continue;
 
       for (j = 0; j < byte; j++)
 	fprintf (sim_log, "%s ", prmb (255, cur_bits[j]));
@@ -490,7 +489,7 @@ log_indirect (Indirect * ind, int byte)
 	  last_c = ind[i].u.op->comment;
 	  break;
 	case T_unused:
-	  fprintf (sim_log, "-\n");
+	  fprintf (sim_log, "unused\n");
 	  break;
 	case T_indirect:
 	  fprintf (sim_log, "indirect\n");

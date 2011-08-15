@@ -1,6 +1,6 @@
 /* This testcase is part of GDB, the GNU debugger.
 
-   Copyright 2004, 2007, 2008 Free Software Foundation, Inc.
+   Copyright 2004, 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -27,7 +27,6 @@
 # define dlsym(handle, func) GetProcAddress (handle, func)
 #endif
 #define dlclose(handle) FreeLibrary (handle)
-#define dlerror() "error %d occurred", GetLastError ()
 #else
 #include <dlfcn.h>
 #endif
@@ -45,23 +44,53 @@ int main()
   
   if (!handle)
     {
-      fprintf (stderr, dlerror ());
+      fprintf (stderr, "%s\n", dlerror ());
       exit (1);
     }
 
-  unloadshr = (int (*)(int))dlsym (handle, "shrfunc1");
+  unloadshr = (int (*) (int)) dlsym (handle, "shrfunc1");
 
   if (!unloadshr)
     {
-      fprintf (stderr, dlerror ());
+#ifdef __WIN32__
+      fprintf (stderr, "error %d occurred\n", GetLastError ());
+#else
+      fprintf (stderr, "%s\n", dlerror ());
+#endif
       exit (1);
     }
 
-  y = (*unloadshr)(3);
-
-  printf ("y is %d\n", y);
+  y = (*unloadshr) (1);
 
   dlclose (handle);
+  handle = NULL;	/* y-set-1 */
+
+  /* The second library should share the same memory address.  */
+
+  handle = dlopen (SHLIB_NAME2, RTLD_LAZY);
+  
+  if (!handle)
+    {
+      fprintf (stderr, "%s\n", dlerror ());
+      exit (1);
+    }
+
+  unloadshr = (int (*)(int)) dlsym (handle, "shrfunc2");
+
+  if (!unloadshr)
+    {
+#ifdef __WIN32__
+      fprintf (stderr, "error %d occurred\n", GetLastError ());
+#else
+      fprintf (stderr, "%s\n", dlerror ());
+#endif
+      exit (1);
+    }
+
+  y = (*unloadshr) (2);
+
+  dlclose (handle);
+  handle = NULL;	/* y-set-2 */
 
   return 0;
 }

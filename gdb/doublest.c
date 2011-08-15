@@ -1,8 +1,8 @@
 /* Floating point routines for GDB, the GNU debugger.
 
    Copyright (C) 1986, 1988, 1989, 1990, 1991, 1992, 1993, 1994, 1995, 1996,
-   1997, 1998, 1999, 2000, 2001, 2003, 2004, 2005, 2007, 2008
-   Free Software Foundation, Inc.
+   1997, 1998, 1999, 2000, 2001, 2003, 2004, 2005, 2007, 2008, 2009, 2010,
+   2011 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -60,12 +60,13 @@ get_field (const bfd_byte *data, enum floatformat_byteorders order,
     {
       /* We start counting from the other end (i.e, from the high bytes
 	 rather than the low bytes).  As such, we need to be concerned
-	 with what happens if bit 0 doesn't start on a byte boundary. 
+	 with what happens if bit 0 doesn't start on a byte boundary.
 	 I.e, we need to properly handle the case where total_len is
 	 not evenly divisible by 8.  So we compute ``excess'' which
 	 represents the number of bits from the end of our starting
-	 byte needed to get to bit 0. */
+	 byte needed to get to bit 0.  */
       int excess = FLOATFORMAT_CHAR_BIT - (total_len % FLOATFORMAT_CHAR_BIT);
+
       cur_byte = (total_len / FLOATFORMAT_CHAR_BIT) 
                  - ((start + len + excess) / FLOATFORMAT_CHAR_BIT);
       cur_bitshift = ((start + len + excess) % FLOATFORMAT_CHAR_BIT) 
@@ -103,7 +104,7 @@ get_field (const bfd_byte *data, enum floatformat_byteorders order,
 	}
     }
   if (len < sizeof(result) * FLOATFORMAT_CHAR_BIT)
-    /* Mask out bits which are not part of the field */
+    /* Mask out bits which are not part of the field.  */
     result &= ((1UL << len) - 1);
   return result;
 }
@@ -175,7 +176,7 @@ convert_floatformat_to_doublest (const struct floatformat *fmt,
   unsigned long mant;
   unsigned int mant_bits, mant_off;
   int mant_bits_left;
-  int special_exponent;		/* It's a NaN, denorm or zero */
+  int special_exponent;		/* It's a NaN, denorm or zero.  */
   enum floatformat_byteorders order;
   unsigned char newfrom[FLOATFORMAT_LARGEST_BYTES];
   enum float_kind kind;
@@ -190,6 +191,7 @@ convert_floatformat_to_doublest (const struct floatformat *fmt,
   if (kind == float_infinite || kind == float_nan)
     {
       double dto;
+
       floatformat_to_double (fmt, from, &dto);
       *to = (DOUBLEST) dto;
       return;
@@ -203,6 +205,7 @@ convert_floatformat_to_doublest (const struct floatformat *fmt,
   if (fmt->split_half)
     {
       DOUBLEST dtop, dbot;
+
       floatformat_to_doublest (fmt->split_half, ufrom, &dtop);
       /* Preserve the sign of 0, which is the sign of the top
 	 half.  */
@@ -230,17 +233,17 @@ convert_floatformat_to_doublest (const struct floatformat *fmt,
 
   special_exponent = exponent == 0 || exponent == fmt->exp_nan;
 
-  /* Don't bias NaNs. Use minimum exponent for denorms. For simplicity,
-     we don't check for zero as the exponent doesn't matter.  Note the cast
-     to int; exp_bias is unsigned, so it's important to make sure the
-     operation is done in signed arithmetic.  */
+  /* Don't bias NaNs.  Use minimum exponent for denorms.  For
+     simplicity, we don't check for zero as the exponent doesn't matter.
+     Note the cast to int; exp_bias is unsigned, so it's important to
+     make sure the operation is done in signed arithmetic.  */
   if (!special_exponent)
     exponent -= fmt->exp_bias;
   else if (exponent == 0)
     exponent = 1 - fmt->exp_bias;
 
   /* Build the result algebraically.  Might go infinite, underflow, etc;
-     who cares. */
+     who cares.  */
 
 /* If this format uses a hidden bit, explicitly add it in now.  Otherwise,
    increment the exponent by one to account for the integer bit.  */
@@ -292,6 +295,7 @@ put_field (unsigned char *data, enum floatformat_byteorders order,
   if (order == floatformat_little)
     {
       int excess = FLOATFORMAT_CHAR_BIT - (total_len % FLOATFORMAT_CHAR_BIT);
+
       cur_byte = (total_len / FLOATFORMAT_CHAR_BIT) 
                  - ((start + len + excess) / FLOATFORMAT_CHAR_BIT);
       cur_bitshift = ((start + len + excess) % FLOATFORMAT_CHAR_BIT) 
@@ -351,9 +355,10 @@ ldfrexp (long double value, int *eptr)
   long double tmp;
   int exp;
 
-  /* Unfortunately, there are no portable functions for extracting the exponent
-     of a long double, so we have to do it iteratively by multiplying or dividing
-     by two until the fraction is between 0.5 and 1.0.  */
+  /* Unfortunately, there are no portable functions for extracting the
+     exponent of a long double, so we have to do it iteratively by
+     multiplying or dividing by two until the fraction is between 0.5
+     and 1.0.  */
 
   if (value < 0.0l)
     value = -value;
@@ -418,6 +423,7 @@ convert_doublest_to_floatformat (CONST struct floatformat *fmt,
 	 the result of converting to double.  */
       static volatile double dtop, dbot;
       DOUBLEST dtopnv, dbotnv;
+
       dtop = (double) dfrom;
       /* If the rounded top half is Inf, the bottom must be 0 not NaN
 	 or Inf.  */
@@ -441,7 +447,7 @@ convert_doublest_to_floatformat (CONST struct floatformat *fmt,
       /* From is NaN */
       put_field (uto, order, fmt->totalsize, fmt->exp_start,
 		 fmt->exp_len, fmt->exp_nan);
-      /* Be sure it's not infinity, but NaN value is irrel */
+      /* Be sure it's not infinity, but NaN value is irrel.  */
       put_field (uto, order, fmt->totalsize, fmt->man_start,
 		 32, 1);
       goto finalize_byteorder;
@@ -454,7 +460,7 @@ convert_doublest_to_floatformat (CONST struct floatformat *fmt,
       dfrom = -dfrom;
     }
 
-  if (dfrom + dfrom == dfrom && dfrom != 0.0)	/* Result is Infinity */
+  if (dfrom + dfrom == dfrom && dfrom != 0.0)	/* Result is Infinity.  */
     {
       /* Infinity exponent is same as NaN's.  */
       put_field (uto, order, fmt->totalsize, fmt->exp_start,
@@ -479,6 +485,7 @@ convert_doublest_to_floatformat (CONST struct floatformat *fmt,
   while (mant_bits_left > 0)
     {
       unsigned long mant_long;
+
       mant_bits = mant_bits_left < 32 ? mant_bits_left : 32;
 
       mant *= 4294967296.0;
@@ -693,7 +700,8 @@ floatformat_mantissa (const struct floatformat *fmt,
 
 static const struct floatformat *host_float_format = GDB_HOST_FLOAT_FORMAT;
 static const struct floatformat *host_double_format = GDB_HOST_DOUBLE_FORMAT;
-static const struct floatformat *host_long_double_format = GDB_HOST_LONG_DOUBLE_FORMAT;
+static const struct floatformat *host_long_double_format
+  = GDB_HOST_LONG_DOUBLE_FORMAT;
 
 void
 floatformat_to_doublest (const struct floatformat *fmt,
@@ -703,18 +711,21 @@ floatformat_to_doublest (const struct floatformat *fmt,
   if (fmt == host_float_format)
     {
       float val;
+
       memcpy (&val, in, sizeof (val));
       *out = val;
     }
   else if (fmt == host_double_format)
     {
       double val;
+
       memcpy (&val, in, sizeof (val));
       *out = val;
     }
   else if (fmt == host_long_double_format)
     {
       long double val;
+
       memcpy (&val, in, sizeof (val));
       *out = val;
     }
@@ -730,16 +741,19 @@ floatformat_from_doublest (const struct floatformat *fmt,
   if (fmt == host_float_format)
     {
       float val = *in;
+
       memcpy (out, &val, sizeof (val));
     }
   else if (fmt == host_double_format)
     {
       double val = *in;
+
       memcpy (out, &val, sizeof (val));
     }
   else if (fmt == host_long_double_format)
     {
       long double val = *in;
+
       memcpy (out, &val, sizeof (val));
     }
   else
@@ -761,27 +775,31 @@ floatformat_from_doublest (const struct floatformat *fmt,
    but not passed on by GDB.  This should be fixed.  */
 
 static const struct floatformat *
-floatformat_from_length (int len)
+floatformat_from_length (struct gdbarch *gdbarch, int len)
 {
   const struct floatformat *format;
-  if (len * TARGET_CHAR_BIT == gdbarch_float_bit (current_gdbarch))
-    format = gdbarch_float_format (current_gdbarch)
-	       [gdbarch_byte_order (current_gdbarch)];
-  else if (len * TARGET_CHAR_BIT == gdbarch_double_bit (current_gdbarch))
-    format = gdbarch_double_format (current_gdbarch)
-	       [gdbarch_byte_order (current_gdbarch)];
-  else if (len * TARGET_CHAR_BIT == gdbarch_long_double_bit (current_gdbarch))
-    format = gdbarch_long_double_format (current_gdbarch)
-	       [gdbarch_byte_order (current_gdbarch)];
+
+  if (len * TARGET_CHAR_BIT == gdbarch_half_bit (gdbarch))
+    format = gdbarch_half_format (gdbarch)
+	       [gdbarch_byte_order (gdbarch)];
+  else if (len * TARGET_CHAR_BIT == gdbarch_float_bit (gdbarch))
+    format = gdbarch_float_format (gdbarch)
+	       [gdbarch_byte_order (gdbarch)];
+  else if (len * TARGET_CHAR_BIT == gdbarch_double_bit (gdbarch))
+    format = gdbarch_double_format (gdbarch)
+	       [gdbarch_byte_order (gdbarch)];
+  else if (len * TARGET_CHAR_BIT == gdbarch_long_double_bit (gdbarch))
+    format = gdbarch_long_double_format (gdbarch)
+	       [gdbarch_byte_order (gdbarch)];
   /* On i386 the 'long double' type takes 96 bits,
      while the real number of used bits is only 80,
-     both in processor and in memory.  
+     both in processor and in memory.
      The code below accepts the real bit size.  */ 
-  else if ((gdbarch_long_double_format (current_gdbarch) != NULL) 
-	   && (len * TARGET_CHAR_BIT ==
-               gdbarch_long_double_format (current_gdbarch)[0]->totalsize))
-    format = gdbarch_long_double_format (current_gdbarch)
-	       [gdbarch_byte_order (current_gdbarch)];
+  else if ((gdbarch_long_double_format (gdbarch) != NULL)
+	   && (len * TARGET_CHAR_BIT
+               == gdbarch_long_double_format (gdbarch)[0]->totalsize))
+    format = gdbarch_long_double_format (gdbarch)
+	       [gdbarch_byte_order (gdbarch)];
   else
     format = NULL;
   if (format == NULL)
@@ -793,52 +811,13 @@ floatformat_from_length (int len)
 const struct floatformat *
 floatformat_from_type (const struct type *type)
 {
+  struct gdbarch *gdbarch = get_type_arch (type);
+
   gdb_assert (TYPE_CODE (type) == TYPE_CODE_FLT);
   if (TYPE_FLOATFORMAT (type) != NULL)
-    return TYPE_FLOATFORMAT (type)[gdbarch_byte_order (current_gdbarch)];
+    return TYPE_FLOATFORMAT (type)[gdbarch_byte_order (gdbarch)];
   else
-    return floatformat_from_length (TYPE_LENGTH (type));
-}
-
-/* If the host doesn't define NAN, use zero instead.  */
-#ifndef NAN
-#define NAN 0.0
-#endif
-
-/* Extract a floating-point number of length LEN from a target-order
-   byte-stream at ADDR.  Returns the value as type DOUBLEST.  */
-
-static DOUBLEST
-extract_floating_by_length (const void *addr, int len)
-{
-  const struct floatformat *fmt = floatformat_from_length (len);
-  DOUBLEST val;
-
-  floatformat_to_doublest (fmt, addr, &val);
-  return val;
-}
-
-DOUBLEST
-deprecated_extract_floating (const void *addr, int len)
-{
-  return extract_floating_by_length (addr, len);
-}
-
-/* Store VAL as a floating-point number of length LEN to a
-   target-order byte-stream at ADDR.  */
-
-static void
-store_floating_by_length (void *addr, int len, DOUBLEST val)
-{
-  const struct floatformat *fmt = floatformat_from_length (len);
-
-  floatformat_from_doublest (fmt, &val, addr);
-}
-
-void
-deprecated_store_floating (void *addr, int len, DOUBLEST val)
-{
-  store_floating_by_length (addr, len, val);
+    return floatformat_from_length (gdbarch, TYPE_LENGTH (type));
 }
 
 /* Extract a floating-point number of type TYPE from a target-order
@@ -847,18 +826,10 @@ deprecated_store_floating (void *addr, int len, DOUBLEST val)
 DOUBLEST
 extract_typed_floating (const void *addr, const struct type *type)
 {
+  const struct floatformat *fmt = floatformat_from_type (type);
   DOUBLEST retval;
 
-  gdb_assert (TYPE_CODE (type) == TYPE_CODE_FLT);
-
-  if (TYPE_FLOATFORMAT (type) == NULL)
-    /* Not all code remembers to set the FLOATFORMAT (language
-       specific code? stabs?) so handle that here as a special case.  */
-    return extract_floating_by_length (addr, TYPE_LENGTH (type));
-
-  floatformat_to_doublest 
-	(TYPE_FLOATFORMAT (type)[gdbarch_byte_order (current_gdbarch)],
-			   addr, &retval);
+  floatformat_to_doublest (fmt, addr, &retval);
   return retval;
 }
 
@@ -868,7 +839,7 @@ extract_typed_floating (const void *addr, const struct type *type)
 void
 store_typed_floating (void *addr, const struct type *type, DOUBLEST val)
 {
-  gdb_assert (TYPE_CODE (type) == TYPE_CODE_FLT);
+  const struct floatformat *fmt = floatformat_from_type (type);
 
   /* FIXME: kettenis/2001-10-28: It is debatable whether we should
      zero out any remaining bytes in the target buffer when TYPE is
@@ -890,14 +861,7 @@ store_typed_floating (void *addr, const struct type *type, DOUBLEST val)
      See also the function convert_typed_floating below.  */
   memset (addr, 0, TYPE_LENGTH (type));
 
-  if (TYPE_FLOATFORMAT (type) == NULL)
-    /* Not all code remembers to set the FLOATFORMAT (language
-       specific code? stabs?) so handle that here as a special case.  */
-    store_floating_by_length (addr, TYPE_LENGTH (type), val);
-  else
-    floatformat_from_doublest
-	(TYPE_FLOATFORMAT (type)[gdbarch_byte_order (current_gdbarch)],
-	&val, addr);
+  floatformat_from_doublest (fmt, &val, addr);
 }
 
 /* Convert a floating-point number of type FROM_TYPE from a
@@ -910,9 +874,6 @@ convert_typed_floating (const void *from, const struct type *from_type,
 {
   const struct floatformat *from_fmt = floatformat_from_type (from_type);
   const struct floatformat *to_fmt = floatformat_from_type (to_type);
-
-  gdb_assert (TYPE_CODE (from_type) == TYPE_CODE_FLT);
-  gdb_assert (TYPE_CODE (to_type) == TYPE_CODE_FLT);
 
   if (from_fmt == NULL || to_fmt == NULL)
     {
@@ -940,7 +901,7 @@ convert_typed_floating (const void *from, const struct type *from_type,
   else
     {
       /* The floating-point types don't match.  The best we can do
-         (aport from simulating the target FPU) is converting to the
+         (apart from simulating the target FPU) is converting to the
          widest floating-point type supported by the host, and then
          again to the desired type.  */
       DOUBLEST d;
@@ -965,7 +926,8 @@ _initialize_doublest (void)
   floatformat_ieee_single[BFD_ENDIAN_BIG] = &floatformat_ieee_single_big;
   floatformat_ieee_double[BFD_ENDIAN_LITTLE] = &floatformat_ieee_double_little;
   floatformat_ieee_double[BFD_ENDIAN_BIG] = &floatformat_ieee_double_big;
-  floatformat_arm_ext[BFD_ENDIAN_LITTLE] = &floatformat_arm_ext_littlebyte_bigword;
+  floatformat_arm_ext[BFD_ENDIAN_LITTLE]
+    = &floatformat_arm_ext_littlebyte_bigword;
   floatformat_arm_ext[BFD_ENDIAN_BIG] = &floatformat_arm_ext_big;
   floatformat_ia64_spill[BFD_ENDIAN_LITTLE] = &floatformat_ia64_spill_little;
   floatformat_ia64_spill[BFD_ENDIAN_BIG] = &floatformat_ia64_spill_big;

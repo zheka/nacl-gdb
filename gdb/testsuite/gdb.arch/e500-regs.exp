@@ -1,4 +1,5 @@
-# Copyright 2003, 2004, 2007, 2008 Free Software Foundation, Inc.
+# Copyright 2003, 2004, 2007, 2008, 2009, 2010, 2011
+# Free Software Foundation, Inc.
 # 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -13,9 +14,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
-# Please email any bugs, comments, and/or additions to this file to:
-# bug-gdb@prep.ai.mit.edu
-#
 
 # Tests for Powerpc E500 register setting and fetching
 
@@ -28,8 +26,6 @@ if $tracelevel then {
 # This file uses e500-regs.c for input.
 #
 
-set prms_id 0
-set bug_id 0
 
 if ![istarget "powerpc-*eabispe"] then {
     verbose "Skipping e500 register tests."
@@ -104,15 +100,11 @@ for {set i 0} {$i < 32} {incr i 1} {
 }
 
 # Now redo the same tests, but using the print command.
-# Note: in LE case, the char array is printed WITHOUT the last character.
-# Gdb treats the terminating null char in the array like the terminating
-# null char in a string and doesn't print it. This is not a failure, but
-# the way gdb works.
 
 if {$endianness == "big"} {
-     set decimal_vector ".uint64 = 4294967297, v2_float = .1.*e-45, 1.*e-45., v2_int32 = .1, 1., v4_int16 = .0, 1, 0, 1., v8_int8 = ..000.000.000.001.000.000.000.001.."
+     set decimal_vector ".uint64 = 4294967297, v2_float = .1.*e-45, 1.*e-45., v2_int32 = .1, 1., v4_int16 = .0, 1, 0, 1., v8_int8 = .0, 0, 0, 1, 0, 0, 0, 1.."
 } else {
-     set decimal_vector ".uint64 = 4294967297, v2_float = .1.*e-45, 1.*e-45., v2_int32 = .1, 1., v4_int16 = .1, 0, 1, 0., v8_int8 = ..001.000.000.000.001.000.000.."
+     set decimal_vector ".uint64 = 4294967297, v2_float = .1.*e-45, 1.*e-45., v2_int32 = .1, 1., v4_int16 = .1, 0, 1, 0., v8_int8 = .1, 0, 0, 0, 1, 0, 0, 0.."
 }
 
 for {set i 0} {$i < 32} {incr i 1} {

@@ -1,6 +1,6 @@
 /* Target-dependent code for AMD64 Solaris.
 
-   Copyright (C) 2001, 2002, 2003, 2004, 2006, 2007, 2008
+   Copyright (C) 2001, 2002, 2003, 2004, 2006, 2007, 2008, 2009, 2010, 2011
    Free Software Foundation, Inc.
 
    Contributed by Joseph Myers, CodeSourcery, LLC.
@@ -46,7 +46,7 @@ static int amd64_sol2_gregset_reg_offset[] = {
   8 * 8,			/* %rdi */
   10 * 8,			/* %rbp */
   20 * 8,			/* %rsp */
-  7 * 8,			/* %r8 ... */
+  7 * 8,			/* %r8 ...  */
   6 * 8,
   5 * 8,
   4 * 8,
@@ -65,13 +65,13 @@ static int amd64_sol2_gregset_reg_offset[] = {
 };
 
 
-/* Return whether the frame preceding NEXT_FRAME corresponds to a
-   Solaris sigtramp routine.  */
+/* Return whether THIS_FRAME corresponds to a Solaris sigtramp
+   routine.  */
 
 static int
-amd64_sol2_sigtramp_p (struct frame_info *next_frame)
+amd64_sol2_sigtramp_p (struct frame_info *this_frame)
 {
-  CORE_ADDR pc = frame_pc_unwind (next_frame);
+  CORE_ADDR pc = get_frame_pc (this_frame);
   char *name;
 
   find_pc_partial_function (pc, &name, NULL, NULL);
@@ -83,12 +83,12 @@ amd64_sol2_sigtramp_p (struct frame_info *next_frame)
    'mcontext_t' that contains the saved set of machine registers.  */
 
 static CORE_ADDR
-amd64_sol2_mcontext_addr (struct frame_info *next_frame)
+amd64_sol2_mcontext_addr (struct frame_info *this_frame)
 {
   CORE_ADDR sp, ucontext_addr;
 
-  sp = frame_unwind_register_unsigned (next_frame, AMD64_RSP_REGNUM);
-  ucontext_addr = get_frame_memory_unsigned (next_frame, sp + 8, 8);
+  sp = get_frame_register_unsigned (this_frame, AMD64_RSP_REGNUM);
+  ucontext_addr = get_frame_memory_unsigned (this_frame, sp + 8, 8);
 
   return ucontext_addr + 72;
 }
@@ -113,6 +113,9 @@ amd64_sol2_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
   set_gdbarch_skip_solib_resolver (gdbarch, sol2_skip_solib_resolver);
   set_solib_svr4_fetch_link_map_offsets
     (gdbarch, svr4_lp64_fetch_link_map_offsets);
+
+  /* How to print LWP PTIDs from core files.  */
+  set_gdbarch_core_pid_to_str (gdbarch, sol2_core_pid_to_str);
 }
 
 

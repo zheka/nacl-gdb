@@ -21,7 +21,8 @@ Software Foundation, 51 Franklin Street - Fifth Floor, Boston, MA
 
 /*
 
-@deftypefn Extension {const char*} make_relative_prefix (const char *@var{progname}, const char *@var{bin_prefix}, const char *@var{prefix})
+@deftypefn Extension {const char*} make_relative_prefix (const char *@var{progname}, @
+  const char *@var{bin_prefix}, const char *@var{prefix})
 
 Given three paths @var{progname}, @var{bin_prefix}, @var{prefix},
 return the path that is in the same position relative to
@@ -292,14 +293,12 @@ make_relative_prefix_1 (const char *progname, const char *bin_prefix,
 	}
     }
 
-  if ( resolve_links )
-    {
-      full_progname = lrealpath (progname);
-      if (full_progname == NULL)
-	return NULL;
-    }
+  if (resolve_links)
+    full_progname = lrealpath (progname);
   else
-    full_progname = strdup(progname);
+    full_progname = strdup (progname);
+  if (full_progname == NULL)
+    return NULL;
 
   prog_dirs = split_directories (full_progname, &prog_num);
   free (full_progname);

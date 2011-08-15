@@ -1,6 +1,6 @@
 /* Native-dependent code for NetBSD/sh.
 
-   Copyright (C) 2002, 2003, 2004, 2006, 2007, 2008
+   Copyright (C) 2002, 2003, 2004, 2006, 2007, 2008, 2009, 2010, 2011
    Free Software Foundation, Inc.
 
    Contributed by Wasabi Systems, Inc.
@@ -28,20 +28,23 @@
 #include <machine/reg.h>
 
 #include "sh-tdep.h"
-#include "shnbsd-tdep.h"
 #include "inf-ptrace.h"
 #include "regcache.h"
 
 
-/* Determine if PT_GETREGS fetches this register. */
+/* Determine if PT_GETREGS fetches this register.  */
 #define GETREGS_SUPPLIES(gdbarch, regno) \
   (((regno) >= R0_REGNUM && (regno) <= (R0_REGNUM + 15)) \
 || (regno) == gdbarch_pc_regnum (gdbarch) || (regno) == PR_REGNUM \
 || (regno) == MACH_REGNUM || (regno) == MACL_REGNUM \
 || (regno) == SR_REGNUM)
 
+/* Sizeof `struct reg' in <machine/reg.h>.  */
+#define SHNBSD_SIZEOF_GREGS	(21 * 4)
+
 static void
-shnbsd_fetch_inferior_registers (struct regcache *regcache, int regno)
+shnbsd_fetch_inferior_registers (struct target_ops *ops,
+				 struct regcache *regcache, int regno)
 {
   if (regno == -1 || GETREGS_SUPPLIES (get_regcache_arch (regcache), regno))
     {
@@ -51,7 +54,9 @@ shnbsd_fetch_inferior_registers (struct regcache *regcache, int regno)
 		  (PTRACE_TYPE_ARG3) &inferior_registers, 0) == -1)
 	perror_with_name (_("Couldn't get registers"));
 
-      shnbsd_supply_reg (regcache, (char *) &inferior_registers, regno);
+      sh_corefile_supply_regset (&sh_corefile_gregset, regcache, regno,
+				 (char *) &inferior_registers,
+				 SHNBSD_SIZEOF_GREGS);
 
       if (regno != -1)
 	return;
@@ -59,7 +64,8 @@ shnbsd_fetch_inferior_registers (struct regcache *regcache, int regno)
 }
 
 static void
-shnbsd_store_inferior_registers (struct regcache *regcache, int regno)
+shnbsd_store_inferior_registers (struct target_ops *ops,
+				 struct regcache *regcache, int regno)
 {
   if (regno == -1 || GETREGS_SUPPLIES (get_regcache_arch (regcache), regno))
     {
@@ -69,7 +75,9 @@ shnbsd_store_inferior_registers (struct regcache *regcache, int regno)
 		  (PTRACE_TYPE_ARG3) &inferior_registers, 0) == -1)
 	perror_with_name (_("Couldn't get registers"));
 
-      shnbsd_fill_reg (regcache, (char *) &inferior_registers, regno);
+      sh_corefile_collect_regset (&sh_corefile_gregset, regcache, regno,
+				  (char *) &inferior_registers,
+				  SHNBSD_SIZEOF_GREGS);
 
       if (ptrace (PT_SETREGS, PIDGET (inferior_ptid),
 		  (PTRACE_TYPE_ARG3) &inferior_registers, 0) == -1)

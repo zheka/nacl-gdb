@@ -1,5 +1,6 @@
 /* Remote target system call support.
-   Copyright 1997, 1998, 2002, 2004, 2007, 2008 Free Software Foundation, Inc.
+   Copyright 1997, 1998, 2002, 2004, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
    Contributed by Cygnus Solutions.
 
    This file is part of GDB.
@@ -92,7 +93,7 @@ get_string (cb, sc, buf, buflen, addr)
 	 path name along with the syscall request, and cache the file
 	 name somewhere (or otherwise tweak this as desired).  */
       unsigned int count = (*sc->read_mem) (cb, sc, addr, p, 1);
-				    
+
       if (count != 1)
 	return EINVAL;
       if (*p == 0)

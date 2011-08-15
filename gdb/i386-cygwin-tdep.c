@@ -1,6 +1,7 @@
 /* Target-dependent code for Cygwin running on i386's, for GDB.
 
-   Copyright (C) 2003, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -21,20 +22,21 @@
 #include "osabi.h"
 #include "gdb_string.h"
 #include "i386-tdep.h"
-#include "i386-cygwin-tdep.h"
+#include "windows-tdep.h"
 #include "regset.h"
 #include "gdb_obstack.h"
 #include "xml-support.h"
 #include "gdbcore.h"
 #include "solib.h"
 #include "solib-target.h"
+#include "inferior.h"
 
 /* Core file support.  */
 
 /* This vector maps GDB's idea of a register's number into an address
-   in the win32 exception context vector.  */
+   in the windows exception context vector.  */
 
-static int i386_win32_gregset_reg_offset[] =
+static int i386_windows_gregset_reg_offset[] =
 {
   176, /* eax */
   172, /* ecx */
@@ -88,19 +90,19 @@ static int i386_win32_gregset_reg_offset[] =
   228 /* ExtendedRegisters[24] */
 };
 
-#define I386_WIN32_SIZEOF_GREGSET 716
+#define I386_WINDOWS_SIZEOF_GREGSET 716
 
 /* Return the appropriate register set for the core section identified
    by SECT_NAME and SECT_SIZE.  */
 
 static const struct regset *
-i386_win32_regset_from_core_section (struct gdbarch *gdbarch,
+i386_windows_regset_from_core_section (struct gdbarch *gdbarch,
 				     const char *sect_name, size_t sect_size)
 {
   struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
 
   if (strcmp (sect_name, ".reg") == 0
-      && sect_size == I386_WIN32_SIZEOF_GREGSET)
+      && sect_size == I386_WINDOWS_SIZEOF_GREGSET)
     {
       if (tdep->gregset == NULL)
         tdep->gregset = regset_alloc (gdbarch, i386_supply_gregset,
@@ -111,26 +113,9 @@ i386_win32_regset_from_core_section (struct gdbarch *gdbarch,
   return NULL;
 }
 
-void
-win32_xfer_shared_library (const char* so_name, CORE_ADDR load_addr,
-			   struct obstack *obstack)
-{
-  char *p;
-  obstack_grow_str (obstack, "<library name=\"");
-  p = xml_escape_text (so_name);
-  obstack_grow_str (obstack, p);
-  xfree (p);
-  obstack_grow_str (obstack, "\"><segment address=\"0x");
-  /* The symbols in a dll are offset by 0x1000, which is the the
-     offset from 0 of the first byte in an image - because of the file
-     header and the section alignment. */
-  p = paddr_nz (load_addr + 0x1000);
-  obstack_grow_str (obstack, p);
-  obstack_grow_str (obstack, "\"/></library>");
-}
-
 struct cpms_data
 {
+  struct gdbarch *gdbarch;
   struct obstack *obstack;
   int module_count;
 };
@@ -139,6 +124,7 @@ static void
 core_process_module_section (bfd *abfd, asection *sect, void *obj)
 {
   struct cpms_data *data = obj;
+  enum bfd_endian byte_order = gdbarch_byte_order (data->gdbarch);
 
   char *module_name;
   size_t module_name_size;
@@ -161,13 +147,13 @@ core_process_module_section (bfd *abfd, asection *sect, void *obj)
 
 
 
-  /* A DWORD (data_type) followed by struct win32_core_module_info.  */
+  /* A DWORD (data_type) followed by struct windows_core_module_info.  */
 
   base_addr =
-    extract_unsigned_integer (buf + 4, 4);
+    extract_unsigned_integer (buf + 4, 4, byte_order);
 
   module_name_size =
-    extract_unsigned_integer (buf + 8, 4);
+    extract_unsigned_integer (buf + 8, 4, byte_order);
 
   module_name = buf + 12;
   if (module_name - buf + module_name_size > bfd_get_section_size (sect))
@@ -175,7 +161,8 @@ core_process_module_section (bfd *abfd, asection *sect, void *obj)
 
   /* The first module is the .exe itself.  */
   if (data->module_count != 0)
-    win32_xfer_shared_library (module_name, base_addr, data->obstack);
+    windows_xfer_shared_library (module_name, base_addr,
+				 data->gdbarch, data->obstack);
   data->module_count++;
 
 out:
@@ -185,14 +172,14 @@ out:
 }
 
 static LONGEST
-win32_core_xfer_shared_libraries (struct gdbarch *gdbarch,
+windows_core_xfer_shared_libraries (struct gdbarch *gdbarch,
 				  gdb_byte *readbuf,
 				  ULONGEST offset, LONGEST len)
 {
   struct obstack obstack;
   const char *buf;
   LONGEST len_avail;
-  struct cpms_data data = { &obstack, 0 };
+  struct cpms_data data = { gdbarch, &obstack, 0 };
 
   obstack_init (&obstack);
   obstack_grow_str (&obstack, "<library-list>\n");
@@ -214,10 +201,32 @@ win32_core_xfer_shared_libraries (struct gdbarch *gdbarch,
   return len;
 }
 
+/* This is how we want PTIDs from core files to be printed.  */
+
+static char *
+i386_windows_core_pid_to_str (struct gdbarch *gdbarch, ptid_t ptid)
+{
+  static char buf[80];
+
+  if (ptid_get_lwp (ptid) != 0)
+    {
+      snprintf (buf, sizeof (buf), "Thread 0x%lx", ptid_get_lwp (ptid));
+      return buf;
+    }
+
+  return normal_pid_to_str (ptid);
+}
+
 static CORE_ADDR
 i386_cygwin_skip_trampoline_code (struct frame_info *frame, CORE_ADDR pc)
 {
-  return i386_pe_skip_trampoline_code (pc, NULL);
+  return i386_pe_skip_trampoline_code (frame, pc, NULL);
+}
+
+static const char *
+i386_cygwin_auto_wide_charset (void)
+{
+  return "UTF-16";
 }
 
 static void
@@ -227,19 +236,28 @@ i386_cygwin_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
 
   set_gdbarch_skip_trampoline_code (gdbarch, i386_cygwin_skip_trampoline_code);
 
+  set_gdbarch_skip_main_prologue (gdbarch, i386_skip_main_prologue);
+
   tdep->struct_return = reg_struct_return;
 
-  tdep->gregset_reg_offset = i386_win32_gregset_reg_offset;
-  tdep->gregset_num_regs = ARRAY_SIZE (i386_win32_gregset_reg_offset);
-  tdep->sizeof_gregset = I386_WIN32_SIZEOF_GREGSET;
+  tdep->gregset_reg_offset = i386_windows_gregset_reg_offset;
+  tdep->gregset_num_regs = ARRAY_SIZE (i386_windows_gregset_reg_offset);
+  tdep->sizeof_gregset = I386_WINDOWS_SIZEOF_GREGSET;
 
   set_solib_ops (gdbarch, &solib_target_so_ops);
 
   /* Core file support.  */
   set_gdbarch_regset_from_core_section
-    (gdbarch, i386_win32_regset_from_core_section);
+    (gdbarch, i386_windows_regset_from_core_section);
   set_gdbarch_core_xfer_shared_libraries
-    (gdbarch, win32_core_xfer_shared_libraries);
+    (gdbarch, windows_core_xfer_shared_libraries);
+  set_gdbarch_core_pid_to_str (gdbarch, i386_windows_core_pid_to_str);
+
+  set_gdbarch_auto_wide_charset (gdbarch, i386_cygwin_auto_wide_charset);
+
+  /* Canonical paths on this target look like
+     `c:\Program Files\Foo App\mydll.dll', for example.  */
+  set_gdbarch_has_dos_based_file_system (gdbarch, 1);
 }
 
 static enum gdb_osabi
@@ -248,7 +266,7 @@ i386_cygwin_osabi_sniffer (bfd *abfd)
   char *target_name = bfd_get_target (abfd);
 
   /* Interix also uses pei-i386.
-     We need a way to distinguish between the two. */
+     We need a way to distinguish between the two.  */
   if (strcmp (target_name, "pei-i386") == 0)
     return GDB_OSABI_CYGWIN;
 
@@ -258,7 +276,7 @@ i386_cygwin_osabi_sniffer (bfd *abfd)
     {
       asection *section = bfd_get_section_by_name (abfd, ".reg");
       if (section
-	  && bfd_section_size (abfd, section) == I386_WIN32_SIZEOF_GREGSET)
+	  && bfd_section_size (abfd, section) == I386_WINDOWS_SIZEOF_GREGSET)
 	return GDB_OSABI_CYGWIN;
     }
 

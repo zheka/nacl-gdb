@@ -1,6 +1,6 @@
 /* Target-dependent code for the i387.
 
-   Copyright (C) 2000, 2001, 2002, 2003, 2004, 2007, 2008
+   Copyright (C) 2000, 2001, 2002, 2003, 2004, 2007, 2008, 2009, 2010, 2011
    Free Software Foundation, Inc.
 
    This file is part of GDB.
@@ -27,26 +27,28 @@ struct regcache;
 struct type;
 struct ui_file;
 
-/* Because the number of general-purpose registers is different for
-   AMD64, the floating-point registers and SSE registers get shifted.
-   The following definitions are intended to help writing code that
-   needs the register numbers of floating-point registers and SSE
-   registers.  In order to use these, one should provide a definition
-   for I387_ST0_REGNUM, and possibly I387_NUM_XMM_REGS, preferably by
-   using a local "#define" in the body of the function that uses this.
-   Please "#undef" them before the end of the function.  */
+/* Number of i387 floating point registers.  */
+#define I387_NUM_REGS	16
 
-#define I387_FCTRL_REGNUM	(I387_ST0_REGNUM + 8)
-#define I387_FSTAT_REGNUM	(I387_FCTRL_REGNUM + 1)
-#define I387_FTAG_REGNUM	(I387_FCTRL_REGNUM + 2)
-#define I387_FISEG_REGNUM	(I387_FCTRL_REGNUM + 3)
-#define I387_FIOFF_REGNUM	(I387_FCTRL_REGNUM + 4)
-#define I387_FOSEG_REGNUM	(I387_FCTRL_REGNUM + 5)
-#define I387_FOOFF_REGNUM	(I387_FCTRL_REGNUM + 6)
-#define I387_FOP_REGNUM		(I387_FCTRL_REGNUM + 7)
-#define I387_XMM0_REGNUM	(I387_ST0_REGNUM + 16)
-#define I387_MXCSR_REGNUM	(I387_XMM0_REGNUM + I387_NUM_XMM_REGS)
-
+#define I387_ST0_REGNUM(tdep) ((tdep)->st0_regnum)
+#define I387_NUM_XMM_REGS(tdep) ((tdep)->num_xmm_regs)
+#define I387_MM0_REGNUM(tdep) ((tdep)->mm0_regnum)
+#define I387_NUM_YMM_REGS(tdep) ((tdep)->num_ymm_regs)
+#define I387_YMM0H_REGNUM(tdep) ((tdep)->ymm0h_regnum)
+
+#define I387_FCTRL_REGNUM(tdep) (I387_ST0_REGNUM (tdep) + 8)
+#define I387_FSTAT_REGNUM(tdep) (I387_FCTRL_REGNUM (tdep) + 1)
+#define I387_FTAG_REGNUM(tdep) (I387_FCTRL_REGNUM (tdep) + 2)
+#define I387_FISEG_REGNUM(tdep) (I387_FCTRL_REGNUM (tdep) + 3)
+#define I387_FIOFF_REGNUM(tdep) (I387_FCTRL_REGNUM (tdep) + 4)
+#define I387_FOSEG_REGNUM(tdep) (I387_FCTRL_REGNUM (tdep) + 5)
+#define I387_FOOFF_REGNUM(tdep) (I387_FCTRL_REGNUM (tdep) + 6)
+#define I387_FOP_REGNUM(tdep) (I387_FCTRL_REGNUM (tdep) + 7)
+#define I387_XMM0_REGNUM(tdep) (I387_ST0_REGNUM (tdep) + 16)
+#define I387_MXCSR_REGNUM(tdep) \
+  (I387_XMM0_REGNUM (tdep) + I387_NUM_XMM_REGS (tdep))
+#define I387_YMMENDH_REGNUM(tdep) \
+  (I387_YMM0H_REGNUM (tdep) + I387_NUM_YMM_REGS (tdep))
 
 /* Print out the i387 floating point state.  */
 
@@ -64,8 +66,9 @@ extern int i387_convert_register_p (struct gdbarch *gdbarch, int regnum,
 /* Read a value of type TYPE from register REGNUM in frame FRAME, and
    return its contents in TO.  */
 
-extern void i387_register_to_value (struct frame_info *frame, int regnum,
-				    struct type *type, gdb_byte *to);
+extern int i387_register_to_value (struct frame_info *frame, int regnum,
+				   struct type *type, gdb_byte *to,
+				   int *optimizedp, int *unavailablep);
 
 /* Write the contents FROM of a value of type TYPE into register
    REGNUM in frame FRAME.  */
@@ -101,6 +104,11 @@ extern void i387_collect_fsave (const struct regcache *regcache, int regnum,
 extern void i387_supply_fxsave (struct regcache *regcache, int regnum,
 				const void *fxsave);
 
+/* Similar to i387_supply_fxsave, but use XSAVE extended state.  */
+
+extern void i387_supply_xsave (struct regcache *regcache, int regnum,
+			       const void *xsave);
+
 /* Fill register REGNUM (if it is a floating-point or SSE register) in
    *FXSAVE with the value from REGCACHE.  If REGNUM is -1, do this for
    all registers.  This function doesn't touch any of the reserved
@@ -108,6 +116,11 @@ extern void i387_supply_fxsave (struct regcache *regcache, int regnum,
 
 extern void i387_collect_fxsave (const struct regcache *regcache, int regnum,
 				 void *fxsave);
+
+/* Similar to i387_collect_fxsave, but use XSAVE extended state.  */
+
+extern void i387_collect_xsave (const struct regcache *regcache,
+				int regnum, void *xsave, int gcore);
 
 /* Prepare the FPU stack in REGCACHE for a function return.  */
 

@@ -1,6 +1,6 @@
 /* Definitions for targets which report shared library events.
 
-   Copyright (C) 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -37,12 +37,19 @@ struct lm_info
      so_list; it is only here during XML parsing.  */
   char *name;
 
+  /* The target can either specify segment bases or section bases, not
+     both.  */
+
   /* The base addresses for each independently relocatable segment of
      this shared library.  */
   VEC(CORE_ADDR) *segment_bases;
 
+  /* The base addresses for each independently allocatable,
+     relocatable section of this shared library.  */
+  VEC(CORE_ADDR) *section_bases;
+
   /* The cached offsets for each section of this shared library,
-     determined from SEGMENT_BASES.  */
+     determined from SEGMENT_BASES, or SECTION_BASES.  */
   struct section_offsets *offsets;
 };
 
@@ -79,10 +86,31 @@ library_list_start_segment (struct gdb_xml_parser *parser,
 {
   VEC(lm_info_p) **list = user_data;
   struct lm_info *last = VEC_last (lm_info_p, *list);
-  ULONGEST *address_p = VEC_index (gdb_xml_value_s, attributes, 0)->value;
+  ULONGEST *address_p = xml_find_attribute (attributes, "address")->value;
   CORE_ADDR address = (CORE_ADDR) *address_p;
 
+  if (last->section_bases != NULL)
+    gdb_xml_error (parser,
+		   _("Library list with both segments and sections"));
+
   VEC_safe_push (CORE_ADDR, last->segment_bases, &address);
+}
+
+static void
+library_list_start_section (struct gdb_xml_parser *parser,
+			    const struct gdb_xml_element *element,
+			    void *user_data, VEC(gdb_xml_value_s) *attributes)
+{
+  VEC(lm_info_p) **list = user_data;
+  struct lm_info *last = VEC_last (lm_info_p, *list);
+  ULONGEST *address_p = xml_find_attribute (attributes, "address")->value;
+  CORE_ADDR address = (CORE_ADDR) *address_p;
+
+  if (last->segment_bases != NULL)
+    gdb_xml_error (parser,
+		   _("Library list with both segments and sections"));
+
+  VEC_safe_push (CORE_ADDR, last->section_bases, &address);
 }
 
 /* Handle the start of a <library> element.  */
@@ -94,11 +122,26 @@ library_list_start_library (struct gdb_xml_parser *parser,
 {
   VEC(lm_info_p) **list = user_data;
   struct lm_info *item = XZALLOC (struct lm_info);
-  const char *name = VEC_index (gdb_xml_value_s, attributes, 0)->value;
+  const char *name = xml_find_attribute (attributes, "name")->value;
 
   item->name = xstrdup (name);
   VEC_safe_push (lm_info_p, *list, item);
 }
+
+static void
+library_list_end_library (struct gdb_xml_parser *parser,
+			  const struct gdb_xml_element *element,
+			  void *user_data, const char *body_text)
+{
+  VEC(lm_info_p) **list = user_data;
+  struct lm_info *lm_info = VEC_last (lm_info_p, *list);
+
+  if (lm_info->segment_bases == NULL
+      && lm_info->section_bases == NULL)
+    gdb_xml_error (parser,
+		   _("No segment or section bases defined"));
+}
+
 
 /* Handle the start of a <library-list> element.  */
 
@@ -107,7 +150,7 @@ library_list_start_list (struct gdb_xml_parser *parser,
 			 const struct gdb_xml_element *element,
 			 void *user_data, VEC(gdb_xml_value_s) *attributes)
 {
-  char *version = VEC_index (gdb_xml_value_s, attributes, 0)->value;
+  char *version = xml_find_attribute (attributes, "version")->value;
 
   if (strcmp (version, "1.0") != 0)
     gdb_xml_error (parser,
@@ -128,6 +171,7 @@ solib_target_free_library_list (void *p)
     {
       xfree (info->name);
       VEC_free (CORE_ADDR, info->segment_bases);
+      VEC_free (CORE_ADDR, info->section_bases);
       xfree (info);
     }
   VEC_free (lm_info_p, *result);
@@ -142,9 +186,18 @@ const struct gdb_xml_attribute segment_attributes[] = {
   { NULL, GDB_XML_AF_NONE, NULL, NULL }
 };
 
+const struct gdb_xml_attribute section_attributes[] = {
+  { "address", GDB_XML_AF_NONE, gdb_xml_parse_attr_ulongest, NULL },
+  { NULL, GDB_XML_AF_NONE, NULL, NULL }
+};
+
 const struct gdb_xml_element library_children[] = {
-  { "segment", segment_attributes, NULL, GDB_XML_EF_REPEATABLE,
+  { "segment", segment_attributes, NULL,
+    GDB_XML_EF_REPEATABLE | GDB_XML_EF_OPTIONAL,
     library_list_start_segment, NULL },
+  { "section", section_attributes, NULL,
+    GDB_XML_EF_REPEATABLE | GDB_XML_EF_OPTIONAL,
+    library_list_start_section, NULL },
   { NULL, NULL, NULL, GDB_XML_EF_NONE, NULL, NULL }
 };
 
@@ -156,7 +209,7 @@ const struct gdb_xml_attribute library_attributes[] = {
 const struct gdb_xml_element library_list_children[] = {
   { "library", library_attributes, library_children,
     GDB_XML_EF_REPEATABLE | GDB_XML_EF_OPTIONAL,
-    library_list_start_library, NULL },
+    library_list_start_library, library_list_end_library },
   { NULL, NULL, NULL, GDB_XML_EF_NONE, NULL, NULL }
 };
 
@@ -174,24 +227,20 @@ const struct gdb_xml_element library_list_elements[] = {
 static VEC(lm_info_p) *
 solib_target_parse_libraries (const char *library)
 {
-  struct gdb_xml_parser *parser;
   VEC(lm_info_p) *result = NULL;
-  struct cleanup *before_deleting_result, *back_to;
+  struct cleanup *back_to = make_cleanup (solib_target_free_library_list,
+					  &result);
 
-  back_to = make_cleanup (null_cleanup, NULL);
-  parser = gdb_xml_create_parser_and_cleanup (_("target library list"),
-					      library_list_elements, &result);
-  gdb_xml_use_dtd (parser, "library-list.dtd");
-
-  before_deleting_result = make_cleanup (solib_target_free_library_list,
-					 &result);
-
-  if (gdb_xml_parse (parser, library) == 0)
-    /* Parsed successfully, don't need to delete the result.  */
-    discard_cleanups (before_deleting_result);
+  if (gdb_xml_parse_quick (_("target library list"), "library-list.dtd",
+			   library_list_elements, library, &result) == 0)
+    {
+      /* Parsed successfully, keep the result.  */
+      discard_cleanups (back_to);
+      return result;
+    }
 
   do_cleanups (back_to);
-  return result;
+  return NULL;
 }
 #endif
 
@@ -254,7 +303,7 @@ solib_target_special_symbol_handling (void)
 }
 
 static void
-solib_target_solib_create_inferior_hook (void)
+solib_target_solib_create_inferior_hook (int from_tty)
 {
   /* Nothing needed.  */
 }
@@ -276,7 +325,7 @@ solib_target_free_so (struct so_list *so)
 
 static void
 solib_target_relocate_section_addresses (struct so_list *so,
-					 struct section_table *sec)
+					 struct target_section *sec)
 {
   int flags = bfd_get_section_flags (sec->bfd, sec->the_bfd_section);
   CORE_ADDR offset;
@@ -285,55 +334,120 @@ solib_target_relocate_section_addresses (struct so_list *so,
      it any earlier, since we need to open the file first.  */
   if (so->lm_info->offsets == NULL)
     {
-      struct symfile_segment_data *data;
       int num_sections = bfd_count_sections (so->abfd);
 
       so->lm_info->offsets = xzalloc (SIZEOF_N_SECTION_OFFSETS (num_sections));
 
-      data = get_symfile_segment_data (so->abfd);
-      if (data == NULL)
-	warning (_("Could not relocate shared library \"%s\": no segments"),
-		 so->so_name);
-      else
+      if (so->lm_info->section_bases)
 	{
-	  ULONGEST orig_delta;
 	  int i;
-	  int num_bases = VEC_length (CORE_ADDR, so->lm_info->segment_bases);
-	  CORE_ADDR *segment_bases = VEC_address (CORE_ADDR,
-						  so->lm_info->segment_bases);
+	  asection *sect;
+	  int num_section_bases
+	    = VEC_length (CORE_ADDR, so->lm_info->section_bases);
+	  int num_alloc_sections = 0;
 
-	  if (!symfile_map_offsets_to_segments (so->abfd, data,
-						so->lm_info->offsets,
-						num_bases, segment_bases))
-	    warning (_("Could not relocate shared library \"%s\": bad offsets"),
+	  for (i = 0, sect = so->abfd->sections;
+	       sect != NULL;
+	       i++, sect = sect->next)
+	    if ((bfd_get_section_flags (so->abfd, sect) & SEC_ALLOC))
+	      num_alloc_sections++;
+
+	  if (num_alloc_sections != num_section_bases)
+	    warning (_("\
+Could not relocate shared library \"%s\": wrong number of ALLOC sections"),
 		     so->so_name);
-
-	  /* Find the range of addresses to report for this library in
-	     "info sharedlibrary".  Report any consecutive segments
-	     which were relocated as a single unit.  */
-	  gdb_assert (num_bases > 0);
-	  orig_delta = segment_bases[0] - data->segment_bases[0];
-
-	  for (i = 1; i < data->num_segments; i++)
+	  else
 	    {
-	      /* If we have run out of offsets, assume all remaining segments
-		 have the same offset.  */
-	      if (i >= num_bases)
-		continue;
+	      int bases_index = 0;
+	      int found_range = 0;
+	      CORE_ADDR *section_bases;
 
-	      /* If this segment does not have the same offset, do not include
-		 it in the library's range.  */
-	      if (segment_bases[i] - data->segment_bases[i] != orig_delta)
-		break;
+	      section_bases = VEC_address (CORE_ADDR,
+					   so->lm_info->section_bases);
+
+	      so->addr_low = ~(CORE_ADDR) 0;
+	      so->addr_high = 0;
+	      for (i = 0, sect = so->abfd->sections;
+		   sect != NULL;
+		   i++, sect = sect->next)
+		{
+		  if (!(bfd_get_section_flags (so->abfd, sect) & SEC_ALLOC))
+		    continue;
+		  if (bfd_section_size (so->abfd, sect) > 0)
+		    {
+		      CORE_ADDR low, high;
+
+		      low = section_bases[i];
+		      high = low + bfd_section_size (so->abfd, sect) - 1;
+
+		      if (low < so->addr_low)
+			so->addr_low = low;
+		      if (high > so->addr_high)
+			so->addr_high = high;
+		      gdb_assert (so->addr_low <= so->addr_high);
+		      found_range = 1;
+		    }
+		  so->lm_info->offsets->offsets[i]
+		    = section_bases[bases_index];
+		  bases_index++;
+		}
+	      if (!found_range)
+		so->addr_low = so->addr_high = 0;
+	      gdb_assert (so->addr_low <= so->addr_high);
 	    }
+	}
+      else if (so->lm_info->segment_bases)
+	{
+	  struct symfile_segment_data *data;
 
-	  so->addr_low = segment_bases[0];
-	  so->addr_high = (data->segment_bases[i - 1]
-			   + data->segment_sizes[i - 1]
-			   + orig_delta);
-	  gdb_assert (so->addr_low <= so->addr_high);
+	  data = get_symfile_segment_data (so->abfd);
+	  if (data == NULL)
+	    warning (_("\
+Could not relocate shared library \"%s\": no segments"), so->so_name);
+	  else
+	    {
+	      ULONGEST orig_delta;
+	      int i;
+	      int num_bases;
+	      CORE_ADDR *segment_bases;
 
-	  free_symfile_segment_data (data);
+	      num_bases = VEC_length (CORE_ADDR, so->lm_info->segment_bases);
+	      segment_bases = VEC_address (CORE_ADDR,
+					   so->lm_info->segment_bases);
+
+	      if (!symfile_map_offsets_to_segments (so->abfd, data,
+						    so->lm_info->offsets,
+						    num_bases, segment_bases))
+		warning (_("\
+Could not relocate shared library \"%s\": bad offsets"), so->so_name);
+
+	      /* Find the range of addresses to report for this library in
+		 "info sharedlibrary".  Report any consecutive segments
+		 which were relocated as a single unit.  */
+	      gdb_assert (num_bases > 0);
+	      orig_delta = segment_bases[0] - data->segment_bases[0];
+
+	      for (i = 1; i < data->num_segments; i++)
+		{
+		  /* If we have run out of offsets, assume all
+		     remaining segments have the same offset.  */
+		  if (i >= num_bases)
+		    continue;
+
+		  /* If this segment does not have the same offset, do
+		     not include it in the library's range.  */
+		  if (segment_bases[i] - data->segment_bases[i] != orig_delta)
+		    break;
+		}
+
+	      so->addr_low = segment_bases[0];
+	      so->addr_high = (data->segment_bases[i - 1]
+			       + data->segment_sizes[i - 1]
+			       + orig_delta);
+	      gdb_assert (so->addr_low <= so->addr_high);
+
+	      free_symfile_segment_data (data);
+	    }
 	}
     }
 
@@ -361,7 +475,8 @@ solib_target_in_dynsym_resolve_code (CORE_ADDR pc)
 
 struct target_so_ops solib_target_so_ops;
 
-extern initialize_file_ftype _initialize_solib_target; /* -Wmissing-prototypes */
+/* -Wmissing-prototypes */
+extern initialize_file_ftype _initialize_solib_target;
 
 void
 _initialize_solib_target (void)
@@ -379,4 +494,10 @@ _initialize_solib_target (void)
     = solib_target_open_symbol_file_object;
   solib_target_so_ops.in_dynsym_resolve_code
     = solib_target_in_dynsym_resolve_code;
+  solib_target_so_ops.bfd_open = solib_bfd_open;
+
+  /* Set current_target_so_ops to solib_target_so_ops if not already
+     set.  */
+  if (current_target_so_ops == 0)
+    current_target_so_ops = &solib_target_so_ops;
 }

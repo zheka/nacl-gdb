@@ -1,6 +1,7 @@
 /* Target description support for GDB.
 
-   Copyright (C) 2006, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2006, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    Contributed by CodeSourcery.
 
@@ -24,10 +25,10 @@
 
 struct tdesc_feature;
 struct tdesc_arch_data;
+struct tdesc_type;
 struct tdesc_reg;
 struct target_desc;
 struct target_ops;
-struct type;
 
 /* Fetch the current target's description, and switch the current
    architecture to one which incorporates that description.  */
@@ -98,6 +99,12 @@ int tdesc_numbered_register (const struct tdesc_feature *feature,
 			     struct tdesc_arch_data *data,
 			     int regno, const char *name);
 
+/* Search FEATURE for a register named NAME, but do not assign a fixed
+   register number to it.  */
+
+int tdesc_unnumbered_register (const struct tdesc_feature *feature,
+			       const char *name);
+
 /* Search FEATURE for a register named NAME, and return its size in
    bits.  The register must exist.  */
 
@@ -123,6 +130,17 @@ int tdesc_numbered_register_choices (const struct tdesc_feature *feature,
 const struct bfd_arch_info *tdesc_architecture
   (const struct target_desc *);
 
+/* Return the OSABI associated with this target description, or
+   GDB_OSABI_UNKNOWN if no osabi was specified.  */
+
+enum gdb_osabi tdesc_osabi (const struct target_desc *);
+
+/* Return non-zero if this target description is compatible
+   with the given BFD architecture.  */
+
+int tdesc_compatible_p (const struct target_desc *,
+			const struct bfd_arch_info *);
+
 /* Return the string value of a property named KEY, or NULL if the
    property was not specified.  */
 
@@ -146,13 +164,22 @@ const char *tdesc_feature_name (const struct tdesc_feature *feature);
 /* Return the type associated with ID in the context of FEATURE, or
    NULL if none.  */
 
-struct type *tdesc_named_type (const struct tdesc_feature *feature,
-			       const char *id);
+struct tdesc_type *tdesc_named_type (const struct tdesc_feature *feature,
+				     const char *id);
 
 /* Return the name of register REGNO, from the target description or
    from an architecture-provided pseudo_register_name method.  */
 
 const char *tdesc_register_name (struct gdbarch *gdbarch, int regno);
+
+/* Return the type of register REGNO, from the target description or
+   from an architecture-provided pseudo_register_type method.  */
+
+struct type *tdesc_register_type (struct gdbarch *gdbarch, int regno);
+
+/* Return the type associated with ID, from the target description.  */
+
+struct type *tdesc_find_type (struct gdbarch *gdbarch, const char *id);
 
 /* Check whether REGNUM is a member of REGGROUP using the target
    description.  Return -1 if the target description does not
@@ -167,13 +194,32 @@ struct target_desc *allocate_target_description (void);
 struct cleanup *make_cleanup_free_target_description (struct target_desc *);
 void set_tdesc_architecture (struct target_desc *,
 			     const struct bfd_arch_info *);
+void set_tdesc_osabi (struct target_desc *, enum gdb_osabi osabi);
 void set_tdesc_property (struct target_desc *,
 			 const char *key, const char *value);
+void tdesc_add_compatible (struct target_desc *,
+			   const struct bfd_arch_info *);
 
 struct tdesc_feature *tdesc_create_feature (struct target_desc *tdesc,
 					    const char *name);
-void tdesc_record_type (struct tdesc_feature *feature, struct type *type);
-
+struct tdesc_type *tdesc_create_vector (struct tdesc_feature *feature,
+					const char *name,
+					struct tdesc_type *field_type,
+					int count);
+struct tdesc_type *tdesc_create_struct (struct tdesc_feature *feature,
+					const char *name);
+void tdesc_set_struct_size (struct tdesc_type *type, LONGEST size);
+struct tdesc_type *tdesc_create_union (struct tdesc_feature *feature,
+				       const char *name);
+struct tdesc_type *tdesc_create_flags (struct tdesc_feature *feature,
+				       const char *name,
+				       LONGEST size);
+void tdesc_add_field (struct tdesc_type *type, const char *field_name,
+		      struct tdesc_type *field_type);
+void tdesc_add_bitfield (struct tdesc_type *type, const char *field_name,
+			 int start, int end);
+void tdesc_add_flag (struct tdesc_type *type, int start,
+		     const char *flag_name);
 void tdesc_create_reg (struct tdesc_feature *feature, const char *name,
 		       int regnum, int save_restore, const char *group,
 		       int bitsize, const char *type);

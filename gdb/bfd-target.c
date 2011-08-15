@@ -1,6 +1,7 @@
 /* Very simple "bfd" target, for GDB, the GNU debugger.
 
-   Copyright (C) 2003, 2005, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2005, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -20,53 +21,22 @@
 #include "defs.h"
 #include "target.h"
 #include "bfd-target.h"
-#include "gdb_assert.h"
-#include "gdb_string.h"
+#include "exec.h"
 
-/* Locate all mappable sections of a BFD file, filling in a target
-   section for each.  */
-
-struct section_closure
+/* The object that is stored in the target_ops->to_data field has this
+   type.  */
+struct target_bfd_data
 {
-  struct section_table *end;
+  /* The BFD we're wrapping.  */
+  struct bfd *bfd;
+
+  /* The section table build from the ALLOC sections in BFD.  Note
+     that we can't rely on extracting the BFD from a random section in
+     the table, since the table can be legitimately empty.  */
+  struct target_section_table table;
 };
 
-static void
-add_to_section_table (struct bfd *abfd, struct bfd_section *asect,
-		      void *closure)
-{
-  struct section_closure *pp = closure;
-  flagword aflag;
-
-  /* NOTE: cagney/2003-10-22: Is this pruning useful?  */
-  aflag = bfd_get_section_flags (abfd, asect);
-  if (!(aflag & SEC_ALLOC))
-    return;
-  if (bfd_section_size (abfd, asect) == 0)
-    return;
-  pp->end->bfd = abfd;
-  pp->end->the_bfd_section = asect;
-  pp->end->addr = bfd_section_vma (abfd, asect);
-  pp->end->endaddr = pp->end->addr + bfd_section_size (abfd, asect);
-  pp->end++;
-}
-
-void
-build_target_sections_from_bfd (struct target_ops *targ, struct bfd *abfd)
-{
-  unsigned count;
-  struct section_table *start;
-  struct section_closure cl;
-
-  count = bfd_count_sections (abfd);
-  target_resize_to_sections (targ, count);
-  start = targ->to_sections;
-  cl.end = targ->to_sections;
-  bfd_map_over_sections (abfd, add_to_section_table, &cl);
-  gdb_assert (cl.end - start <= count);
-}
-
-LONGEST
+static LONGEST
 target_bfd_xfer_partial (struct target_ops *ops,
 			 enum target_object object,
 			 const char *annex, gdb_byte *readbuf,
@@ -77,54 +47,54 @@ target_bfd_xfer_partial (struct target_ops *ops,
     {
     case TARGET_OBJECT_MEMORY:
       {
-	struct section_table *s = target_section_by_addr (ops, offset);
-	if (s == NULL)
-	  return -1;
-	/* If the length extends beyond the section, truncate it.  Be
-           careful to not suffer from overflow (wish S contained a
-           length).  */
-	if ((offset - s->addr + len) > (s->endaddr - s->addr))
-	  len = (s->endaddr - s->addr) - (offset - s->addr);
-	if (readbuf != NULL
-	    && !bfd_get_section_contents (s->bfd, s->the_bfd_section,
-					  readbuf, offset - s->addr, len))
-	  return -1;
-#if 1
-	if (writebuf != NULL)
-	  return -1;
-#else
-	/* FIXME: cagney/2003-10-31: The BFD interface doesn't yet
-           take a const buffer.  */
-	if (writebuf != NULL
-	    && !bfd_set_section_contents (s->bfd, s->the_bfd_section,
-					  writebuf, offset - s->addr, len))
-	  return -1;
-#endif
-	return len;
+	struct target_bfd_data *data = ops->to_data;
+	return section_table_xfer_memory_partial (readbuf, writebuf,
+						  offset, len,
+						  data->table.sections,
+						  data->table.sections_end,
+						  NULL);
       }
     default:
       return -1;
     }
 }
 
-void
+static struct target_section_table *
+target_bfd_get_section_table (struct target_ops *ops)
+{
+  struct target_bfd_data *data = ops->to_data;
+  return &data->table;
+}
+
+static void
 target_bfd_xclose (struct target_ops *t, int quitting)
 {
-  bfd_close (t->to_data);
-  xfree (t->to_sections);
+  struct target_bfd_data *data = t->to_data;
+
+  bfd_close (data->bfd);
+  xfree (data->table.sections);
+  xfree (data);
   xfree (t);
 }
 
 struct target_ops *
 target_bfd_reopen (struct bfd *bfd)
 {
-  struct target_ops *t = XZALLOC (struct target_ops);
+  struct target_ops *t;
+  struct target_bfd_data *data;
+
+  data = XZALLOC (struct target_bfd_data);
+  data->bfd = bfd;
+  build_section_table (bfd, &data->table.sections, &data->table.sections_end);
+
+  t = XZALLOC (struct target_ops);
   t->to_shortname = "bfd";
   t->to_longname = _("BFD backed target");
   t->to_doc = _("You should never see this");
+  t->to_get_section_table = target_bfd_get_section_table;
   t->to_xfer_partial = target_bfd_xfer_partial;
   t->to_xclose = target_bfd_xclose;
-  t->to_data = bfd;
-  build_target_sections_from_bfd (t, bfd);
+  t->to_data = data;
+
   return t;
 }

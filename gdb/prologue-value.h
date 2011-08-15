@@ -1,5 +1,6 @@
 /* Interface to prologue value handling for GDB.
-   Copyright 2003, 2004, 2005, 2007, 2008 Free Software Foundation, Inc.
+   Copyright 2003, 2004, 2005, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -14,7 +15,7 @@
    GNU General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program.  If not, see <http://www.gnu.org/licenses/>. */
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #ifndef PROLOGUE_VALUE_H
 #define PROLOGUE_VALUE_H
@@ -229,8 +230,11 @@ struct pv_area;
 
    Stores to constant addresses, unknown addresses, or to addresses
    relative to registers other than BASE_REG will trash this area; see
-   pv_area_store_would_trash.  */
-struct pv_area *make_pv_area (int base_reg);
+   pv_area_store_would_trash.
+
+   To check whether a pointer refers to this area, only the low
+   ADDR_BIT bits will be compared.  */
+struct pv_area *make_pv_area (int base_reg, int addr_bit);
 
 /* Free AREA.  */
 void free_pv_area (struct pv_area *area);

@@ -1,6 +1,6 @@
 /* Terminal interface definitions for GDB, the GNU Debugger.
    Copyright (C) 1986, 1989, 1990, 1991, 1992, 1993, 1995, 1996, 1999, 2000,
-   2006, 2007, 2008 Free Software Foundation, Inc.
+   2006, 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -22,12 +22,12 @@
 
 
 /* If we're using autoconf, it will define HAVE_TERMIOS_H,
-   HAVE_TERMIO_H and HAVE_SGTTY_H for us. One day we can rewrite
+   HAVE_TERMIO_H and HAVE_SGTTY_H for us.  One day we can rewrite
    ser-unix.c and inflow.c to inspect those names instead of
    HAVE_TERMIOS, HAVE_TERMIO and the implicit HAVE_SGTTY (when neither
    HAVE_TERMIOS or HAVE_TERMIO is set).  Until then, make sure that
    nothing has already defined the one of the names, and do the right
-   thing. */
+   thing.  */
 
 #if !defined (HAVE_TERMIOS) && !defined(HAVE_TERMIO) && !defined(HAVE_SGTTY)
 #if defined(HAVE_TERMIOS_H)
@@ -41,7 +41,8 @@
 #endif /* ! defined (HAVE_SGTTY_H) */
 #endif /* ! defined (HAVE_TERMIO_H) */
 #endif /* ! defined (HAVE_TERMIOS_H) */
-#endif /* !defined (HAVE_TERMIOS) && !defined(HAVE_TERMIO) && !defined(HAVE_SGTTY) */
+#endif /* !defined (HAVE_TERMIOS) && !defined (HAVE_TERMIO) &&
+	  !defined (HAVE_SGTTY) */
 
 #if defined(HAVE_TERMIOS)
 #include <termios.h>
@@ -76,11 +77,21 @@
 #endif /* sgtty */
 #endif
 
+struct inferior;
+
+extern void new_tty_prefork (const char *);
+
 extern void new_tty (void);
+
+extern void new_tty_postfork (void);
+
+extern void copy_terminal_info (struct inferior *to, struct inferior *from);
 
 /* Do we have job control?  Can be assumed to always be the same within
    a given run of GDB.  In inflow.c.  */
 extern int job_control;
+
+extern pid_t create_tty_session (void);
 
 /* Set the process group of the caller to its own pid, or do nothing if
    we lack job control.  */
@@ -88,5 +99,11 @@ extern int gdb_setpgid (void);
 
 /* Set up a serial structure describing standard input.  In inflow.c.  */
 extern void initialize_stdin_serial (void);
+
+extern int gdb_has_a_terminal (void);
+
+/* Set the process group of the caller to its own pid, or do nothing
+   if we lack job control.  */
+extern int gdb_setpgid (void);
 
 #endif /* !defined (TERMINAL_H) */

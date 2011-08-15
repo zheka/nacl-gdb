@@ -1,6 +1,7 @@
 /* Block-related functions for the GNU debugger, GDB.
 
-   Copyright (C) 2003, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -40,28 +41,51 @@ static void block_initialize_namespace (struct block *block,
 
 /* Return Nonzero if block a is lexically nested within block b,
    or if a and b have the same pc range.
-   Return zero otherwise. */
+   Return zero otherwise.  */
 
 int
 contained_in (const struct block *a, const struct block *b)
 {
   if (!a || !b)
     return 0;
-  return BLOCK_START (a) >= BLOCK_START (b)
-    && BLOCK_END (a) <= BLOCK_END (b);
+
+  do
+    {
+      if (a == b)
+	return 1;
+      /* If A is a function block, then A cannot be contained in B,
+         except if A was inlined.  */
+      if (BLOCK_FUNCTION (a) != NULL && !block_inlined_p (a))
+        return 0;
+      a = BLOCK_SUPERBLOCK (a);
+    }
+  while (a != NULL);
+
+  return 0;
 }
 
 
 /* Return the symbol for the function which contains a specified
-   lexical block, described by a struct block BL.  */
+   lexical block, described by a struct block BL.  The return value
+   will not be an inlined function; the containing function will be
+   returned instead.  */
 
 struct symbol *
-block_function (const struct block *bl)
+block_linkage_function (const struct block *bl)
 {
-  while (BLOCK_FUNCTION (bl) == 0 && BLOCK_SUPERBLOCK (bl) != 0)
+  while ((BLOCK_FUNCTION (bl) == NULL || block_inlined_p (bl))
+	 && BLOCK_SUPERBLOCK (bl) != NULL)
     bl = BLOCK_SUPERBLOCK (bl);
 
   return BLOCK_FUNCTION (bl);
+}
+
+/* Return one if BL represents an inlined function.  */
+
+int
+block_inlined_p (const struct block *bl)
+{
+  return BLOCK_FUNCTION (bl) != NULL && SYMBOL_INLINED (BLOCK_FUNCTION (bl));
 }
 
 /* Return the blockvector immediately containing the innermost lexical
@@ -70,7 +94,7 @@ block_function (const struct block *bl)
    don't pass this information back to the caller.  */
 
 struct blockvector *
-blockvector_for_pc_sect (CORE_ADDR pc, struct bfd_section *section,
+blockvector_for_pc_sect (CORE_ADDR pc, struct obj_section *section,
 			 struct block **pblock, struct symtab *symtab)
 {
   struct block *b;
@@ -151,7 +175,7 @@ blockvector_for_pc (CORE_ADDR pc, struct block **pblock)
    in the specified section, or 0 if there is none.  */
 
 struct block *
-block_for_pc_sect (CORE_ADDR pc, struct bfd_section *section)
+block_for_pc_sect (CORE_ADDR pc, struct obj_section *section)
 {
   struct blockvector *bl;
   struct block *b;
@@ -204,25 +228,16 @@ block_set_scope (struct block *block, const char *scope,
   BLOCK_NAMESPACE (block)->scope = scope;
 }
 
-/* This returns the first using directives associated to BLOCK, if
+/* This returns the using directives list associated with BLOCK, if
    any.  */
-
-/* FIXME: carlton/2003-04-23: This uses the fact that we currently
-   only have using directives in static blocks, because we only
-   generate using directives from anonymous namespaces.  Eventually,
-   when we support using directives everywhere, we'll want to replace
-   this by some iterator functions.  */
 
 struct using_direct *
 block_using (const struct block *block)
 {
-  const struct block *static_block = block_static_block (block);
-
-  if (static_block == NULL
-      || BLOCK_NAMESPACE (static_block) == NULL)
+  if (block == NULL || BLOCK_NAMESPACE (block) == NULL)
     return NULL;
   else
-    return BLOCK_NAMESPACE (static_block)->using;
+    return BLOCK_NAMESPACE (block)->using;
 }
 
 /* Set BLOCK's using member to USING; if needed, allocate memory via

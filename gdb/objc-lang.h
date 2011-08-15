@@ -1,6 +1,7 @@
 /* Objective-C language support definitions for GDB, the GNU debugger.
 
-   Copyright (C) 1992, 2005, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 1992, 2005, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    Contributed by Apple Computer, Inc.
 
@@ -29,8 +30,10 @@ extern int objc_parse (void);		/* Defined in c-exp.y */
 
 extern void objc_error (char *);	/* Defined in c-exp.y */
 
-extern CORE_ADDR lookup_objc_class     (char *classname);
-extern CORE_ADDR lookup_child_selector (char *methodname);
+extern CORE_ADDR lookup_objc_class     (struct gdbarch *gdbarch,
+					char *classname);
+extern CORE_ADDR lookup_child_selector (struct gdbarch *gdbarch,
+					char *methodname);
 
 extern char *objc_demangle (const char *mangled, int options);
 
@@ -46,7 +49,8 @@ extern char *find_imps (struct symtab *symtab, struct block *block,
 			char *method, struct symbol **syms, 
 			unsigned int *nsym, unsigned int *ndebug);
 
-extern struct value *value_nsstring (char *ptr, int len);
+extern struct value *value_nsstring (struct gdbarch *gdbarch,
+				     char *ptr, int len);
 
 /* for parsing Objective C */
 extern void start_msglist (void);

@@ -1,6 +1,7 @@
 /* This testcase is part of GDB, the GNU debugger.
 
-   Copyright 2005, 2006, 2007, 2008 Free Software Foundation, Inc.
+   Copyright 2005, 2006, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -40,9 +41,9 @@ main()
   for (i = 0; ; i++)
     {
       if (ftell (in) != i)
-	fprintf (stderr, "Input error at %d\n", i);
+	fprintf (stderr, "Input error at %ld\n", i);
       if (ftell (out) != i)
-	fprintf (stderr, "Output error at %d\n", i);
+	fprintf (stderr, "Output error at %ld\n", i);
       c = fgetc (in);
       if (c == '\n')
 	lines++;	/* breakpoint 1 */

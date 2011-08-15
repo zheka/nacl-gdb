@@ -1,26 +1,25 @@
 /* YACC parser for Fortran expressions, for GDB.
    Copyright (C) 1986, 1989, 1990, 1991, 1993, 1994, 1995, 1996, 2000, 2001,
-   2002, 2003, 2004, 2005, 2006, 2007, 2008 Free Software Foundation, Inc.
+   2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    Contributed by Motorola.  Adapted from the C parser by Farooq Butt
    (fmbutt@engage.sps.mot.com).
 
-This file is part of GDB.
+   This file is part of GDB.
 
-This program is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or
-(at your option) any later version.
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 3 of the License, or
+   (at your option) any later version.
 
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin Street, Fifth Floor,
-Boston, MA 02110-1301, USA.  */
+   You should have received a copy of the GNU General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 /* This was blantantly ripped off the C expression parser, please 
    be aware of that as you look at its basic structure -FMB */ 
@@ -57,12 +56,15 @@ Boston, MA 02110-1301, USA.  */
 #include "block.h"
 #include <ctype.h>
 
+#define parse_type builtin_type (parse_gdbarch)
+#define parse_f_type builtin_f_type (parse_gdbarch)
+
 /* Remap normal yacc parser interface names (yyparse, yylex, yyerror, etc),
    as well as gratuitiously global symbol names, so we can have multiple
    yacc generated parsers in gdb.  Note that these are only the variables
    produced by yacc.  If other parser generators (bison, byacc, etc) produce
    additional global names that conflict at link time, then those parser
-   generators need to be fixed instead of adding those names to this list. */
+   generators need to be fixed instead of adding those names to this list.  */
 
 #define	yymaxdepth f_maxdepth
 #define	yyparse	f_parse
@@ -194,6 +196,7 @@ static int parse_number (char *, int, int, YYSTYPE *);
 /* Special type cases, put in to allow the parser to distinguish different
    legal basetypes.  */
 %token INT_KEYWORD INT_S2_KEYWORD LOGICAL_S1_KEYWORD LOGICAL_S2_KEYWORD 
+%token LOGICAL_S8_KEYWORD
 %token LOGICAL_KEYWORD REAL_KEYWORD REAL_S8_KEYWORD REAL_S16_KEYWORD 
 %token COMPLEX_S8_KEYWORD COMPLEX_S16_KEYWORD COMPLEX_S32_KEYWORD 
 %token BOOL_AND BOOL_OR BOOL_NOT   
@@ -325,7 +328,9 @@ complexnum:     exp ',' exp
         ;
 
 exp	:	'(' complexnum ')'
-                	{ write_exp_elt_opcode(OP_COMPLEX); }
+                	{ write_exp_elt_opcode(OP_COMPLEX);
+			  write_exp_elt_type (parse_f_type->builtin_complex_s16);
+                	  write_exp_elt_opcode(OP_COMPLEX); }
 	;
 
 exp	:	'(' type ')' exp  %prec UNARY
@@ -447,7 +452,7 @@ exp	:	NAME_OR_INT
 
 exp	:	FLOAT
 			{ write_exp_elt_opcode (OP_DOUBLE);
-			  write_exp_elt_type (builtin_type_f_real_s8);
+			  write_exp_elt_type (parse_f_type->builtin_real_s8);
 			  write_exp_elt_dblcst ($1);
 			  write_exp_elt_opcode (OP_DOUBLE); }
 	;
@@ -460,7 +465,7 @@ exp	:	VARIABLE
 
 exp	:	SIZEOF '(' type ')'	%prec UNARY
 			{ write_exp_elt_opcode (OP_LONG);
-			  write_exp_elt_type (builtin_type_f_integer);
+			  write_exp_elt_type (parse_f_type->builtin_integer);
 			  CHECK_TYPEDEF ($3);
 			  write_exp_elt_longcst ((LONGEST) TYPE_LENGTH ($3));
 			  write_exp_elt_opcode (OP_LONG); }
@@ -488,9 +493,9 @@ variable:	name_not_typename
 			    {
 			      if (symbol_read_needs_frame (sym))
 				{
-				  if (innermost_block == 0 ||
-				      contained_in (block_found, 
-						    innermost_block))
+				  if (innermost_block == 0
+				      || contained_in (block_found, 
+						       innermost_block))
 				    innermost_block = block_found;
 				}
 			      write_exp_elt_opcode (OP_VAR_VALUE);
@@ -510,15 +515,11 @@ variable:	name_not_typename
 			      msymbol =
 				lookup_minimal_symbol (arg, NULL, NULL);
 			      if (msymbol != NULL)
-				{
-				  write_exp_msymbol (msymbol,
-						     lookup_function_type (builtin_type_int),
-						     builtin_type_int);
-				}
+				write_exp_msymbol (msymbol);
 			      else if (!have_full_symbols () && !have_partial_symbols ())
-				error ("No symbol table is loaded.  Use the \"file\" command.");
+				error (_("No symbol table is loaded.  Use the \"file\" command."));
 			      else
-				error ("No symbol \"%s\" in current context.",
+				error (_("No symbol \"%s\" in current context."),
 				       copy_name ($1.stoken));
 			    }
 			}
@@ -555,8 +556,8 @@ ptype	:	typebase
 			  {
 			    range_type =
 			      create_range_type ((struct type *) NULL,
-						 builtin_type_f_integer, 0,
-						 array_size - 1);
+						 parse_f_type->builtin_integer,
+						 0, array_size - 1);
 			    follow_type =
 			      create_array_type ((struct type *) NULL,
 						 follow_type, range_type);
@@ -601,29 +602,31 @@ typebase  /* Implements (approximately): (type-qualifier)* type-specifier */
 	:	TYPENAME
 			{ $$ = $1.type; }
 	|	INT_KEYWORD
-			{ $$ = builtin_type_f_integer; }
+			{ $$ = parse_f_type->builtin_integer; }
 	|	INT_S2_KEYWORD 
-			{ $$ = builtin_type_f_integer_s2; }
+			{ $$ = parse_f_type->builtin_integer_s2; }
 	|	CHARACTER 
-			{ $$ = builtin_type_f_character; }
+			{ $$ = parse_f_type->builtin_character; }
+	|	LOGICAL_S8_KEYWORD
+			{ $$ = parse_f_type->builtin_logical_s8; }
 	|	LOGICAL_KEYWORD 
-			{ $$ = builtin_type_f_logical;} 
+			{ $$ = parse_f_type->builtin_logical; }
 	|	LOGICAL_S2_KEYWORD
-			{ $$ = builtin_type_f_logical_s2;}
+			{ $$ = parse_f_type->builtin_logical_s2; }
 	|	LOGICAL_S1_KEYWORD 
-			{ $$ = builtin_type_f_logical_s1;}
+			{ $$ = parse_f_type->builtin_logical_s1; }
 	|	REAL_KEYWORD 
-			{ $$ = builtin_type_f_real;}
+			{ $$ = parse_f_type->builtin_real; }
 	|       REAL_S8_KEYWORD
-			{ $$ = builtin_type_f_real_s8;}
+			{ $$ = parse_f_type->builtin_real_s8; }
 	|	REAL_S16_KEYWORD
-			{ $$ = builtin_type_f_real_s16;}
+			{ $$ = parse_f_type->builtin_real_s16; }
 	|	COMPLEX_S8_KEYWORD
-			{ $$ = builtin_type_f_complex_s8;}
+			{ $$ = parse_f_type->builtin_complex_s8; }
 	|	COMPLEX_S16_KEYWORD 
-			{ $$ = builtin_type_f_complex_s16;}
+			{ $$ = parse_f_type->builtin_complex_s16; }
 	|	COMPLEX_S32_KEYWORD 
-			{ $$ = builtin_type_f_complex_s32;}
+			{ $$ = parse_f_type->builtin_complex_s32; }
 	;
 
 nonempty_typelist
@@ -755,7 +758,7 @@ parse_number (p, len, parsed_float, putithere)
       if (RANGE_CHECK && n != 0)
 	{
 	  if ((unsigned_p && (unsigned)prevn >= (unsigned)n))
-	    range_error("Overflow on numeric constant.");	 
+	    range_error (_("Overflow on numeric constant."));
 	}
       prevn = n;
     }
@@ -766,32 +769,32 @@ parse_number (p, len, parsed_float, putithere)
      target int size is different to the target long size.
      
      In the expression below, we could have tested
-     (n >> gdbarch_int_bit (current_gdbarch))
+     (n >> gdbarch_int_bit (parse_gdbarch))
      to see if it was zero,
      but too many compilers warn about that, when ints and longs
      are the same size.  So we shift it twice, with fewer bits
      each time, for the same result.  */
   
-  if ((gdbarch_int_bit (current_gdbarch) != gdbarch_long_bit (current_gdbarch)
+  if ((gdbarch_int_bit (parse_gdbarch) != gdbarch_long_bit (parse_gdbarch)
        && ((n >> 2)
-	   >> (gdbarch_int_bit (current_gdbarch)-2))) /* Avoid shift warning */
+	   >> (gdbarch_int_bit (parse_gdbarch)-2))) /* Avoid shift warning */
       || long_p)
     {
-      high_bit = ((ULONGEST)1) << (gdbarch_long_bit (current_gdbarch)-1);
-      unsigned_type = builtin_type_unsigned_long;
-      signed_type = builtin_type_long;
+      high_bit = ((ULONGEST)1) << (gdbarch_long_bit (parse_gdbarch)-1);
+      unsigned_type = parse_type->builtin_unsigned_long;
+      signed_type = parse_type->builtin_long;
     }
   else 
     {
-      high_bit = ((ULONGEST)1) << (gdbarch_int_bit (current_gdbarch)-1);
-      unsigned_type = builtin_type_unsigned_int;
-      signed_type = builtin_type_int;
+      high_bit = ((ULONGEST)1) << (gdbarch_int_bit (parse_gdbarch)-1);
+      unsigned_type = parse_type->builtin_unsigned_int;
+      signed_type = parse_type->builtin_int;
     }    
   
   putithere->typed_val.val = n;
   
   /* If the high bit of the worked out type is set then this number
-     has to be unsigned. */
+     has to be unsigned.  */
   
   if (unsigned_p || (n & high_bit)) 
     putithere->typed_val.type = unsigned_type;
@@ -858,6 +861,7 @@ static const struct token f77_keywords[] =
   { "integer_2", INT_S2_KEYWORD, BINOP_END },
   { "logical_1", LOGICAL_S1_KEYWORD, BINOP_END },
   { "logical_2", LOGICAL_S2_KEYWORD, BINOP_END },
+  { "logical_8", LOGICAL_S8_KEYWORD, BINOP_END },
   { "complex_8", COMPLEX_S8_KEYWORD, BINOP_END },
   { "integer", INT_KEYWORD, BINOP_END },
   { "logical", LOGICAL_KEYWORD, BINOP_END },
@@ -871,7 +875,7 @@ static const struct token f77_keywords[] =
 
 /* Implementation of a dynamically expandable buffer for processing input
    characters acquired through lexptr and building a value to return in
-   yylval. Ripped off from ch-exp.y */ 
+   yylval.  Ripped off from ch-exp.y */ 
 
 static char *tempbuf;		/* Current buffer contents */
 static int tempbufsize;		/* Size of allocated buffer */
@@ -888,8 +892,8 @@ static int tempbufindex;	/* Current index into buffer */
   } while (0);
 
 
-/* Grow the static temp buffer if necessary, including allocating the first one
-   on demand. */
+/* Grow the static temp buffer if necessary, including allocating the
+   first one on demand.  */
 
 static void
 growbuf_by_size (count)
@@ -906,7 +910,7 @@ growbuf_by_size (count)
 }
 
 /* Blatantly ripped off from ch-exp.y. This routine recognizes F77 
-   string-literals. 
+   string-literals.
    
    Recognize a string literal.  A string literal is a nonzero sequence
    of characters enclosed in matching single quotes, except that
@@ -915,7 +919,7 @@ growbuf_by_size (count)
    a string, it is simply doubled (I.E. 'this''is''one''string') */
 
 static int
-match_string_literal ()
+match_string_literal (void)
 {
   char *tokptr = lexptr;
 
@@ -947,7 +951,7 @@ match_string_literal ()
 /* Read one token, getting characters through lexptr.  */
 
 static int
-yylex ()
+yylex (void)
 {
   int c;
   int namelen;
@@ -980,7 +984,8 @@ yylex ()
   /* See if it is a special .foo. operator.  */
   
   for (i = 0; dot_ops[i].operator != NULL; i++)
-    if (strncmp (tokstart, dot_ops[i].operator, strlen (dot_ops[i].operator)) == 0)
+    if (strncmp (tokstart, dot_ops[i].operator,
+		 strlen (dot_ops[i].operator)) == 0)
       {
 	lexptr += strlen (dot_ops[i].operator);
 	yylval.opcode = dot_ops[i].opcode;
@@ -1034,7 +1039,7 @@ yylex ()
     case '.':
       /* Might be a floating point number.  */
       if (lexptr[1] < '0' || lexptr[1] > '9')
-	goto symbol;		/* Nope, must be a symbol. */
+	goto symbol;		/* Nope, must be a symbol.  */
       /* FALL THRU into number case.  */
       
     case '0':
@@ -1058,7 +1063,8 @@ yylex ()
 	    p += 2;
 	    hex = 1;
 	  }
-	else if (c == '0' && (p[1]=='t' || p[1]=='T' || p[1]=='d' || p[1]=='D'))
+	else if (c == '0' && (p[1]=='t' || p[1]=='T'
+			      || p[1]=='d' || p[1]=='D'))
 	  {
 	    p += 2;
 	    hex = 0;
@@ -1093,7 +1099,7 @@ yylex ()
 	    
 	    memcpy (err_copy, tokstart, p - tokstart);
 	    err_copy[p - tokstart] = 0;
-	    error ("Invalid number \"%s\".", err_copy);
+	    error (_("Invalid number \"%s\"."), err_copy);
 	  }
 	lexptr = p;
 	return toktype;
@@ -1124,14 +1130,14 @@ yylex ()
       return c;
     }
   
-  if (!(c == '_' || c == '$'
+  if (!(c == '_' || c == '$' || c ==':'
 	|| (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')))
     /* We must have come across a bad character (e.g. ';').  */
-    error ("Invalid character '%c' in expression.", c);
+    error (_("Invalid character '%c' in expression."), c);
   
   namelen = 0;
   for (c = tokstart[namelen];
-       (c == '_' || c == '$' || (c >= '0' && c <= '9') 
+       (c == '_' || c == '$' || c == ':' || (c >= '0' && c <= '9')
 	|| (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')); 
        c = tokstart[++namelen]);
   
@@ -1146,8 +1152,8 @@ yylex ()
   /* Catch specific keywords.  */
   
   for (i = 0; f77_keywords[i].operator != NULL; i++)
-    if (strncmp (tokstart, f77_keywords[i].operator,
-		 strlen(f77_keywords[i].operator)) == 0)
+    if (strlen (f77_keywords[i].operator) == namelen
+	&& strncmp (tokstart, f77_keywords[i].operator, namelen) == 0)
       {
 	/* 	lexptr += strlen(f77_keywords[i].operator); */ 
 	yylval.opcode = f77_keywords[i].opcode;
@@ -1174,17 +1180,16 @@ yylex ()
     
     sym = lookup_symbol (tmp, expression_context_block,
 			 VAR_DOMAIN,
-			 current_language->la_language == language_cplus
-			 ? &is_a_field_of_this : NULL,
-			 NULL);
+			 parse_language->la_language == language_cplus
+			 ? &is_a_field_of_this : NULL);
     if (sym && SYMBOL_CLASS (sym) == LOC_TYPEDEF)
       {
 	yylval.tsym.type = SYMBOL_TYPE (sym);
 	return TYPENAME;
       }
     yylval.tsym.type
-      = language_lookup_primitive_type_by_name (current_language,
-						current_gdbarch, tmp);
+      = language_lookup_primitive_type_by_name (parse_language,
+						parse_gdbarch, tmp);
     if (yylval.tsym.type != NULL)
       return TYPENAME;
     
@@ -1219,5 +1224,5 @@ yyerror (msg)
   if (prev_lexptr)
     lexptr = prev_lexptr;
 
-  error ("A %s in expression, near `%s'.", (msg ? msg : "error"), lexptr);
+  error (_("A %s in expression, near `%s'."), (msg ? msg : "error"), lexptr);
 }

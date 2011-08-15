@@ -1,6 +1,7 @@
 /* Target-dependent code for the IA-64 for GDB, the GNU debugger.
 
-   Copyright (C) 2000, 2004, 2005, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2000, 2004, 2005, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -25,16 +26,17 @@
 #include "osabi.h"
 #include "solib-svr4.h"
 #include "symtab.h"
+#include "linux-tdep.h"
 
 /* The sigtramp code is in a non-readable (executable-only) region
    of memory called the ``gate page''.  The addresses in question
    were determined by examining the system headers.  They are
-   overly generous to allow for different pages sizes. */
+   overly generous to allow for different pages sizes.  */
 
 #define GATE_AREA_START 0xa000000000000100LL
 #define GATE_AREA_END   0xa000000000020000LL
 
-/* Offset to sigcontext structure from frame of handler */
+/* Offset to sigcontext structure from frame of handler.  */
 #define IA64_LINUX_SIGCONTEXT_OFFSET 192
 
 static int
@@ -46,17 +48,20 @@ ia64_linux_pc_in_sigtramp (CORE_ADDR pc)
 /* IA-64 GNU/Linux specific function which, given a frame address and
    a register number, returns the address at which that register may be
    found.  0 is returned for registers which aren't stored in the the
-   sigcontext structure. */
+   sigcontext structure.  */
 
 static CORE_ADDR
-ia64_linux_sigcontext_register_address (CORE_ADDR sp, int regno)
+ia64_linux_sigcontext_register_address (struct gdbarch *gdbarch,
+					CORE_ADDR sp, int regno)
 {
+  enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
   char buf[8];
   CORE_ADDR sigcontext_addr = 0;
 
-  /* The address of the sigcontext area is found at offset 16 in the sigframe.  */
+  /* The address of the sigcontext area is found at offset 16 in the
+     sigframe.  */
   read_memory (sp + 16, buf, 8);
-  sigcontext_addr = extract_unsigned_integer (buf, 8);
+  sigcontext_addr = extract_unsigned_integer (buf, 8, byte_order);
 
   if (IA64_GR0_REGNUM <= regno && regno <= IA64_GR31_REGNUM)
     return sigcontext_addr + 200 + 8 * (regno - IA64_GR0_REGNUM);
@@ -75,7 +80,7 @@ ia64_linux_sigcontext_register_address (CORE_ADDR sp, int regno)
 	return sigcontext_addr + 56;		/* user mask only */
       /* sc_ar_rsc is provided, from which we could compute bspstore, but
 	 I don't think it's worth it.  Anyway, if we want it, it's at offset
-	 64 */
+	 64.  */
       case IA64_BSP_REGNUM :
 	return sigcontext_addr + 72;
       case IA64_RNAT_REGNUM :
@@ -119,6 +124,8 @@ ia64_linux_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
 {
   struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
 
+  linux_init_abi (info, gdbarch);
+
   /* Set the method of obtaining the sigcontext addresses at which
      registers are saved.  */
   tdep->sigcontext_register_address = ia64_linux_sigcontext_register_address;
@@ -137,6 +144,9 @@ ia64_linux_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
   set_gdbarch_fetch_tls_load_module_address (gdbarch,
                                              svr4_fetch_objfile_link_map);
 }
+
+/* Provide a prototype to silence -Wmissing-prototypes.  */
+extern initialize_file_ftype _initialize_ia64_linux_tdep;
 
 void
 _initialize_ia64_linux_tdep (void)

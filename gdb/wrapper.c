@@ -1,6 +1,7 @@
 /* Longjump free calls to GDB internal routines.
 
-   Copyright (C) 1999, 2000, 2005, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 1999, 2000, 2005, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -99,14 +100,14 @@ gdb_value_assign (struct value *val1, struct value *val2,
 }
 
 int
-gdb_value_subscript (struct value *val1, struct value *val2,
+gdb_value_subscript (struct value *val, LONGEST index,
 		     struct value **result)
 {
   volatile struct gdb_exception except;
 
   TRY_CATCH (except, RETURN_MASK_ERROR)
     {
-      *result = value_subscript (val1, val2);
+      *result = value_subscript (val, index);
     }
 
   if (except.reason < 0)

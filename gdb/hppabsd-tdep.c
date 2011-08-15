@@ -1,6 +1,7 @@
 /* Target-dependent code for HP PA-RISC BSD's.
 
-   Copyright (C) 2004, 2005, 2006, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -25,11 +26,13 @@
 #include "elf/common.h"
 
 #include "hppa-tdep.h"
+#include "hppabsd-tdep.h"
 #include "solib-svr4.h"
 
-CORE_ADDR
+static CORE_ADDR
 hppabsd_find_global_pointer (struct gdbarch *gdbarch, struct value *function)
 {
+  enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
   CORE_ADDR faddr = value_as_address (function);
   struct obj_section *faddr_sec;
   gdb_byte buf[4];
@@ -39,7 +42,7 @@ hppabsd_find_global_pointer (struct gdbarch *gdbarch, struct value *function)
   if (faddr & 2)
     {
       if (target_read_memory ((faddr & ~3) + 4, buf, sizeof buf) == 0)
-	return extract_unsigned_integer (buf, sizeof buf);
+	return extract_unsigned_integer (buf, sizeof buf, byte_order);
     }
 
   /* If the address is in the .plt section, then the real function
@@ -61,9 +64,10 @@ hppabsd_find_global_pointer (struct gdbarch *gdbarch, struct value *function)
 
       if (sec < faddr_sec->objfile->sections_end)
 	{
-	  CORE_ADDR addr = sec->addr;
+	  CORE_ADDR addr = obj_section_addr (sec);
+	  CORE_ADDR endaddr = obj_section_endaddr (sec);
 
-	  while (addr < sec->endaddr)
+	  while (addr < endaddr)
 	    {
 	      gdb_byte buf[4];
 	      LONGEST tag;
@@ -71,7 +75,7 @@ hppabsd_find_global_pointer (struct gdbarch *gdbarch, struct value *function)
 	      if (target_read_memory (addr, buf, sizeof buf) != 0)
 		break;
 
-	      tag = extract_signed_integer (buf, sizeof buf);
+	      tag = extract_signed_integer (buf, sizeof buf, byte_order);
 	      if (tag == DT_PLTGOT)
 		{
 		  CORE_ADDR pltgot;
@@ -81,7 +85,8 @@ hppabsd_find_global_pointer (struct gdbarch *gdbarch, struct value *function)
 
 		  /* The NetBSD/OpenBSD ld.so doesn't relocate DT_PLTGOT, so
 		     we have to do it ourselves.  */
-		  pltgot = extract_unsigned_integer (buf, sizeof buf);
+		  pltgot = extract_unsigned_integer (buf, sizeof buf,
+						     byte_order);
 		  pltgot += ANOFFSET (sec->objfile->section_offsets,
 				      SECT_OFF_TEXT (sec->objfile));
 

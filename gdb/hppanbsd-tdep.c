@@ -1,12 +1,12 @@
 /* Target-dependent code for NetBSD/hppa
 
-   Copyright (C) 2008 Free Software Foundation, Inc.
+   Copyright (C) 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
-   the Free Software Foundation; either version 2 of the License, or
+   the Free Software Foundation; either version 3 of the License, or
    (at your option) any later version.
 
    This program is distributed in the hope that it will be useful,
@@ -15,9 +15,7 @@
    GNU General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor,
-   Boston, MA 02110-1301, USA.  */
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #include "defs.h"
 #include "osabi.h"
@@ -31,6 +29,7 @@
 #include "gdb_string.h"
 
 #include "hppa-tdep.h"
+#include "hppabsd-tdep.h"
 
 /* From <machine/mcontext.h>.  */
 static int hppanbsd_mc_reg_offset[] =
@@ -101,13 +100,13 @@ static const struct tramp_frame hppanbsd_sigtramp_si4 =
 
 static void
 hppanbsd_sigtramp_cache_init (const struct tramp_frame *self,
-                             struct frame_info *next_frame,
+                             struct frame_info *this_frame,
                              struct trad_frame_cache *this_cache,
                              CORE_ADDR func)
 {
-  struct gdbarch *gdbarch = get_frame_arch (next_frame);
+  struct gdbarch *gdbarch = get_frame_arch (this_frame);
   struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
-  CORE_ADDR sp = frame_unwind_register_unsigned (next_frame, HPPA_SP_REGNUM);
+  CORE_ADDR sp = get_frame_register_unsigned (this_frame, HPPA_SP_REGNUM);
   CORE_ADDR base;
   int *reg_offset;
   int num_regs;
@@ -165,8 +164,9 @@ static int hppanbsd_reg_offset[] =
    REGCACHE.  If REGNUM is -1, do this for all registers in REGSET.  */
 
 static void
-hppanbsd_supply_gregset (const struct regset *regset, struct regcache *regcache,
-		     int regnum, const void *gregs, size_t len)
+hppanbsd_supply_gregset (const struct regset *regset,
+			 struct regcache *regcache,
+			 int regnum, const void *gregs, size_t len)
 {
   const gdb_byte *regs = gregs;
   size_t offset;
@@ -201,8 +201,6 @@ hppanbsd_regset_from_core_section (struct gdbarch *gdbarch,
   return NULL;
 }
 
-void hppabsd_init_abi (struct gdbarch_info, struct gdbarch *);
-
 static void
 hppanbsd_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
 {
@@ -218,7 +216,7 @@ hppanbsd_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
 
 
 /* Provide a prototype to silence -Wmissing-prototypes.  */
-void _initialize_hppabsd_tdep (void);
+extern initialize_file_ftype _initialize_hppanbsd_tdep;
 
 void
 _initialize_hppanbsd_tdep (void)

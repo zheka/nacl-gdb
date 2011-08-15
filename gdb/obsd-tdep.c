@@ -1,6 +1,7 @@
 /* Target-dependent code for OpenBSD.
 
-   Copyright (C) 2005, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2005, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -30,7 +31,7 @@ obsd_skip_solib_resolver (struct gdbarch *gdbarch, CORE_ADDR pc)
 
   msym = lookup_minimal_symbol("_dl_bind", NULL, NULL);
   if (msym && SYMBOL_VALUE_ADDRESS (msym) == pc)
-    return frame_pc_unwind (get_current_frame ());
+    return frame_unwind_caller_pc (get_current_frame ());
   else
     return find_solib_trampoline_target (get_current_frame (), pc);
 }

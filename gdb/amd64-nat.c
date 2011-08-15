@@ -1,6 +1,7 @@
 /* Native-dependent code for AMD64.
 
-   Copyright (C) 2003, 2004, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2004, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -26,6 +27,7 @@
 
 #include "i386-tdep.h"
 #include "amd64-tdep.h"
+#include "amd64-nat.h"
 
 /* The following bits of code help with implementing debugging 32-bit
    code natively on AMD64.  The idea is to define two mappings between

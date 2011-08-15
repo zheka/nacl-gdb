@@ -1,6 +1,7 @@
 /* Low level interface to ptrace, for GDB when running under Unix.
 
-   Copyright (C) 2003, 2005, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2005, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -29,10 +30,8 @@
 #endif
 
 #ifdef PROCESS_GROUP_TYPE
-/* Process group for us and the inferior.  Saved and restored just like
-   {our,inferior}_ttystate.  */
-extern PROCESS_GROUP_TYPE our_process_group;
-extern PROCESS_GROUP_TYPE inferior_process_group;
+/* Process group of the current inferior.  */
+extern PROCESS_GROUP_TYPE inferior_process_group (void);
 #endif
 
 #endif /* inflow.h */

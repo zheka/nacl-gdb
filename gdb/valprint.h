@@ -1,7 +1,7 @@
 /* Declarations for value printing routines for GDB, the GNU debugger.
 
    Copyright (C) 1986, 1988, 1989, 1991, 1992, 1993, 1994, 2000, 2005, 2007,
-   2008 Free Software Foundation, Inc.
+   2008, 2009, 2010, 2011 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -21,44 +21,102 @@
 #ifndef VALPRINT_H
 #define VALPRINT_H
 
-extern int prettyprint_arrays;	/* Controls pretty printing of arrays.  */
-extern int prettyprint_structs;	/* Controls pretty printing of structures */
-extern int prettyprint_arrays;	/* Controls pretty printing of arrays.  */
+/* This is used to pass formatting options to various value-printing
+   functions.  */
+struct value_print_options
+{
+  /* Pretty-printing control.  */
+  enum val_prettyprint pretty;
 
-extern int vtblprint;		/* Controls printing of vtbl's */
-extern int unionprint;		/* Controls printing of nested unions.  */
-extern int addressprint;	/* Controls pretty printing of addresses.  */
-extern int objectprint;		/* Controls looking up an object's derived type
-				   using what we find in its vtables.  */
+  /* Controls pretty printing of arrays.  */
+  int prettyprint_arrays;
 
-extern unsigned int print_max;	/* Max # of chars for strings/vectors */
+  /* Controls pretty printing of structures.  */
+  int prettyprint_structs;
 
-/* Flag to low-level print routines that this value is being printed
-   in an epoch window.  We'd like to pass this as a parameter, but
-   every routine would need to take it.  Perhaps we can encapsulate
-   this in the I/O stream once we have GNU stdio. */
-extern int inspect_it;
+  /* Controls printing of virtual tables.  */
+  int vtblprint;
 
-/* Print repeat counts if there are more than this many repetitions of an
-   element in an array.  Referenced by the low level language dependent
-   print routines. */
-extern unsigned int repeat_count_threshold;
+  /* Controls printing of nested unions.  */
+  int unionprint;
 
-extern int output_format;
+  /* Controls printing of addresses.  */
+  int addressprint;
 
-extern int stop_print_at_null;	/* Stop printing at null char? */
+  /* Controls looking up an object's derived type using what we find
+     in its vtables.  */
+  int objectprint;
 
-extern int print_array_indexes_p (void);
- 
-extern int get_array_low_bound (struct type *type, long *low_bound);
+  /* Maximum number of chars to print for a string pointer value or vector
+     contents, or UINT_MAX for no limit.  Note that "set print elements 0"
+     stores UINT_MAX in print_max, which displays in a show command as
+     "unlimited".  */
+  unsigned int print_max;
+
+  /* Print repeat counts if there are more than this many repetitions
+     of an element in an array.  */
+  unsigned int repeat_count_threshold;
+
+  /* The global output format letter.  */
+  int output_format;
+
+  /* The current format letter.  This is set locally for a given call,
+     e.g. when the user passes a format to "print".  */
+  int format;
+
+  /* Stop printing at null character?  */
+  int stop_print_at_null;
+
+  /* True if this value is being printed in an epoch window.  */
+  int inspect_it;
+
+  /* True if we should print the index of each element when printing
+     an array.  */
+  int print_array_indexes;
+
+  /* If nonzero, then dereference references, otherwise just print
+     them like pointers.  */
+  int deref_ref;
+
+  /* If nonzero, print static fields.  */
+  int static_field_print;
+
+  /* If nonzero, print static fields for Pascal.  FIXME: C++ and Java
+     share one flag, why not Pascal too?  */
+  int pascal_static_field_print;
+
+  /* Controls Python pretty-printing.  */
+  int raw;
+
+  /* If nonzero, print the value in "summary" form.  */
+  int summary;
+};
+
+/* The global print options set by the user.  In general this should
+   not be directly accessed, except by set/show commands.  Ordinary
+   code should call get_user_print_options instead.  */
+extern struct value_print_options user_print_options;
+
+/* Initialize *OPTS to be a copy of the user print options.  */
+extern void get_user_print_options (struct value_print_options *opts);
+
+/* Initialize *OPTS to be a copy of the user print options, but with
+   pretty-printing disabled.  */
+extern void get_raw_print_options (struct value_print_options *opts);
+
+/* Initialize *OPTS to be a copy of the user print options, but using
+   FORMAT as the formatting option.  */
+extern void get_formatted_print_options (struct value_print_options *opts,
+					 char format);
 
 extern void maybe_print_array_index (struct type *index_type, LONGEST index,
-                                     struct ui_file *stream, int format,
-                                     enum val_prettyprint pretty);
+                                     struct ui_file *stream,
+				     const struct value_print_options *);
 
-extern void val_print_array_elements (struct type *, const gdb_byte *,
+extern void val_print_array_elements (struct type *, const gdb_byte *, int,
 				      CORE_ADDR, struct ui_file *, int,
-				      int, int, enum val_prettyprint,
+				      const struct value *,
+				      const struct value_print_options *,
 				      unsigned int);
 
 extern void val_print_type_code_int (struct type *, const gdb_byte *,
@@ -68,18 +126,36 @@ extern void val_print_type_code_flags (struct type *type,
 				       const gdb_byte *valaddr,
 				       struct ui_file *stream);
 
+extern void val_print_scalar_formatted (struct type *,
+					const gdb_byte *, int,
+					const struct value *,
+					const struct value_print_options *,
+					int,
+					struct ui_file *);
+
 extern void print_binary_chars (struct ui_file *, const gdb_byte *,
-				unsigned int);
+				unsigned int, enum bfd_endian);
 
 extern void print_octal_chars (struct ui_file *, const gdb_byte *,
-			       unsigned int);
+			       unsigned int, enum bfd_endian);
 
 extern void print_decimal_chars (struct ui_file *, const gdb_byte *,
-				 unsigned int);
+				 unsigned int, enum bfd_endian);
 
 extern void print_hex_chars (struct ui_file *, const gdb_byte *,
-			     unsigned int);
+			     unsigned int, enum bfd_endian);
 
-extern void print_char_chars (struct ui_file *, const gdb_byte *,
-			      unsigned int);
+extern void print_char_chars (struct ui_file *, struct type *,
+			      const gdb_byte *, unsigned int, enum bfd_endian);
+
+int read_string (CORE_ADDR addr, int len, int width, unsigned int fetchlimit,
+		 enum bfd_endian byte_order, gdb_byte **buffer,
+		 int *bytes_read);
+
+extern void val_print_optimized_out (struct ui_file *stream);
+
+extern void val_print_unavailable (struct ui_file *stream);
+
+extern void val_print_invalid_address (struct ui_file *stream);
+
 #endif

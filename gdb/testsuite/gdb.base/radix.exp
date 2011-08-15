@@ -1,5 +1,6 @@
 # This testcase is part of GDB, the GNU debugger.
-# Copyright 1993, 1997, 2004, 2007, 2008 Free Software Foundation, Inc.
+# Copyright 1993, 1997, 2004, 2007, 2008, 2009, 2010, 2011
+# Free Software Foundation, Inc.
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -21,8 +22,6 @@ if $tracelevel then {
 	strace $tracelevel
 }
 
-set prms_id 0
-set bug_id 0
 
 # Start with a fresh gdb.
 
@@ -134,7 +133,7 @@ test_output_radix 8 "8" "10"
     test_one_output 8  "0xf"        "17"
     test_one_output 8  "10"         "12"
     test_one_output 8  "100"        "144"
-    setup_kfail *-*-* "gdb/1715"
+    setup_kfail "gdb/1715" *-*-*
     test_one_output 8  "20."        "24"
     test_one_output 8  "(int) 20."  "24"
 
@@ -151,6 +150,47 @@ test_output_radix 16 "10" "20"
     test_one_output 16 "0xf"        "f"
     test_one_output 16 "10"         "a"
     test_one_output 16 "100"        "64"
-    setup_kfail *-*-* "gdb/1715"
+    setup_kfail "gdb/1715" *-*-*
     test_one_output 16 "20."        "14"
     test_one_output 16 "(int) 20."  "14"
+
+# Test rejecting invalid input radices and unsupported output radices
+# really rejects the radices, instead of just claiming so (PR 7536).
+
+gdb_test "set radix" \
+    "Input and output radices now set to decimal 10, hex a, octal 12\." \
+    "Reset radices"
+
+gdb_test "set input-radix 0" \
+    "Nonsense input radix ``decimal 0''; input radix unchanged\\." \
+    "Reject input-radix 0"
+gdb_test "show input-radix" \
+    "Default input radix for entering numbers is 10\\." \
+    "Input radix unchanged after rejecting 0"
+
+gdb_test "set input-radix 1" \
+    "Nonsense input radix ``decimal 1''; input radix unchanged\\." \
+    "Reject input-radix 1"
+gdb_test "show input-radix" \
+    "Default input radix for entering numbers is 10\\." \
+    "Input radix unchanged after rejecting 1"
+
+gdb_test "set output-radix 0" \
+    "Unsupported output radix ``decimal 0''; output radix unchanged\\." \
+    "Reject output-radix 0"
+gdb_test "show output-radix" \
+    "Default output radix for printing of values is 10\\." \
+    "Output radix unchanged after rejecting 0"
+gdb_test "set output-radix 1" \
+    "Unsupported output radix ``decimal 1''; output radix unchanged\\." \
+    "Reject output-radix 1"
+gdb_test "show output-radix" \
+    "Default output radix for printing of values is 10\\." \
+    "Output radix unchanged after rejecting 1"
+
+gdb_test "set radix 7" \
+    "Unsupported output radix ``decimal 7''; output radix unchanged\\." \
+    "set radix 7 rejected"
+gdb_test "show output-radix" \
+    "Default output radix for printing of values is 10\\." \
+    "Output radix unchanged after rejection through set radix command"

@@ -1,6 +1,7 @@
 /* Target-dependent code for SPARC.
 
-   Copyright (C) 2003, 2004, 2006, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2004, 2006, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -66,6 +67,13 @@ struct gdbarch_tdep
 
   /* Alternative location for trap return.  Used for single-stepping.  */
   CORE_ADDR (*step_trap) (struct frame_info *frame, unsigned long insn);
+
+  /* ISA-specific data types.  */
+  struct type *sparc_psr_type;
+  struct type *sparc_fsr_type;
+  struct type *sparc64_pstate_type;
+  struct type *sparc64_fsr_type;
+  struct type *sparc64_fprs_type;
 };
 
 /* Register numbers of various important registers.  */
@@ -138,7 +146,7 @@ struct sparc_frame_cache
   /* Do we have a frame?  */
   int frameless_p;
 
-  /* Do we have a Structure, Union or Quad-Precision return value?.  */
+  /* Do we have a Structure, Union or Quad-Precision return value?  */
   int struct_return_p;
 
   /* Table of saved registers.  */
@@ -149,17 +157,17 @@ struct sparc_frame_cache
 extern unsigned long sparc_fetch_instruction (CORE_ADDR pc);
 
 /* Fetch StackGhost Per-Process XOR cookie.  */
-extern ULONGEST sparc_fetch_wcookie (void);
+extern ULONGEST sparc_fetch_wcookie (struct gdbarch *gdbarch);
 
 extern CORE_ADDR sparc_analyze_prologue (struct gdbarch *gdbarch,
 					 CORE_ADDR pc, CORE_ADDR current_pc,
 					 struct sparc_frame_cache *cache);
 
 extern struct sparc_frame_cache *
-  sparc_frame_cache (struct frame_info *next_frame, void **this_cache);
+  sparc_frame_cache (struct frame_info *this_frame, void **this_cache);
 
 extern struct sparc_frame_cache *
-  sparc32_frame_cache (struct frame_info *next_frame, void **this_cache);
+  sparc32_frame_cache (struct frame_info *this_frame, void **this_cache);
 
 
 

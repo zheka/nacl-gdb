@@ -1,6 +1,6 @@
 /* Target-dependent code for NetBSD/powerpc.
 
-   Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007, 2008
+   Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011
    Free Software Foundation, Inc.
 
    Contributed by Wasabi Systems, Inc.
@@ -74,12 +74,12 @@ ppcnbsd_regset_from_core_section (struct gdbarch *gdbarch,
 
 /* NetBSD is confused.  It appears that 1.5 was using the correct SVR4
    convention but, 1.6 switched to the below broken convention.  For
-   the moment use the broken convention.  Ulgh!.  */
+   the moment use the broken convention.  Ulgh!  */
 
 static enum return_value_convention
-ppcnbsd_return_value (struct gdbarch *gdbarch, struct type *valtype,
-		      struct regcache *regcache, gdb_byte *readbuf,
-		      const gdb_byte *writebuf)
+ppcnbsd_return_value (struct gdbarch *gdbarch, struct type *func_type,
+		      struct type *valtype, struct regcache *regcache,
+		      gdb_byte *readbuf, const gdb_byte *writebuf)
 {
 #if 0
   if ((TYPE_CODE (valtype) == TYPE_CODE_STRUCT
@@ -93,8 +93,8 @@ ppcnbsd_return_value (struct gdbarch *gdbarch, struct type *valtype,
     return RETURN_VALUE_STRUCT_CONVENTION;
   else
 #endif
-    return ppc_sysv_abi_broken_return_value (gdbarch, valtype, regcache,
-					     readbuf, writebuf);
+    return ppc_sysv_abi_broken_return_value (gdbarch, func_type, valtype,
+					     regcache, readbuf, writebuf);
 }
 
 
@@ -104,17 +104,17 @@ static const struct tramp_frame ppcnbsd2_sigtramp;
 
 static void
 ppcnbsd_sigtramp_cache_init (const struct tramp_frame *self,
-			     struct frame_info *next_frame,
+			     struct frame_info *this_frame,
 			     struct trad_frame_cache *this_cache,
 			     CORE_ADDR func)
 {
-  struct gdbarch *gdbarch = get_frame_arch (next_frame);
+  struct gdbarch *gdbarch = get_frame_arch (this_frame);
   struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
   CORE_ADDR addr, base;
   int i;
 
-  base = frame_unwind_register_unsigned (next_frame,
-					 gdbarch_sp_regnum (gdbarch));
+  base = get_frame_register_unsigned (this_frame,
+				      gdbarch_sp_regnum (gdbarch));
   if (self == &ppcnbsd2_sigtramp)
     addr = base + 0x10 + 2 * tdep->wordsize;
   else
@@ -133,7 +133,7 @@ ppcnbsd_sigtramp_cache_init (const struct tramp_frame *self,
   trad_frame_set_reg_addr (this_cache, tdep->ppc_ctr_regnum, addr);
   addr += tdep->wordsize;
   trad_frame_set_reg_addr (this_cache, gdbarch_pc_regnum (gdbarch),
-			   addr); /* SRR0? */
+			   addr); /* SRR0?  */
   addr += tdep->wordsize;
 
   /* Construct the frame ID using the function start.  */

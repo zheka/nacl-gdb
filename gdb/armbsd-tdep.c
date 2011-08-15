@@ -1,6 +1,7 @@
 /* Target-dependent code for ARM BSD's.
 
-   Copyright (C) 2006, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2006, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -35,7 +36,7 @@
 /* Sizeof `struct fpreg' in <machine/reg.h.  */
 #define ARMBSD_SIZEOF_FPREGS	((1 + (8 * 3)) * 4)
 
-int
+static int
 armbsd_fpreg_offset (int regnum)
 {
   if (regnum == ARM_FPS_REGNUM)

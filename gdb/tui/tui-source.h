@@ -1,7 +1,7 @@
 /* TUI display source window.
 
-   Copyright (C) 1998, 1999, 2000, 2001, 2002, 2004, 2007, 2008
-   Free Software Foundation, Inc.
+   Copyright (C) 1998, 1999, 2000, 2001, 2002, 2004, 2007, 2008, 2009, 2010,
+   2011 Free Software Foundation, Inc.
 
    Contributed by Hewlett-Packard Company.
 
@@ -33,7 +33,7 @@ extern void tui_set_source_content_nil (struct tui_win_info *,
 
 extern enum tui_status tui_set_source_content (struct symtab *, 
 					       int, int);
-extern void tui_show_symtab_source (struct symtab *, 
+extern void tui_show_symtab_source (struct gdbarch *, struct symtab *,
 				    struct tui_line_or_address,
 				    int);
 extern int tui_source_is_displayed (char *);

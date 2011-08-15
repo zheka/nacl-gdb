@@ -1,6 +1,6 @@
 /* Target-dependent code for i386 BSD's.
 
-   Copyright (C) 2001, 2002, 2003, 2004, 2007, 2008
+   Copyright (C) 2001, 2002, 2003, 2004, 2007, 2008, 2009, 2010, 2011
    Free Software Foundation, Inc.
 
    This file is part of GDB.
@@ -31,19 +31,21 @@
 
 /* Support for signal handlers.  */
 
-/* Assuming NEXT_FRAME is for a frame following a BSD sigtramp
-   routine, return the address of the associated sigcontext structure.  */
+/* Assuming THIS_FRAME is for a BSD sigtramp routine, return the
+   address of the associated sigcontext structure.  */
 
 static CORE_ADDR
-i386bsd_sigcontext_addr (struct frame_info *next_frame)
+i386bsd_sigcontext_addr (struct frame_info *this_frame)
 {
+  struct gdbarch *gdbarch = get_frame_arch (this_frame);
+  enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
   gdb_byte buf[4];
   CORE_ADDR sp;
 
-  frame_unwind_register (next_frame, I386_ESP_REGNUM, buf);
-  sp = extract_unsigned_integer (buf, 4);
+  get_frame_register (this_frame, I386_ESP_REGNUM, buf);
+  sp = extract_unsigned_integer (buf, 4, byte_order);
 
-  return read_memory_unsigned_integer (sp + 8, 4);
+  return read_memory_unsigned_integer (sp + 8, 4, byte_order);
 }
 
 

@@ -1,3 +1,448 @@
+2011-03-22  Eric B. Weddington  <eric.weddington@atmel.com>
+
+	* avr.h (AVR_ISA_SPMX,AVR_ISA_DES,AVR_ISA_M256,AVR_ISA_XMEGA):
+	New instruction set flags.
+	(AVR_INSN): Add new instructions for SPM Z+, DES for XMEGA.
+
+2011-02-28  Maciej W. Rozycki  <macro@codesourcery.com>
+
+	* mips.h (M_PREF_AB): New enum value.
+
+2011-02-12  Mike Frysinger  <vapier@gentoo.org>
+
+	* bfin.h (M_S2RND, M_T, M_W32, M_FU, M_TFU, M_IS, M_ISS2, M_IH,
+	M_IU): Define.
+	(is_macmod_pmove, is_macmod_hmove): New functions.
+
+2011-02-11  Mike Frysinger  <vapier@gentoo.org>
+
+	* bfin.h: Add OPCODE_BFIN_H ifdef multiple include protection.
+
+2011-02-04  Bernd Schmidt  <bernds@codesourcery.com>
+
+	* tic6x-opcode-table.h (cmtl, ll, sl): Available on C64XP.
+	* tic6x.h (TIC6X_INSN_ATOMIC): Remove.
+
+2010-12-31  John David Anglin  <dave.anglin@nrc-cnrc.gc.ca>
+
+	PR gas/11395
+	* hppa.h (pa_opcodes): Revert last change.  Exchange 32 and 64-bit
+	"bb" entries.
+
+2010-12-26  John David Anglin  <dave.anglin@nrc-cnrc.gc.ca>
+
+	PR gas/11395
+	* hppa.h: Clear "d" bit in "add" and "sub" patterns.
+
+2010-12-18  Richard Sandiford  <rdsandiford@googlemail.com>
+
+	* mips.h: Update commentary after last commit.
+
+2010-12-18  Mingjie Xing  <mingjie.xing@gmail.com>
+
+	* mips.h (OP_*_OFFSET_A, OP_*_OFFSET_B, OP_*_OFFSET_C)
+	(OP_*_RZ, OP_*_FZ, INSN2_M_FP_D, INSN2_WRITE_GPR_Z, INSN2_WRITE_FPR_Z)
+	(INSN2_READ_GPR_Z, INSN2_READ_FPR_Z, INSN2_READ_GPR_D): Define.
+
+2010-11-23  Richard Sandiford  <rdsandiford@googlemail.com>
+
+	* mips.h: Fix previous commit.
+
+2010-11-23  Maciej W. Rozycki  <macro@linux-mips.org>
+
+	* mips.h (INSN_CHIP_MASK): Update according to INSN_LOONGSON_3A.
+	(INSN_LOONGSON_3A): Clear bit 31.
+
+2010-11-15  Matthew Gretton-Dann  <matthew.gretton-dann@arm.com>
+
+	PR gas/12198
+	* arm.h (ARM_AEXT_V6M_ONLY): New define.
+	(ARM_AEXT_V6M): Rewrite in terms of ARM_AEXT_V6M_ONLY.
+	(ARM_ARCH_V6M_ONLY): New define.
+
+2010-11-11  Mingming Sun  <mingm.sun@gmail.com>
+
+	* mips.h (INSN_LOONGSON_3A): Defined.
+	(CPU_LOONGSON_3A): Defined.
+	(OPCODE_IS_MEMBER): Add LOONGSON_3A.
+
+2010-10-09  Matt Rice  <ratmice@gmail.com>
+
+	* cgen.h (CGEN_ATTR, CGEN_ATTR_TYPE): Rename bool attribute to bool_.
+	(CGEN_ATTR_BOOLS, CGEN_ATTR_CGEN_INSN_ALIAS_VALUE): Likewise.
+
+2010-09-23  Matthew Gretton-Dann  <matthew.gretton-dann@arm.com>
+
+	* arm.h (ARM_EXT_VIRT): New define.
+	(ARM_ARCH_V7A_IDIV_MP_SEC): Rename...
+	(ARM_ARCH_V7A_IDIV_MP_SEC_VIRT): ...to this and include Virtualization
+	Extensions.
+
+2010-09-23  Matthew Gretton-Dann  <matthew.gretton-dann@arm.com>
+
+	* arm.h (ARM_AEXT_ADIV): New define.
+	(ARM_ARCH_V7A_IDIV_MP_SEC): Likewise.
+
+2010-09-23  Matthew Gretton-Dann  <matthew.gretton-dann@arm.com>
+
+	* arm.h (ARM_EXT_OS): New define.
+	(ARM_AEXT_V6SM): Likewise.
+	(ARM_ARCH_V6SM): Likewise.
+
+2010-09-23  Matthew Gretton-Dann  <matthew.gretton-dann@arm.com>
+
+	* arm.h (ARM_EXT_MP): Add.
+	(ARM_ARCH_V7A_MP): Likewise.
+
+2010-09-22  Mike Frysinger  <vapier@gentoo.org>
+
+	* bfin.h: Declare pseudoChr structs/defines.
+
+2010-09-21  Mike Frysinger  <vapier@gentoo.org>
+
+	* bfin.h: Strip trailing whitespace.
+
+2010-07-29  DJ Delorie  <dj@redhat.com>
+
+	* rx.h (RX_Operand_Type): Add TwoReg.
+	(RX_Opcode_ID): Remove ediv and ediv2.
+
+2010-07-27  DJ Delorie  <dj@redhat.com>
+
+	* rx.h (RX_Opcode_ID): Add nop2 and nop3 for statistics.
+
+2010-07-23  Naveen.H.S  <naveen.S@kpitcummins.com>
+	    Ina Pandit  <ina.pandit@kpitcummins.com>
+
+	* v850.h: Define PROCESSOR_MASK, PROCESSOR_OPTION_EXTENSION,
+	PROCESSOR_OPTION_ALIAS, PROCESSOR_V850E2, PROCESSOR_V850E2V3 and
+	PROCESSOR_V850E2_ALL.
+	Remove PROCESSOR_V850EA support.
+	(v850_operand): Define V850_OPERAND_EP, V850_OPERAND_FLOAT_CC,
+	V850_OPERAND_VREG, V850E_IMMEDIATE16, V850E_IMMEDIATE16HI,
+	V850E_IMMEDIATE23, V850E_IMMEDIATE32, V850_OPERAND_SIGNED,
+	V850_OPERAND_DISP, V850_PCREL, V850_REG_EVEN, V850E_PUSH_POP,
+	V850_NOT_IMM0, V850_NOT_SA, V850_OPERAND_BANG and
+	V850_OPERAND_PERCENT.
+	Update V850_OPERAND_SRG, V850_OPERAND_CC, V850_OPERAND_RELAX and
+	V850_NOT_R0.
+	Remove V850_OPERAND_SIGNED, V850_OPERAND_EP, V850_OPERAND_DISP
+	and V850E_PUSH_POP
+
+2010-07-06  Maciej W. Rozycki  <macro@codesourcery.com>
+
+	* mips.h (MIPS16_INSN_UNCOND_BRANCH): New macro.
+	(MIPS16_INSN_BRANCH): Rename to...
+	(MIPS16_INSN_COND_BRANCH): ... this.
+
+2010-07-03  Alan Modra  <amodra@gmail.com>
+
+	* ppc.h (PPC_OPCODE_32, PPC_OPCODE_BOOKE64, PPC_OPCODE_CLASSIC): Delete.
+	Renumber other PPC_OPCODE defines.
+
+2010-07-03  Alan Modra  <amodra@gmail.com>
+
+	* ppc.h (PPC_OPCODE_COMMON): Expand comment.
+
+2010-06-29  Alan Modra  <amodra@gmail.com>
+
+	* maxq.h: Delete file.
+
+2010-06-14  Sebastian Andrzej Siewior  <bigeasy@linutronix.de>
+
+	* ppc.h (PPC_OPCODE_E500): Define.
+
+2010-05-26  Catherine Moore  <clm@codesourcery.com>
+
+	* opcode/mips.h (INSN_MIPS16): Remove.
+
+2010-04-21  Joseph Myers  <joseph@codesourcery.com>
+
+	* tic6x-insn-formats.h (s_branch): Correct typo in bitmask.
+
+2010-04-15  Nick Clifton  <nickc@redhat.com>
+
+	* alpha.h: Update copyright notice to use GPLv3.
+	* arc.h: Likewise.
+	* arm.h: Likewise.
+	* avr.h: Likewise.
+	* bfin.h: Likewise.
+	* cgen.h: Likewise.
+	* convex.h: Likewise.
+	* cr16.h: Likewise.
+	* cris.h: Likewise.
+	* crx.h: Likewise.
+	* d10v.h: Likewise.
+	* d30v.h: Likewise.
+	* dlx.h: Likewise.
+	* h8300.h: Likewise.
+	* hppa.h: Likewise.
+	* i370.h: Likewise.
+	* i386.h: Likewise.
+	* i860.h: Likewise.
+	* i960.h: Likewise.
+	* ia64.h: Likewise.
+	* m68hc11.h: Likewise.
+	* m68k.h: Likewise.
+	* m88k.h: Likewise.
+	* maxq.h: Likewise.
+	* mips.h: Likewise.
+	* mmix.h: Likewise.
+	* mn10200.h: Likewise.
+	* mn10300.h: Likewise.
+	* msp430.h: Likewise.
+	* np1.h: Likewise.
+	* ns32k.h: Likewise.
+	* or32.h: Likewise.
+	* pdp11.h: Likewise.
+	* pj.h: Likewise.
+	* pn.h: Likewise.
+	* ppc.h: Likewise.
+	* pyr.h: Likewise.
+	* rx.h: Likewise.
+	* s390.h: Likewise.
+	* score-datadep.h: Likewise.
+	* score-inst.h: Likewise.
+	* sparc.h: Likewise.
+	* spu-insns.h: Likewise.
+	* spu.h: Likewise.
+	* tic30.h: Likewise.
+	* tic4x.h: Likewise.
+	* tic54x.h: Likewise.
+	* tic80.h: Likewise.
+	* v850.h: Likewise.
+	* vax.h: Likewise.
+
+2010-03-25  Joseph Myers  <joseph@codesourcery.com>
+
+	* tic6x-control-registers.h, tic6x-insn-formats.h,
+	tic6x-opcode-table.h, tic6x.h: New.
+
+2010-02-25  Wu Zhangjin  <wuzhangjin@gmail.com>
+
+	* mips.h: (LOONGSON2F_NOP_INSN): New macro.
+
+2010-02-08  Philipp Tomsich  <philipp.tomsich@theobroma-systems.com>
+
+	* opcode/ppc.h (PPC_OPCODE_TITAN): Define.
+
+2010-01-14  H.J. Lu  <hongjiu.lu@intel.com>
+
+	* ia64.h (ia64_find_opcode): Remove argument name.
+	(ia64_find_next_opcode): Likewise.
+	(ia64_dis_opcode): Likewise.
+	(ia64_free_opcode): Likewise.
+	(ia64_find_dependency): Likewise.
+
+2009-11-22  Doug Evans  <dje@sebabeach.org>
+
+	* cgen.h: Include bfd_stdint.h.
+	(CGEN_INSN_LGSINT, CGEN_INSN_LGUINT): New types.
+
+2009-11-18  Paul Brook  <paul@codesourcery.com>
+
+	* arm.h (FPU_VFP_V4_SP_D16, FPU_ARCH_VFP_V4_SP_D16): Define.
+
+2009-11-17  Paul Brook  <paul@codesourcery.com>
+	Daniel Jacobowitz  <dan@codesourcery.com>
+
+	* arm.h (ARM_EXT_V6_DSP): Define.
+	(ARM_AEXT_V6T2, ARM_AEXT_NOTM): Include ARM_EXT_V6_DSP.
+	(ARM_AEXT_V7EM, ARM_ARCH_V7EM): Define.
+
+2009-11-04  DJ Delorie  <dj@redhat.com>
+
+	* rx.h (rx_decode_opcode) (mvtipl): Add.
+	(mvtcp, mvfcp, opecp): Remove.
+
+2009-11-02  Paul Brook  <paul@codesourcery.com>
+
+	* arm.h (FPU_VFP_EXT_V3xD, FPU_VFP_EXT_FP16, FPU_NEON_EXT_FMA,
+	FPU_VFP_EXT_FMA, FPU_VFP_V3xD, FPU_VFP_V4D16, FPU_VFP_V4): Define.
+	(FPU_ARCH_VFP_V3D16_FP16, FPU_ARCH_VFP_V3_FP16, FPU_ARCH_VFP_V3xD,
+	FPU_ARCH_VFP_V3xD_FP16, FPU_ARCH_VFP_V4, FPU_ARCH_VFP_V4D16,
+	FPU_ARCH_NEON_VFP_V4): Define.
+
+2009-10-23  Doug Evans  <dje@sebabeach.org>
+
+	* cgen-bitset.h: Delete, moved to ../cgen/bitset.h.
+	* cgen.h: Update.  Improve multi-inclusion macro name.
+
+2009-10-02  Peter Bergner  <bergner@vnet.ibm.com>
+
+	* ppc.h (PPC_OPCODE_476): Define.
+
+2009-10-01  Peter Bergner  <bergner@vnet.ibm.com>
+
+	* ppc.h (PPC_OPCODE_A2): Rename from PPC_OPCODE_PPCA2.
+
+2009-09-29  DJ Delorie  <dj@redhat.com>
+
+	* rx.h: New file.
+
+2009-09-22  Peter Bergner  <bergner@vnet.ibm.com>
+
+	* ppc.h (ppc_cpu_t): Typedef to uint64_t.
+
+2009-09-21  Ben Elliston  <bje@au.ibm.com>
+
+	* ppc.h (PPC_OPCODE_PPCA2): New.
+
+2009-09-05  Martin Thuresson  <martin@mtme.org>
+
+	* ia64.h (struct ia64_operand): Renamed member class to op_class.
+
+2009-08-29  Martin Thuresson  <martin@mtme.org>
+
+	* tic30.h (template): Rename type template to
+	insn_template. Updated code to use new name.
+	* tic54x.h (template): Rename type template to
+	insn_template.
+
+2009-08-20  Nick Hudson  <nick.hudson@gmx.co.uk>
+
+	* hppa.h (pa_opcodes): Add a pa10 bb without FLAG_STRICT.
+
+2009-06-11  Anthony Green  <green@moxielogic.com>
+
+	* moxie.h (MOXIE_F3_PCREL): Define.
+	(moxie_form3_opc_info): Grow.
+
+2009-06-06  Anthony Green  <green@moxielogic.com>
+
+	* moxie.h (MOXIE_F1_M): Define.
+
+2009-04-15  Anthony Green  <green@moxielogic.com>
+
+	* moxie.h: Created.
+
+2009-04-06  DJ Delorie  <dj@redhat.com>
+
+	* h8300.h: Add relaxation attributes to MOVA opcodes.
+
+2009-03-10  Alan Modra  <amodra@bigpond.net.au>
+
+	* ppc.h (ppc_parse_cpu): Declare.
+
+2009-03-02  Qinwei  <qinwei@sunnorth.com.cn>
+
+	* score-inst.h (score_insn_type, score_data_type): Add Ra_I9_I5
+	and _IMM11 for mbitclr and mbitset.
+	* score-datadep.h: Update dependency information.
+
+2009-02-26  Peter Bergner  <bergner@vnet.ibm.com>
+
+	* ppc.h (PPC_OPCODE_POWER7): New.
+
+2009-02-06  Doug Evans  <dje@google.com>
+
+	* i386.h: Add comment regarding sse* insns and prefixes.
+
+2009-02-03  Sandip Matte  <sandip@rmicorp.com>
+
+	* mips.h (INSN_XLR): Define.
+	(INSN_CHIP_MASK): Update.
+	(CPU_XLR): Define.
+	(OPCODE_IS_MEMBER): Update.
+	(M_MSGSND, M_MSGLD, M_MSGLD_T, M_MSGWAIT, M_MSGWAIT_T): Define.
+
+2009-01-28  Doug Evans  <dje@google.com>
+
+	* opcode/i386.h: Add multiple inclusion protection.
+	(EAX_REG_NUM,ECX_REG_NUM,EDX_REGNUM,EBX_REG_NUM,ESI_REG_NUM)
+	(EDI_REG_NUM): New macros.
+	(MODRM_MOD_FIELD,MODRM_REG_FIELD,MODRM_RM_FIELD): New macros.
+	(SIB_SCALE_FIELD,SIB_INDEX_FIELD,SIB_BASE_FIELD): New macros.
+	(REX_PREFIX_P): New macro.
+
+2009-01-09  Peter Bergner  <bergner@vnet.ibm.com>
+
+	* ppc.h (struct powerpc_opcode): New field "deprecated".
+	(PPC_OPCODE_NOPOWER4): Delete.
+
+2008-11-28  Joshua Kinard  <kumba@gentoo.org>
+
+	* mips.h: Define CPU_R14000, CPU_R16000.
+        (OPCODE_IS_MEMBER): Include R14000, R16000 in test.
+
+2008-11-18  Catherine Moore  <clm@codesourcery.com>
+
+	* arm.h (FPU_NEON_FP16): New.
+	(FPU_ARCH_NEON_FP16): New.
+
+2008-11-06  Chao-ying Fu  <fu@mips.com>
+
+	* mips.h: Doucument '1' for 5-bit sync type.
+
+2008-08-28  H.J. Lu  <hongjiu.lu@intel.com>
+
+	* ia64.h (ia64_resource_specifier): Add IA64_RS_CR_IIB.  Update
+	IA64_RS_CR.
+
+2008-08-01  Peter Bergner  <bergner@vnet.ibm.com>
+
+	* ppc.h (PPC_OPCODE_VSX, PPC_OPERAND_VSR): New.
+
+2008-07-30  Michael J. Eager  <eager@eagercon.com>
+
+	* ppc.h (PPC_OPCODE_405): Define.
+	(PPC_OPERAND_FSL, PPC_OPERAND_FCR, PPC_OPERAND_UDI): Define.
+
+2008-06-13  Peter Bergner  <bergner@vnet.ibm.com>
+
+	* ppc.h (ppc_cpu_t): New typedef.
+	(struct powerpc_opcode <flags>): Use it.
+	(struct powerpc_operand <insert, extract>): Likewise.
+	(struct powerpc_macro <flags>): Likewise.
+
+2008-06-12  Adam Nemet  <anemet@caviumnetworks.com>
+
+	* mips.h: Document new field descriptors +x, +X, +p, +P, +s, +S.
+	Update comment before MIPS16 field descriptors to mention MIPS16.
+	(OP_SH_BBITIND, OP_MASK_BBITIND): New bit mask and shift count for
+	BBIT.
+	(OP_SH_CINSPOS, OP_MASK_CINSPOS, OP_SH_CINSLM1, OP_MASK_CINSLM1):
+	New bit masks and shift counts for cins and exts.
+
+	* mips.h: Document new field descriptors +Q.
+	(OP_SH_SEQI, OP_MASK_SEQI): New bit mask and shift count for SEQI.
+
+2008-04-28  Adam Nemet  <anemet@caviumnetworks.com>
+
+	* mips.h (INSN_MACRO): Move it up to the the pinfo macros.
+	(INSN2_M_FP_S, INSN2_M_FP_D): New pinfo2 macros.
+
+2008-04-14  Edmar Wienskoski  <edmar@freescale.com>
+
+	* ppc.h: (PPC_OPCODE_E500MC): New.
+
+2008-04-03  H.J. Lu  <hongjiu.lu@intel.com>
+
+	* i386.h (MAX_OPERANDS): Set to 5.
+	(MAX_MNEM_SIZE): Changed to 20.
+
+2008-03-28  Eric B. Weddington  <eric.weddington@atmel.com>
+
+	* avr.h (AVR_ISA_TINY3): Define new opcode set for attiny167.
+
+2008-03-09  Paul Brook  <paul@codesourcery.com>
+
+	* arm.h (FPU_VFP_EXT_D32, FPU_VFP_V3D16, FPU_ARCH_VFP_V3D16): Define.
+
+2008-03-04  Paul Brook  <paul@codesourcery.com>
+
+	* arm.h (ARM_EXT_V6M, ARM_EXT_BARRIER, ARM_EXT_THUMB_MSR): Define.
+	(ARM_AEXT_V6T2, ARM_AEXT_V7_ARM, ARM_AEXT_V7M): Use new flags.
+	(ARM_AEXT_V6M, ARM_ARCH_V6M): Define.
+
+2008-02-27  Denis Vlasenko  <vda.linux@googlemail.com>
+	    Nick Clifton  <nickc@redhat.com>
+
+	PR 3134
+	* h8300.h (h8_opcodes): Add an encoding for a mov.l instruction
+	with a 32-bit displacement but without the top bit of the 4th byte
+	set.
+
 2008-02-18  M R Swami Reddy <MR.Swami.Reddy@nsc.com>
 
 	* cr16.h (cr16_num_optab): Declared.
@@ -14,6 +459,15 @@
 	(INSN_OCTEON): New macro.
 	(CPU_OCTEON): New macro.
 	(OPCODE_IS_MEMBER): Handle Octeon instructions.
+
+2008-01-23  Eric B. Weddington  <eric.weddington@atmel.com>
+
+	* avr.h (AVR_ISA_RF401): Add new opcode set for at86rf401.
+
+2008-01-03  Eric B. Weddington  <eric.weddington@atmel.com>
+
+	* avr.h (AVR_ISA_USB162): Add new opcode set.
+	(AVR_ISA_AVR3): Likewise.
 
 2007-11-29  Mark Shinwell  <shinwell@codesourcery.com>
 
@@ -137,10 +591,10 @@
 2006-10-24  Andrew Pinski  <andrew_pinski@playstation.sony.com>
 
 	* ppc.h (PPC_OPCODE_CELL): Define.
- 
+
 2006-10-23  Dwarakanath Rajagopal  <dwarak.rajagopal@amd.com>
 
-	* i386.h :  Modify opcode to support for the change in POPCNT opcode 
+	* i386.h :  Modify opcode to support for the change in POPCNT opcode
 	in amdfam10 architecture.
 
 2006-09-28  H.J. Lu  <hongjiu.lu@intel.com>
@@ -186,7 +640,7 @@
 
 2006-06-05  Thiemo Seufer  <ths@mips.com>
 
-	* mips.h: Improve description of MT flags.	
+	* mips.h: Improve description of MT flags.
 
 2006-05-25  Richard Sandiford  <richard@codesourcery.com>
 
@@ -337,6 +791,10 @@
 	(pa_opcode): Revise ordering rules.  Add/move strict pa10 variants
 	before corresponding pa11 opcodes.  Add strict pa10 register-immediate
 	entries for "fdc".
+
+2005-09-30  Catherine Moore  <clm@cm00re.com>
+
+	* bfin.h: New file.
 
 2005-09-24  John David Anglin  <dave.anglin@nrc-cnrc.gc.ca>
 

@@ -1,6 +1,6 @@
 /* The common simulator framework for GDB, the GNU Debugger.
 
-   Copyright 2002, 2007, 2008 Free Software Foundation, Inc.
+   Copyright 2002, 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
 
    Contributed by Andrew Cagney and Red Hat.
 
@@ -24,11 +24,11 @@
 #include "hw-main.h"
 
 /* DEVICE
-   
+
    core - root of the device tree
-   
+
    DESCRIPTION
-   
+
    The core device, positioned at the root of the device tree appears
    to its child devices as a normal device just like every other
    device in the tree.
@@ -113,5 +113,5 @@ dv_core_finish (struct hw *me)
 
 const struct hw_descriptor dv_core_descriptor[] = {
   { "core", dv_core_finish, },
-  { NULL },
+  { NULL, NULL },
 };

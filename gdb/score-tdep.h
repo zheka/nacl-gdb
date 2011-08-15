@@ -1,7 +1,8 @@
 /* Target-dependent code for the S+core architecture, for GDB,
    the GNU Debugger.
 
-   Copyright (C) 2006, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2006, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    Contributed by Qinwei (qinwei@sunnorth.com.cn)
    Contributed by Ching-Peng Lin (cplin@sunplus.com)
@@ -38,11 +39,52 @@ enum gdb_regnum
 #define SCORE_A0_REGNUM        4
 #define SCORE_A1_REGNUM        5
 #define SCORE_REGSIZE          4
-#define SCORE_NUM_REGS         56
+#define SCORE7_NUM_REGS         56
+#define SCORE3_NUM_REGS         50
 #define SCORE_BEGIN_ARG_REGNUM 4
 #define SCORE_LAST_ARG_REGNUM  7
 
 #define SCORE_INSTLEN          4
 #define SCORE16_INSTLEN        2
+
+/* Forward declarations.  */
+struct regset;
+
+/* Target-dependent structure in gdbarch */
+struct gdbarch_tdep
+{
+    /* Cached core file helpers.  */
+    struct regset *gregset;
+};
+
+/* Linux Core file support (dirty hack)
+  
+   S+core Linux register set definition, copy from S+core Linux.  */
+struct pt_regs {
+    /* Pad bytes for argument save space on the stack.  */
+    unsigned long pad0[6]; /* may be 4, MIPS accept 6var, SCore
+			      accepts 4 Var--yuchen */
+
+    /* Saved main processor registers.  */
+    unsigned long orig_r4;
+    unsigned long regs[32];
+
+    /* Other saved registers.  */
+    unsigned long cel;
+    unsigned long ceh;
+
+    unsigned long sr0;  /*cnt*/
+    unsigned long sr1;  /*lcr*/
+    unsigned long sr2;  /*scr*/
+
+    /* saved cp0 registers */
+    unsigned long cp0_epc;
+    unsigned long cp0_ema;
+    unsigned long cp0_psr;
+    unsigned long cp0_ecr;
+    unsigned long cp0_condition;
+};
+
+typedef struct pt_regs elf_gregset_t;
 
 #endif /* SCORE_TDEP_H */

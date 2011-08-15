@@ -2,7 +2,7 @@
    Written by Fred Fish <fnf@cygnus.com>
    Rewritten by Jim Blandy <jimb@cygnus.com>
 
-   Copyright (C) 1999, 2000, 2002, 2003, 2007, 2008
+   Copyright (C) 1999, 2000, 2002, 2003, 2007, 2008, 2009, 2010, 2011
    Free Software Foundation, Inc.
 
    This file is part of GDB.
@@ -145,16 +145,22 @@ struct bcache;
    either case, return a pointer to BCACHE's copy of that string.
    Since the cached value is ment to be read-only, return a const
    buffer.  */
-extern void *deprecated_bcache (const void *addr, int length,
-				struct bcache *bcache);
 extern const void *bcache (const void *addr, int length,
 			   struct bcache *bcache);
+
+/* Like bcache, but if ADDED is not NULL, set *ADDED to true if the
+   bytes were newly added to the cache, or to false if the bytes were
+   found in the cache.  */
+extern const void *bcache_full (const void *addr, int length,
+				struct bcache *bcache, int *added);
 
 /* Free all the storage used by BCACHE.  */
 extern void bcache_xfree (struct bcache *bcache);
 
 /* Create a new bcache object.  */
-extern struct bcache *bcache_xmalloc (void);
+extern struct bcache *bcache_xmalloc (
+    unsigned long (*hash_function)(const void *, int length),
+    int (*compare_function)(const void *, const void *, int length));
 
 /* Print statistics on BCACHE's memory usage and efficacity at
    eliminating duplication.  TYPE should be a string describing the
@@ -163,7 +169,9 @@ extern struct bcache *bcache_xmalloc (void);
 extern void print_bcache_statistics (struct bcache *bcache, char *type);
 extern int bcache_memory_used (struct bcache *bcache);
 
-/* The hash function */
+/* The hash functions */
 extern unsigned long hash(const void *addr, int length);
+extern unsigned long hash_continue (const void *addr, int length,
+                                    unsigned long h);
 
 #endif /* BCACHE_H */

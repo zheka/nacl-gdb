@@ -1,6 +1,7 @@
 /* Traditional frame unwind support, for GDB the GNU Debugger.
 
-   Copyright (C) 2003, 2004, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2004, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -30,7 +31,7 @@ struct trad_frame_cache;
    The entire cache is populated in a single pass and then generic
    routines are used to extract the various cache values.  */
 
-struct trad_frame_cache *trad_frame_cache_zalloc (struct frame_info *next_frame);
+struct trad_frame_cache *trad_frame_cache_zalloc (struct frame_info *);
 
 /* This frame's ID.  */
 void trad_frame_set_id (struct trad_frame_cache *this_trad_cache,
@@ -50,11 +51,9 @@ void trad_frame_set_reg_addr (struct trad_frame_cache *this_trad_cache,
 void trad_frame_set_reg_value (struct trad_frame_cache *this_cache,
 			       int regnum, LONGEST val);
 
-void trad_frame_get_register (struct trad_frame_cache *this_trad_cache,
-			      struct frame_info *next_frame,
-			      int regnum, int *optimizedp,
-			      enum lval_type *lvalp, CORE_ADDR *addrp,
-			      int *realregp, gdb_byte *bufferp);
+struct value *trad_frame_get_register (struct trad_frame_cache *this_trad_cache,
+				       struct frame_info *this_frame,
+				       int regnum);
 
 /* A traditional saved regs table, indexed by REGNUM, encoding where
    the value of REGNUM for the previous frame can be found in this
@@ -107,14 +106,12 @@ int trad_frame_realreg_p (struct trad_frame_saved_reg this_saved_regs[],
 
 
 /* Return a freshly allocated (and initialized) trad_frame array.  */
-struct trad_frame_saved_reg *trad_frame_alloc_saved_regs (struct frame_info *next_frame);
+struct trad_frame_saved_reg *trad_frame_alloc_saved_regs (struct frame_info *);
 
 /* Given the trad_frame info, return the location of the specified
    register.  */
-void trad_frame_get_prev_register (struct frame_info *next_frame,
-				   struct trad_frame_saved_reg this_saved_regs[],
-				   int regnum, int *optimizedp,
-				   enum lval_type *lvalp, CORE_ADDR *addrp,
-				   int *realregp, gdb_byte *bufferp);
+struct value *trad_frame_get_prev_register (struct frame_info *this_frame,
+					    struct trad_frame_saved_reg this_saved_regs[],
+					    int regnum);
 
 #endif

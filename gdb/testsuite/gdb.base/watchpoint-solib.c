@@ -1,6 +1,6 @@
 /* This testcase is part of GDB, the GNU debugger.
 
-   Copyright 2004, 2007 Free Software Foundation, Inc.
+   Copyright 2004, 2007, 2009, 2010, 2011 Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -27,7 +27,6 @@
 # define dlsym(handle, func) GetProcAddress (handle, func)
 #endif
 #define dlclose(handle) FreeLibrary (handle)
-#define dlerror() "error %d occurred", GetLastError ()
 #else
 #include <dlfcn.h>
 #endif
@@ -42,7 +41,11 @@ void open_shlib ()
   
   if (!handle)
     {
-      fprintf (stderr, dlerror ());
+#ifdef __WIN32__
+      fprintf (stderr, "error %d occurred\n", GetLastError ());
+#else
+      fprintf (stderr, "%s\n", dlerror ());
+#endif
       exit (1);
     }
 
@@ -50,7 +53,7 @@ void open_shlib ()
 
   if (!foo)
     {
-      fprintf (stderr, dlerror ());
+      fprintf (stderr, "%s\n", dlerror ());
       exit (1);
     }
 

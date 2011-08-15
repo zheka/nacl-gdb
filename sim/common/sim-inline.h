@@ -1,6 +1,6 @@
 /* The common simulator framework for GDB, the GNU Debugger.
 
-   Copyright 2002, 2007, 2008 Free Software Foundation, Inc.
+   Copyright 2002, 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
 
    Contributed by Andrew Cagney and Red Hat.
 
@@ -33,7 +33,7 @@
    eliminate the overhead of function calls and (as a consequence)
    also eliminate further dead code.
 
-   On a CISC (x86) I've found that I can achieve an order of magintude
+   On a CISC (x86) I've found that I can achieve an order of magnitude
    speed improvement (x3-x5).  In the case of RISC (sparc) while the
    performance gain isn't as great it is still significant.
 
@@ -176,7 +176,7 @@
 
       Since no inlining is defined. All macro's get standard defaults
       (extern, static, ...).
-      
+
 
 
       H_REVEALS_MODULE (alt includes our):
@@ -226,7 +226,7 @@
       altprog.c defines ALTPROG_C and then includes sim-inline.c
 
       sim-inline.c defines C_INLINE_C and then includes sim-inline.h
-      
+
       In sim-inline.h the expression `` defined (SIM_INLINE) && !
       defined (OURPROG_C) && REVEAL_MODULE_P (OURPROG_INLINE) '' is
       true so it defines *_OURPROG as static and EXTERN_OURPROG_P as
@@ -246,7 +246,7 @@
       ourprog.c defines OURPROG_C and then includes sim-inline.c
 
       sim-inline.c defines C_INLINE_C and then includes sim-inline.h
-      
+
       In sim-inline.h the term `` !  defined (OURPROG_C) '' is FALSE
       so it defines *_OURPROG as non-static and EXTERN_OURPROG_P as
       TRUE.

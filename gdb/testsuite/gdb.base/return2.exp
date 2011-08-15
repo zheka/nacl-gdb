@@ -1,4 +1,5 @@
-# Copyright 2000, 2001, 2004, 2007, 2008 Free Software Foundation, Inc.
+# Copyright 2000, 2001, 2004, 2007, 2008, 2009, 2010, 2011
+# Free Software Foundation, Inc.
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -13,17 +14,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-# Please email any bugs, comments, and/or additions to this file to:
-# bug-gdb@prep.ai.mit.edu
-
 # This file was written by Michael Snyder (msnyder@redhat.com)
 
 if $tracelevel then {
 	strace $tracelevel
 }
 
-set prms_id 0
-set bug_id 0
 
 set testfile "return2"
 set srcfile ${testfile}.c
@@ -40,26 +36,21 @@ proc return_1 { type } {
 	    "set break on ${type}_func"
     gdb_test "continue" "Breakpoint.* ${type}_func.*" \
 	    "continue to ${type}_func"
-    send_gdb "return testval.${type}_testval\n"
-    gdb_expect {
-	-re "Make ${type}_func return now.*y or n. $" {
-	    send_gdb "y\n"
-	    exp_continue
+
+    gdb_test_multiple "return testval.${type}_testval" \
+	"return from ${type}_func" {
+	    -re "Make ${type}_func return now.*y or n. $" {
+		send_gdb "y\n"
+		exp_continue
+	    }
+	    -re ".*${type}_resultval *= ${type}_func.*$gdb_prompt $" {
+		send_gdb "step\n"
+		exp_continue
+	    }
+	    -re ".*${type}_checkpoint.*$gdb_prompt $" {
+		pass "return from ${type}_func"
+	    }
 	}
-	-re ".*${type}_resultval *= ${type}_func.*$gdb_prompt $" {
-	    send_gdb "step\n"
-	    exp_continue
-	}
-	-re ".*${type}_checkpoint.*$gdb_prompt $" {
-	    pass "return from ${type}_func"
-	}
-	-re ".*$gdb_prompt $" {
-	    fail "return from ${type}_func"
-	}
-	timeout {
-	    fail "return from ${type}_func (timeout)"
-	}
-    }
     gdb_test "print ${type}_resultval == testval.${type}_testval" ".* = 1" \
 	    "${type} value returned successfully"
     gdb_test "print ${type}_resultval != ${type}_returnval" ".* = 1" \
@@ -73,8 +64,8 @@ proc return_void { } {
 	    "set break on void_func"
     gdb_test "continue" "Breakpoint.* void_func.*" \
 	    "continue to void_func"
-    send_gdb "return \n"
-    gdb_expect {
+
+    gdb_test_multiple "return" "return from void_func" {
 	-re "Make void_func return now.*y or n. $" {
 	    send_gdb "y\n"
 	    exp_continue
@@ -85,12 +76,6 @@ proc return_void { } {
 	}
 	-re ".*void_checkpoint.*$gdb_prompt $" {
 	    pass "return from void_func"
-	}
-	-re ".*$gdb_prompt $" {
-	    fail "return from void_func"
-	}
-	timeout {
-	    fail "return from void_func (timeout)"
 	}
     }
     gdb_test "print void_test == 0" ".* = 1" \
@@ -113,9 +98,11 @@ proc return2_tests { } {
     if { ! [istarget "m6811-*-*"] && ![istarget "h8300*-*"] } then {
         return_1 "long_long"
     }
-    return_1 "float"
-    if { ! [istarget "m6811-*-*"] } then {
-        return_1 "double"
+    if ![target_info exists gdb,skip_float_tests] {
+	return_1 "float"
+	if { ! [istarget "m6811-*-*"] } then {
+	    return_1 "double"
+	}
     }
 }
 

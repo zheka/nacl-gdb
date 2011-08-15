@@ -1,5 +1,6 @@
 /* CRIS v10 simulator support code
-   Copyright (C) 2004, 2005, 2006, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
    Contributed by Axis Communications.
 
 This file is part of the GNU simulators.
@@ -22,6 +23,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 #define WANT_CPU_CRISV10F
 
 #define BASENUM 10
+#define CRIS_TLS_REGISTER 14
 #include "cris-tmpl.c"
 
 #if WITH_PROFILE_MODEL_P

@@ -1,4 +1,5 @@
-# Copyright (C) 2002, 2003, 2005, 2007, 2008 Free Software Foundation, Inc.
+# Copyright (C) 2002, 2003, 2005, 2007, 2008, 2009, 2010, 2011
+# Free Software Foundation, Inc.
 # 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -13,9 +14,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
-# Please email any bugs, comments, and/or additions to this file to:
-# bug-gdb@prep.ai.mit.edu
-#
 
 # Tests for Powerpc AltiVec register setting and fetching
 
@@ -28,12 +26,9 @@ if $tracelevel then {
 # This file uses altivec-regs.c for input.
 #
 
-set prms_id 0
-set bug_id 0
 
 if {![istarget "powerpc*"] || [skip_altivec_tests]} then {
     verbose "Skipping altivec register tests."
-    verbose -log "Skipping altivec register tests."
     return
 }
 
@@ -72,6 +67,8 @@ gdb_load ${binfile}
 if ![runto_main] then {
     gdb_suppress_tests
 }
+
+gdb_test "set print frame-arguments all"
 
 # set all the registers integer portions to 1
 for {set i 0} {$i < 32} {incr i 1} {

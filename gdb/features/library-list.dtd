@@ -1,4 +1,4 @@
-<!-- Copyright (C) 2007, 2008 Free Software Foundation, Inc.
+<!-- Copyright (C) 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
 
      Copying and distribution of this file, with or without modification,
      are permitted in any medium without royalty provided the copyright
@@ -8,8 +8,11 @@
 <!ELEMENT library-list  (library)*>
 <!ATTLIST library-list  version CDATA   #FIXED  "1.0">
 
-<!ELEMENT library       (segment)*>
+<!ELEMENT library       (segment*, section*)>
 <!ATTLIST library       name    CDATA   #REQUIRED>
 
 <!ELEMENT segment       EMPTY>
 <!ATTLIST segment       address CDATA   #REQUIRED>
+
+<!ELEMENT section       EMPTY>
+<!ATTLIST section       address CDATA   #REQUIRED>

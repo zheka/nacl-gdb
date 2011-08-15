@@ -1,7 +1,7 @@
 /* Fortran language support definitions for GDB, the GNU debugger.
 
-   Copyright (C) 1992, 1993, 1994, 1995, 1998, 2000, 2005, 2007, 2008
-   Free Software Foundation, Inc.
+   Copyright (C) 1992, 1993, 1994, 1995, 1998, 2000, 2005, 2007, 2008, 2009,
+   2010, 2011 Free Software Foundation, Inc.
 
    Contributed by Motorola.  Adapted from the C definitions by Farooq Butt
    (fmbutt@engage.sps.mot.com).
@@ -25,12 +25,13 @@ extern int f_parse (void);
 
 extern void f_error (char *);	/* Defined in f-exp.y */
 
-extern void f_print_type (struct type *, char *, struct ui_file *, int,
+extern void f_print_type (struct type *, const char *, struct ui_file *, int,
 			  int);
 
 extern int f_val_print (struct type *, const gdb_byte *, int, CORE_ADDR,
-			struct ui_file *, int, int, int,
-			enum val_prettyprint);
+			struct ui_file *, int,
+			const struct value *,
+			const struct value_print_options *);
 
 /* Language-specific data structures */
 
@@ -83,29 +84,46 @@ extern SAVED_F77_COMMON_PTR find_common_for_function (char *, char *);
 #define BLANK_COMMON_NAME_MF77     "__BLNK__"	/* MF77 assigned  */
 #define BLANK_COMMON_NAME_LOCAL    "__BLANK"	/* Local GDB */
 
-#define BOUND_FETCH_OK 1
-#define BOUND_FETCH_ERROR -999
-
 /* When reasonable array bounds cannot be fetched, such as when 
    you ask to 'mt print symbols' and there is no stack frame and 
    therefore no way of knowing the bounds of stack-based arrays, 
-   we have to assign default bounds, these are as good as any... */
+   we have to assign default bounds, these are as good as any...  */
 
 #define DEFAULT_UPPER_BOUND 999999
 #define DEFAULT_LOWER_BOUND -999999
 
-extern char *real_main_name;	/* Name of main function */
-extern int real_main_c_value;	/* C_value field of main function */
+extern char *real_main_name;	/* Name of main function.  */
+extern int real_main_c_value;	/* C_value field of main function.  */
 
-extern int f77_get_dynamic_upperbound (struct type *, int *);
+extern int f77_get_upperbound (struct type *);
 
-extern int f77_get_dynamic_lowerbound (struct type *, int *);
+extern int f77_get_lowerbound (struct type *);
 
 extern void f77_get_dynamic_array_length (struct type *);
 
 extern int calc_f77_array_dims (struct type *);
 
-#define DEFAULT_DOTMAIN_NAME_IN_MF77            ".MAIN_"
-#define DEFAULT_MAIN_NAME_IN_MF77               "MAIN_"
-#define DEFAULT_DOTMAIN_NAME_IN_XLF_BUGGY       ".main "
-#define DEFAULT_DOTMAIN_NAME_IN_XLF             ".main"
+
+/* Fortran (F77) types */
+
+struct builtin_f_type
+{
+  struct type *builtin_character;
+  struct type *builtin_integer;
+  struct type *builtin_integer_s2;
+  struct type *builtin_logical;
+  struct type *builtin_logical_s1;
+  struct type *builtin_logical_s2;
+  struct type *builtin_logical_s8;
+  struct type *builtin_real;
+  struct type *builtin_real_s8;
+  struct type *builtin_real_s16;
+  struct type *builtin_complex_s8;
+  struct type *builtin_complex_s16;
+  struct type *builtin_complex_s32;
+  struct type *builtin_void;
+};
+
+/* Return the Fortran type table for the specified architecture.  */
+extern const struct builtin_f_type *builtin_f_type (struct gdbarch *gdbarch);
+

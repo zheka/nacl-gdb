@@ -1,7 +1,8 @@
 /* Target-dependent code for GNU/Linux running on the Fujitsu FR-V,
    for GDB.
 
-   Copyright (C) 2004, 2006, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2006, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -31,6 +32,7 @@
 #include "frame-unwind.h"
 #include "regset.h"
 #include "gdb_string.h"
+#include "linux-tdep.h"
 
 /* Define the size (in bytes) of an FR-V instruction.  */
 static const int frv_instr_size = 4;
@@ -41,8 +43,9 @@ enum {
 };
 
 static int
-frv_linux_pc_in_sigtramp (CORE_ADDR pc, char *name)
+frv_linux_pc_in_sigtramp (struct gdbarch *gdbarch, CORE_ADDR pc, char *name)
 {
+  enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
   char buf[frv_instr_size];
   LONGEST instr;
   int retval = 0;
@@ -50,7 +53,7 @@ frv_linux_pc_in_sigtramp (CORE_ADDR pc, char *name)
   if (target_read_memory (pc, buf, sizeof buf) != 0)
     return 0;
 
-  instr = extract_unsigned_integer (buf, sizeof buf);
+  instr = extract_unsigned_integer (buf, sizeof buf, byte_order);
 
   if (instr == 0x8efc0077)	/* setlos #__NR_sigreturn, gr7 */
     retval = NORMAL_SIGTRAMP;
@@ -61,7 +64,7 @@ frv_linux_pc_in_sigtramp (CORE_ADDR pc, char *name)
 
   if (target_read_memory (pc + frv_instr_size, buf, sizeof buf) != 0)
     return 0;
-  instr = extract_unsigned_integer (buf, sizeof buf);
+  instr = extract_unsigned_integer (buf, sizeof buf, byte_order);
   if (instr != 0xc0700000)	/* tira	gr0, 0 */
     return 0;
 
@@ -165,9 +168,11 @@ frv_linux_pc_in_sigtramp (CORE_ADDR pc, char *name)
       } __attribute__((aligned(8)));  */
 
 static LONGEST
-frv_linux_sigcontext_reg_addr (struct frame_info *next_frame, int regno,
+frv_linux_sigcontext_reg_addr (struct frame_info *this_frame, int regno,
                                CORE_ADDR *sc_addr_cache_ptr)
 {
+  struct gdbarch *gdbarch = get_frame_arch (this_frame);
+  enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
   CORE_ADDR sc_addr;
 
   if (sc_addr_cache_ptr && *sc_addr_cache_ptr)
@@ -180,11 +185,11 @@ frv_linux_sigcontext_reg_addr (struct frame_info *next_frame, int regno,
       char buf[4];
       int tramp_type;
 
-      pc = frame_pc_unwind (next_frame);
-      tramp_type = frv_linux_pc_in_sigtramp (pc, 0);
+      pc = get_frame_pc (this_frame);
+      tramp_type = frv_linux_pc_in_sigtramp (gdbarch, pc, 0);
 
-      frame_unwind_register (next_frame, sp_regnum, buf);
-      sp = extract_unsigned_integer (buf, sizeof buf);
+      get_frame_register (this_frame, sp_regnum, buf);
+      sp = extract_unsigned_integer (buf, sizeof buf, byte_order);
 
       if (tramp_type == NORMAL_SIGTRAMP)
 	{
@@ -200,13 +205,13 @@ frv_linux_sigcontext_reg_addr (struct frame_info *next_frame, int regno,
  	     uc_mcontext within struct ucontext is derived as follows: 
  	     stack_t is a 12-byte struct and struct sigcontext is
  	     8-byte aligned.  This gives an offset of 8 + 12 + 4 (for
- 	     padding) = 24.) */
+ 	     padding) = 24.)  */
 	  if (target_read_memory (sp + 12, buf, sizeof buf) != 0)
 	    {
 	      warning (_("Can't read realtime sigtramp frame."));
 	      return 0;
 	    }
-	  sc_addr = extract_unsigned_integer (buf, sizeof buf);
+	  sc_addr = extract_unsigned_integer (buf, sizeof buf, byte_order);
  	  sc_addr += 24;
 	}
       else
@@ -235,7 +240,7 @@ frv_linux_sigcontext_reg_addr (struct frame_info *next_frame, int regno,
        sc_addr + 32 is syscallno, the syscall number or -1.
        sc_addr + 36 is orig_gr8, the original syscall arg #1.
        sc_addr + 40 is gner[0].
-       sc_addr + 44 is gner[1]. */
+       sc_addr + 44 is gner[1].  */
     case iacc0h_regnum :
       return sc_addr + 48;
     case iacc0l_regnum :
@@ -246,17 +251,20 @@ frv_linux_sigcontext_reg_addr (struct frame_info *next_frame, int regno,
       else if (first_fpr_regnum <= regno && regno <= last_fpr_regnum)
 	return sc_addr + 312 + 4 * (regno - first_fpr_regnum);
       else
-	return -1;  /* not saved. */
+	return -1;  /* not saved.  */
     }
 }
 
 /* Signal trampolines.  */
 
 static struct trad_frame_cache *
-frv_linux_sigtramp_frame_cache (struct frame_info *next_frame, void **this_cache)
+frv_linux_sigtramp_frame_cache (struct frame_info *this_frame,
+				void **this_cache)
 {
+  struct gdbarch *gdbarch = get_frame_arch (this_frame);
+  struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
+  enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
   struct trad_frame_cache *cache;
-  struct gdbarch_tdep *tdep = gdbarch_tdep (get_frame_arch (next_frame));
   CORE_ADDR addr;
   char buf[4];
   int regnum;
@@ -266,20 +274,20 @@ frv_linux_sigtramp_frame_cache (struct frame_info *next_frame, void **this_cache
   if (*this_cache)
     return *this_cache;
 
-  cache = trad_frame_cache_zalloc (next_frame);
+  cache = trad_frame_cache_zalloc (this_frame);
 
   /* FIXME: cagney/2004-05-01: This is is long standing broken code.
      The frame ID's code address should be the start-address of the
      signal trampoline and not the current PC within that
      trampoline.  */
-  frame_unwind_register (next_frame, sp_regnum, buf);
-  this_id = frame_id_build (extract_unsigned_integer (buf, sizeof buf),
-			    frame_pc_unwind (next_frame));
+  get_frame_register (this_frame, sp_regnum, buf);
+  addr = extract_unsigned_integer (buf, sizeof buf, byte_order);
+  this_id = frame_id_build (addr, get_frame_pc (this_frame));
   trad_frame_set_id (cache, this_id);
 
   for (regnum = 0; regnum < frv_num_regs; regnum++)
     {
-      LONGEST reg_addr = frv_linux_sigcontext_reg_addr (next_frame, regnum,
+      LONGEST reg_addr = frv_linux_sigcontext_reg_addr (this_frame, regnum,
 							&sc_addr_cache_val);
       if (reg_addr != -1)
 	trad_frame_set_reg_addr (cache, regnum, reg_addr);
@@ -290,48 +298,50 @@ frv_linux_sigtramp_frame_cache (struct frame_info *next_frame, void **this_cache
 }
 
 static void
-frv_linux_sigtramp_frame_this_id (struct frame_info *next_frame, void **this_cache,
-			     struct frame_id *this_id)
+frv_linux_sigtramp_frame_this_id (struct frame_info *this_frame,
+				  void **this_cache,
+				  struct frame_id *this_id)
 {
-  struct trad_frame_cache *cache =
-    frv_linux_sigtramp_frame_cache (next_frame, this_cache);
+  struct trad_frame_cache *cache
+    = frv_linux_sigtramp_frame_cache (this_frame, this_cache);
   trad_frame_get_id (cache, this_id);
 }
 
-static void
-frv_linux_sigtramp_frame_prev_register (struct frame_info *next_frame,
-				   void **this_cache,
-				   int regnum, int *optimizedp,
-				   enum lval_type *lvalp, CORE_ADDR *addrp,
-				   int *realnump, gdb_byte *valuep)
+static struct value *
+frv_linux_sigtramp_frame_prev_register (struct frame_info *this_frame,
+					void **this_cache, int regnum)
 {
   /* Make sure we've initialized the cache.  */
-  struct trad_frame_cache *cache =
-    frv_linux_sigtramp_frame_cache (next_frame, this_cache);
-  trad_frame_get_register (cache, next_frame, regnum, optimizedp, lvalp,
-			   addrp, realnump, valuep);
+  struct trad_frame_cache *cache
+    = frv_linux_sigtramp_frame_cache (this_frame, this_cache);
+  return trad_frame_get_register (cache, this_frame, regnum);
+}
+
+static int
+frv_linux_sigtramp_frame_sniffer (const struct frame_unwind *self,
+				  struct frame_info *this_frame,
+				  void **this_cache)
+{
+  struct gdbarch *gdbarch = get_frame_arch (this_frame);
+  CORE_ADDR pc = get_frame_pc (this_frame);
+  char *name;
+
+  find_pc_partial_function (pc, &name, NULL, NULL);
+  if (frv_linux_pc_in_sigtramp (gdbarch, pc, name))
+    return 1;
+
+  return 0;
 }
 
 static const struct frame_unwind frv_linux_sigtramp_frame_unwind =
 {
   SIGTRAMP_FRAME,
+  default_frame_unwind_stop_reason,
   frv_linux_sigtramp_frame_this_id,
-  frv_linux_sigtramp_frame_prev_register
+  frv_linux_sigtramp_frame_prev_register,
+  NULL,
+  frv_linux_sigtramp_frame_sniffer
 };
-
-static const struct frame_unwind *
-frv_linux_sigtramp_frame_sniffer (struct frame_info *next_frame)
-{
-  CORE_ADDR pc = frame_pc_unwind (next_frame);
-  char *name;
-
-  find_pc_partial_function (pc, &name, NULL, NULL);
-  if (frv_linux_pc_in_sigtramp (pc, name))
-    return &frv_linux_sigtramp_frame_unwind;
-
-  return NULL;
-}
-
 
 /* The FRV kernel defines ELF_NGREG as 46.  We add 2 in order to include
    the loadmap addresses in the register set.  (See below for more info.)  */
@@ -365,7 +375,7 @@ typedef struct
 #define FRV_PT_IACC0L 13
 
 /* Note: Only 32 of the GRs will be found in the corefile.  */
-#define FRV_PT_GR(j)	( 14 + (j))	/* GRj for 0<=j<=63. */
+#define FRV_PT_GR(j)	( 14 + (j))	/* GRj for 0<=j<=63.  */
 
 #define FRV_PT_TBR FRV_PT_GR(0)		/* gr0 is always 0, so TBR is stuffed
 					   there.  */
@@ -405,7 +415,8 @@ frv_linux_supply_gregset (const struct regset *regset,
 	regcache_raw_supply (regcache, regi, zerobuf);
       else
 	regcache_raw_supply (regcache, regi,
-			     gregsetp->reg[FRV_PT_GR (regi - first_gpr_regnum)]);
+			     gregsetp->reg[FRV_PT_GR (regi
+						      - first_gpr_regnum)]);
     }
 
   regcache_raw_supply (regcache, pc_regnum, gregsetp->reg[FRV_PT_PC]);
@@ -434,7 +445,8 @@ frv_linux_supply_fpregset (const struct regset *regset,
   const frv_elf_fpregset_t *fpregsetp = gregs;
 
   for (regi = first_fpr_regnum; regi <= last_fpr_regnum; regi++)
-    regcache_raw_supply (regcache, regi, fpregsetp->fr[regi - first_fpr_regnum]);
+    regcache_raw_supply (regcache, regi,
+			 fpregsetp->fr[regi - first_fpr_regnum]);
 
   regcache_raw_supply (regcache, fner0_regnum, fpregsetp->fner[0]);
   regcache_raw_supply (regcache, fner1_regnum, fpregsetp->fner[1]);
@@ -484,8 +496,11 @@ frv_linux_regset_from_core_section (struct gdbarch *gdbarch,
 static void
 frv_linux_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
 {
+  linux_init_abi (info, gdbarch);
+
   /* Set the sigtramp frame sniffer.  */
-  frame_unwind_append_sniffer (gdbarch, frv_linux_sigtramp_frame_sniffer); 
+  frame_unwind_append_unwinder (gdbarch, &frv_linux_sigtramp_frame_unwind); 
+
   set_gdbarch_regset_from_core_section (gdbarch,
                                         frv_linux_regset_from_core_section);
 }
@@ -512,7 +527,8 @@ void _initialize_frv_linux_tdep (void);
 void
 _initialize_frv_linux_tdep (void)
 {
-  gdbarch_register_osabi (bfd_arch_frv, 0, GDB_OSABI_LINUX, frv_linux_init_abi);
+  gdbarch_register_osabi (bfd_arch_frv, 0, GDB_OSABI_LINUX,
+			  frv_linux_init_abi);
   gdbarch_register_osabi_sniffer (bfd_arch_frv,
 				  bfd_target_elf_flavour,
 				  frv_linux_elf_osabi_sniffer);

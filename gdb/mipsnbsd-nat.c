@@ -1,6 +1,6 @@
 /* Native-dependent code for MIPS systems running NetBSD.
 
-   Copyright (C) 2000, 2001, 2002, 2004, 2007, 2008
+   Copyright (C) 2000, 2001, 2002, 2004, 2007, 2008, 2009, 2010, 2011
    Free Software Foundation, Inc.
 
    This file is part of GDB.
@@ -33,16 +33,18 @@
 
 /* Determine if PT_GETREGS fetches this register.  */
 static int
-getregs_supplies (int regno)
+getregs_supplies (struct gdbarch *gdbarch, int regno)
 {
   return ((regno) >= MIPS_ZERO_REGNUM
-	  && (regno) <= gdbarch_pc_regnum (current_gdbarch));
+	  && (regno) <= gdbarch_pc_regnum (gdbarch));
 }
 
 static void
-mipsnbsd_fetch_inferior_registers (struct regcache *regcache, int regno)
+mipsnbsd_fetch_inferior_registers (struct target_ops *ops,
+				   struct regcache *regcache, int regno)
 {
-  if (regno == -1 || getregs_supplies (regno))
+  struct gdbarch *gdbarch = get_regcache_arch (regcache);
+  if (regno == -1 || getregs_supplies (gdbarch, regno))
     {
       struct reg regs;
 
@@ -55,7 +57,8 @@ mipsnbsd_fetch_inferior_registers (struct regcache *regcache, int regno)
 	return;
     }
 
-  if (regno == -1 || regno >= gdbarch_fp0_regnum (get_regcache_arch (regcache)))
+  if (regno == -1
+      || regno >= gdbarch_fp0_regnum (get_regcache_arch (regcache)))
     {
       struct fpreg fpregs;
 
@@ -68,9 +71,11 @@ mipsnbsd_fetch_inferior_registers (struct regcache *regcache, int regno)
 }
 
 static void
-mipsnbsd_store_inferior_registers (struct regcache *regcache, int regno)
+mipsnbsd_store_inferior_registers (struct target_ops *ops,
+				   struct regcache *regcache, int regno)
 {
-  if (regno == -1 || getregs_supplies (regno))
+  struct gdbarch *gdbarch = get_regcache_arch (regcache);
+  if (regno == -1 || getregs_supplies (gdbarch, regno))
     {
       struct reg regs;
 
@@ -88,7 +93,8 @@ mipsnbsd_store_inferior_registers (struct regcache *regcache, int regno)
 	return;
     }
 
-  if (regno == -1 || regno >= gdbarch_fp0_regnum (get_regcache_arch (regcache)))
+  if (regno == -1
+      || regno >= gdbarch_fp0_regnum (get_regcache_arch (regcache)))
     {
       struct fpreg fpregs; 
 

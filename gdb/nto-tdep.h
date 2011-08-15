@@ -1,6 +1,7 @@
 /* nto-tdep.h - QNX Neutrino target header.
 
-   Copyright (C) 2003, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    Contributed by QNX Software Systems Ltd.
 
@@ -25,6 +26,7 @@
 #include "solist.h"
 #include "osabi.h"
 #include "regset.h"
+#include "gdbthread.h"
 
 /* Target operations defined for Neutrino targets (<target>-nto-tdep.c).  */
 
@@ -61,9 +63,9 @@ struct nto_target_ops
    and stuff it into the last argument.  If regno is -1, calculate the
    size of the entire regset.  Returns length of data, -1 if unknown
    regset, 0 if unknown register.  */
-  int (*register_area) (int, int, unsigned *);
+  int (*register_area) (struct gdbarch *, int, int, unsigned *);
 
-/* Build the Neutrino register set info into the data buffer.  
+/* Build the Neutrino register set info into the data buffer.
    Return -1 if unknown regset, 0 otherwise.  */
   int (*regset_fill) (const struct regcache *, int, char *);
 
@@ -121,7 +123,7 @@ enum
   OSTYPE_NTO
 };
 
-/* These correspond to the DSMSG_* versions in dsmsgs.h. */
+/* These correspond to the DSMSG_* versions in dsmsgs.h.  */
 enum
 {
   NTO_REG_GENERAL,
@@ -138,19 +140,23 @@ typedef struct _debug_regs
   qnx_reg64 padding[1024];
 } nto_regset_t;
 
+struct private_thread_info
+{
+  short tid;
+  unsigned char state;
+  unsigned char flags;
+  char name[1];
+};
+
 /* Generic functions in nto-tdep.c.  */
 
 void nto_init_solib_absolute_prefix (void);
 
-void nto_set_target(struct nto_target_ops *);
-
-char **nto_parse_redirection (char *start_argv[], char **in,
-			      char **out, char **err);
-
-int proc_iterate_over_mappings (int (*func) (int, CORE_ADDR));
+char **nto_parse_redirection (char *start_argv[], const char **in,
+			      const char **out, const char **err);
 
 void nto_relocate_section_addresses (struct so_list *,
-				     struct section_table *);
+				     struct target_section *);
 
 int nto_map_arch_to_cputype (const char *);
 
@@ -160,19 +166,12 @@ enum gdb_osabi nto_elf_osabi_sniffer (bfd *abfd);
 
 void nto_initialize_signals (void);
 
-void nto_generic_supply_gpregset (const struct regset *, struct regcache *,
-				  int, const void *, size_t);
-
-void nto_generic_supply_fpregset (const struct regset *, struct regcache *,
-				  int, const void *, size_t);
-
-void nto_generic_supply_altregset (const struct regset *, struct regcache *,
-				   int, const void *, size_t);
-
 /* Dummy function for initializing nto_target_ops on targets which do
    not define a particular regset.  */
 void nto_dummy_supply_regset (struct regcache *regcache, char *regs);
 
 int nto_in_dynsym_resolve_code (CORE_ADDR pc);
+
+char *nto_extra_thread_info (struct thread_info *);
 
 #endif

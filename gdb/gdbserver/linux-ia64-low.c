@@ -1,6 +1,6 @@
 /* GNU/Linux/IA64 specific low level interface, for the remote server for GDB.
-   Copyright (C) 1995, 1996, 1998, 1999, 2000, 2001, 2002, 2007, 2008
-   Free Software Foundation, Inc.
+   Copyright (C) 1995, 1996, 1998, 1999, 2000, 2001, 2002, 2007, 2008, 2009,
+   2010, 2011 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -23,6 +23,9 @@
 #ifdef HAVE_SYS_REG_H
 #include <sys/reg.h>
 #endif
+
+/* Defined in auto-generated file reg-ia64.c.  */
+void init_registers_ia64 (void);
 
 #define ia64_num_regs 462
 
@@ -276,6 +279,7 @@ ia64_cannot_fetch_register (int regno)
 }
 
 struct linux_target_ops the_low_target = {
+  init_registers_ia64,
   ia64_num_regs,
   ia64_regmap,
   ia64_cannot_fetch_register,

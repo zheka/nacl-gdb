@@ -1,7 +1,8 @@
 /* Parser definitions for GDB.
 
    Copyright (C) 1986, 1989, 1990, 1991, 1992, 1993, 1994, 1995, 1996, 1997,
-   1998, 1999, 2000, 2002, 2007, 2008 Free Software Foundation, Inc.
+   1998, 1999, 2000, 2002, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    Modified from expread.y by the Department of Computer Science at the
    State University of New York at Buffalo.
@@ -28,9 +29,14 @@
 
 struct block;
 
+extern int parser_debug;
+
 extern struct expression *expout;
 extern int expout_size;
 extern int expout_ptr;
+
+#define parse_gdbarch (expout->gdbarch)
+#define parse_language (expout->language_defn)
 
 /* If this is nonzero, this block is used as the lexical context
    for symbol names.  */
@@ -44,7 +50,7 @@ extern struct block *expression_context_block;
 extern CORE_ADDR expression_context_pc;
 
 /* The innermost context required by the stack and register variables
-   we've encountered so far. */
+   we've encountered so far.  */
 extern struct block *innermost_block;
 
 /* The block in which the most recently discovered symbol was found.
@@ -56,14 +62,30 @@ extern struct block *block_found;
 extern int arglist_len;
 
 /* A string token, either a char-string or bit-string.  Char-strings are
-   used, for example, for the names of symbols. */
+   used, for example, for the names of symbols.  */
 
 struct stoken
   {
-    /* Pointer to first byte of char-string or first bit of bit-string */
+    /* Pointer to first byte of char-string or first bit of bit-string.  */
     char *ptr;
-    /* Length of string in bytes for char-string or bits for bit-string */
+    /* Length of string in bytes for char-string or bits for bit-string.  */
     int length;
+  };
+
+struct typed_stoken
+  {
+    /* A language-specific type field.  */
+    int type;
+    /* Pointer to first byte of char-string or first bit of bit-string.  */
+    char *ptr;
+    /* Length of string in bytes for char-string or bits for bit-string.  */
+    int length;
+  };
+
+struct stoken_vector
+  {
+    int len;
+    struct typed_stoken *tokens;
   };
 
 struct ttype
@@ -127,16 +149,19 @@ extern void write_exp_elt_intern (struct internalvar *);
 
 extern void write_exp_string (struct stoken);
 
+void write_exp_string_vector (int type, struct stoken_vector *vec);
+
 extern void write_exp_bitstring (struct stoken);
 
 extern void write_exp_elt_block (struct block *);
 
 extern void write_exp_elt_objfile (struct objfile *objfile);
 
-extern void write_exp_msymbol (struct minimal_symbol *,
-			       struct type *, struct type *);
+extern void write_exp_msymbol (struct minimal_symbol *);
 
 extern void write_dollar_variable (struct stoken str);
+
+extern void mark_struct_expression (void);
 
 extern char *find_template_name_end (char *);
 
@@ -163,9 +188,15 @@ extern int dump_subexp (struct expression *, struct ui_file *, int);
 extern int dump_subexp_body_standard (struct expression *, 
 				      struct ui_file *, int);
 
-extern void operator_length (struct expression *, int, int *, int *);
+extern void operator_length (const struct expression *, int, int *, int *);
 
-extern void operator_length_standard (struct expression *, int, int *, int *);
+extern void operator_length_standard (const struct expression *, int, int *,
+				      int *);
+
+extern int operator_check_standard (struct expression *exp, int pos,
+				    int (*objfile_func)
+				      (struct objfile *objfile, void *data),
+				    void *data);
 
 extern char *op_name_standard (enum exp_opcode);
 
@@ -173,12 +204,18 @@ extern struct type *follow_types (struct type *);
 
 extern void null_post_parser (struct expression **, int);
 
+extern int parse_float (const char *p, int len, DOUBLEST *d,
+			const char **suffix);
+
+extern int parse_c_float (struct gdbarch *gdbarch, const char *p, int len,
+			  DOUBLEST *d, struct type **t);
+
 /* During parsing of a C expression, the pointer to the next character
    is in this variable.  */
 
 extern char *lexptr;
 
-/* After a token has been recognized, this variable points to it.  
+/* After a token has been recognized, this variable points to it.
    Currently used only for error reporting.  */
 extern char *prev_lexptr;
 
@@ -228,7 +265,7 @@ struct op_print
     enum precedence precedence;
 
     /* For a binary operator:  1 iff right associate.
-       For a unary operator:  1 iff postfix. */
+       For a unary operator:  1 iff postfix.  */
     int right_assoc;
   };
 
@@ -243,7 +280,20 @@ struct exp_descriptor
 
     /* Returns number of exp_elements needed to represent an operator and
        the number of subexpressions it takes.  */
-    void (*operator_length) (struct expression*, int, int*, int *);
+    void (*operator_length) (const struct expression*, int, int*, int *);
+
+    /* Call TYPE_FUNC and OBJFILE_FUNC for any TYPE and OBJFILE found being
+       referenced by the single operator of EXP at position POS.  Operator
+       parameters are located at positive (POS + number) offsets in EXP.
+       The functions should never be called with NULL TYPE or NULL OBJFILE.
+       Functions should get passed an arbitrary caller supplied DATA pointer.
+       If any of the functions returns non-zero value then (any other) non-zero
+       value should be immediately returned to the caller.  Otherwise zero
+       should be returned.  */
+    int (*operator_check) (struct expression *exp, int pos,
+			   int (*objfile_func) (struct objfile *objfile,
+						void *data),
+			   void *data);
 
     /* Name of this operator for dumping purposes.  */
     char *(*op_name) (enum exp_opcode);
@@ -275,6 +325,8 @@ extern void print_subexp_standard (struct expression *, int *,
 /* Function used to avoid direct calls to fprintf
    in the code generated by the bison parser.  */
 
-extern void parser_fprintf (FILE *, const char *, ...) ATTR_FORMAT (printf, 2 ,3);
+extern void parser_fprintf (FILE *, const char *, ...) ATTRIBUTE_PRINTF (2, 3);
+
+extern int exp_uses_objfile (struct expression *exp, struct objfile *objfile);
 
 #endif /* PARSER_DEFS_H */

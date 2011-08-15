@@ -1,6 +1,6 @@
 /* Routines to link ECOFF debugging information.
    Copyright 1993, 1994, 1995, 1996, 1997, 1999, 2000, 2001, 2002, 2003,
-   2004, 2005, 2006, 2007 Free Software Foundation, Inc.
+   2004, 2005, 2006, 2007, 2008, 2009  Free Software Foundation, Inc.
    Written by Ian Lance Taylor, Cygnus Support, <ian@cygnus.com>.
 
    This file is part of BFD, the Binary File Descriptor library.
@@ -718,7 +718,8 @@ bfd_ecoff_debug_accumulate (handle, output_bfd, output_debug, output_swap,
 	  lookup = (char *) bfd_malloc ((bfd_size_type) strlen (name) + 20);
 	  if (lookup == NULL)
 	    return FALSE;
-	  sprintf (lookup, "%s %lx %lx", name, fdr.csym, fdr.caux);
+	  sprintf (lookup, "%s %lx %lx", name, (unsigned long) fdr.csym,
+		   (unsigned long) fdr.caux);
 
 	  fh = string_hash_lookup (&ainfo->fdr_hash, lookup, TRUE, TRUE);
 	  free (lookup);
@@ -1083,8 +1084,8 @@ ecoff_add_string (ainfo, info, debug, fdr, string)
   len = strlen (string);
   if (info->relocatable)
     {
-      if (!add_memory_shuffle (ainfo, &ainfo->ss, &ainfo->ss_end, (PTR) string,
-			       len + 1))
+      if (!add_memory_shuffle (ainfo, &ainfo->ss, &ainfo->ss_end,
+                               (bfd_byte *) string, len + 1))
 	return -1;
       ret = symhdr->issMax;
       symhdr->issMax += len + 1;
@@ -1206,7 +1207,7 @@ bfd_ecoff_debug_accumulate_other (handle, output_bfd, output_debug,
 	}
       (*swap_sym_out) (output_bfd, &internal_sym, external_sym);
       add_memory_shuffle (ainfo, &ainfo->sym, &ainfo->sym_end,
-			  external_sym,
+			  (bfd_byte *) external_sym,
 			  (unsigned long) output_swap->external_sym_size);
       ++fdr.csym;
       ++output_symhdr->isymMax;
@@ -1227,7 +1228,7 @@ bfd_ecoff_debug_accumulate_other (handle, output_bfd, output_debug,
     }
   (*output_swap->swap_fdr_out) (output_bfd, &fdr, external_fdr);
   add_memory_shuffle (ainfo, &ainfo->fdr, &ainfo->fdr_end,
-		      external_fdr,
+		      (bfd_byte *) external_fdr,
 		      (unsigned long) output_swap->external_fdr_size);
 
   ++output_symhdr->ifdMax;
@@ -1337,8 +1338,8 @@ bfd_ecoff_debug_one_external (abfd, debug, swap, name, esym)
 		- (char *) debug->external_ext)
       < (symhdr->iextMax + 1) * external_ext_size)
     {
-      char *external_ext = debug->external_ext;
-      char *external_ext_end = debug->external_ext_end;
+      char *external_ext = (char *) debug->external_ext;
+      char *external_ext_end = (char *) debug->external_ext_end;
       if (! ecoff_add_bytes ((char **) &external_ext,
 			     (char **) &external_ext_end,
 			     (symhdr->iextMax + 1) * (size_t) external_ext_size))
@@ -1502,7 +1503,7 @@ ecoff_write_symhdr (abfd, debug, swap, where)
   SET (cbExtOffset, iextMax, swap->external_ext_size);
 #undef SET
 
-  buff = (PTR) bfd_malloc (swap->external_hdr_size);
+  buff = (char *) bfd_malloc (swap->external_hdr_size);
   if (buff == NULL && swap->external_hdr_size != 0)
     goto error_return;
 

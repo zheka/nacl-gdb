@@ -1,6 +1,6 @@
 /* Handle set and show GDB commands.
 
-   Copyright (c) 2000, 2001, 2002, 2003, 2007, 2008
+   Copyright (c) 2000, 2001, 2002, 2003, 2007, 2008, 2009, 2010, 2011
    Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify
@@ -21,6 +21,7 @@
 #include "value.h"
 #include <ctype.h>
 #include "gdb_string.h"
+#include "arch-utils.h"
 
 #include "ui-out.h"
 
@@ -28,7 +29,7 @@
 #include "cli/cli-cmds.h"
 #include "cli/cli-setshow.h"
 
-/* Prototypes for local functions */
+/* Prototypes for local functions.  */
 
 static int parse_binary_operation (char *);
 
@@ -39,6 +40,7 @@ parse_auto_binary_operation (const char *arg)
   if (arg != NULL && *arg != '\0')
     {
       int length = strlen (arg);
+
       while (isspace (arg[length - 1]) && length > 0)
 	length--;
       if (strncmp (arg, "on", length) == 0
@@ -56,7 +58,7 @@ parse_auto_binary_operation (const char *arg)
 	return AUTO_BOOLEAN_AUTO;
     }
   error (_("\"on\", \"off\" or \"auto\" expected."));
-  return AUTO_BOOLEAN_AUTO; /* pacify GCC */
+  return AUTO_BOOLEAN_AUTO; /* Pacify GCC.  */
 }
 
 static int
@@ -115,10 +117,10 @@ deprecated_show_value_hack (struct ui_file *ignore_file,
     }
 }
 
-/* Do a "set" or "show" command.  ARG is NULL if no argument, or the text
-   of the argument, and FROM_TTY is nonzero if this command is being entered
-   directly by the user (i.e. these are just like any other
-   command).  C is the command list element for the command.  */
+/* Do a "set" or "show" command.  ARG is NULL if no argument, or the
+   text of the argument, and FROM_TTY is nonzero if this command is
+   being entered directly by the user (i.e. these are just like any
+   other command).  C is the command list element for the command.  */
 
 void
 do_setshow_command (char *arg, int from_tty, struct cmd_list_element *c)
@@ -152,7 +154,7 @@ do_setshow_command (char *arg, int from_tty, struct cmd_list_element *c)
 		       right before a newline.  */
 		    if (*p == 0)
 		      break;
-		    ch = parse_escape (&p);
+		    ch = parse_escape (get_current_arch (), &p);
 		    if (ch == 0)
 		      break;	/* C loses */
 		    else if (ch > 0)
@@ -177,14 +179,14 @@ do_setshow_command (char *arg, int from_tty, struct cmd_list_element *c)
 	    arg = "";
 	  if (*(char **) c->var != NULL)
 	    xfree (*(char **) c->var);
-	  *(char **) c->var = savestring (arg, strlen (arg));
+	  *(char **) c->var = xstrdup (arg);
 	  break;
 	case var_optional_filename:
 	  if (arg == NULL)
 	    arg = "";
 	  if (*(char **) c->var != NULL)
 	    xfree (*(char **) c->var);
-	  *(char **) c->var = savestring (arg, strlen (arg));
+	  *(char **) c->var = xstrdup (arg);
 	  break;
 	case var_filename:
 	  if (arg == NULL)
@@ -194,6 +196,7 @@ do_setshow_command (char *arg, int from_tty, struct cmd_list_element *c)
 	  {
 	    /* Clear trailing whitespace of filename.  */
 	    char *ptr = arg + strlen (arg) - 1;
+
 	    while (ptr >= arg && (*ptr == ' ' || *ptr == '\t'))
 	      ptr--;
 	    *(ptr + 1) = '\0';
@@ -216,6 +219,7 @@ do_setshow_command (char *arg, int from_tty, struct cmd_list_element *c)
 	case var_integer:
 	  {
 	    unsigned int val;
+
 	    if (arg == NULL)
 	      error_no_arg (_("integer to set it to."));
 	    val = parse_and_eval_long (arg);
@@ -232,6 +236,11 @@ do_setshow_command (char *arg, int from_tty, struct cmd_list_element *c)
 	    error_no_arg (_("integer to set it to."));
 	  *(int *) c->var = parse_and_eval_long (arg);
 	  break;
+	case var_zuinteger:
+	  if (arg == NULL)
+	    error_no_arg (_("integer to set it to."));
+	  *(unsigned int *) c->var = parse_and_eval_long (arg);
+	  break;
 	case var_enum:
 	  {
 	    int i;
@@ -240,11 +249,13 @@ do_setshow_command (char *arg, int from_tty, struct cmd_list_element *c)
 	    const char *match = NULL;
 	    char *p;
 
-	    /* if no argument was supplied, print an informative error message */
+	    /* If no argument was supplied, print an informative error
+	       message.  */
 	    if (arg == NULL)
 	      {
 		char *msg;
 		int msg_len = 0;
+
 		for (i = 0; c->enums[i]; i++)
 		  msg_len += strlen (c->enums[i]) + 2;
 
@@ -258,7 +269,8 @@ do_setshow_command (char *arg, int from_tty, struct cmd_list_element *c)
 		      strcat (msg, ", ");
 		    strcat (msg, c->enums[i]);
 		  }
-		error (_("Requires an argument. Valid arguments are %s."), msg);
+		error (_("Requires an argument. Valid arguments are %s."), 
+		       msg);
 	      }
 
 	    p = strchr (arg, ' ');
@@ -276,7 +288,7 @@ do_setshow_command (char *arg, int from_tty, struct cmd_list_element *c)
 		    {
 		      match = c->enums[i];
 		      nmatches = 1;
-		      break; /* exact match. */
+		      break; /* Exact match.  */
 		    }
 		  else
 		    {
@@ -340,7 +352,8 @@ do_setshow_command (char *arg, int from_tty, struct cmd_list_element *c)
 	      break;
 	    default:
 	      internal_error (__FILE__, __LINE__,
-			      _("do_setshow_command: invalid var_auto_boolean"));
+			      _("do_setshow_command: "
+				"invalid var_auto_boolean"));
 	      break;
 	    }
 	  break;
@@ -351,6 +364,7 @@ do_setshow_command (char *arg, int from_tty, struct cmd_list_element *c)
 	      break;
 	    }
 	  /* else fall through */
+	case var_zuinteger:
 	case var_zinteger:
 	  fprintf_filtered (stb->stream, "%u", *(unsigned int *) c->var);
 	  break;
@@ -377,8 +391,8 @@ do_setshow_command (char *arg, int from_tty, struct cmd_list_element *c)
 	ui_out_field_stream (uiout, "value", stb);
       else
 	{
-	  long length;
-	  char *value = ui_file_xstrdup (stb->stream, &length);
+	  char *value = ui_file_xstrdup (stb->stream, NULL);
+
 	  make_cleanup (xfree, value);
 	  if (c->show_value_func != NULL)
 	    c->show_value_func (gdb_stdout, from_tty, c, value);
@@ -411,6 +425,7 @@ cmd_show_list (struct cmd_list_element *list, int from_tty, char *prefix)
 	  struct cleanup *optionlist_chain
 	    = make_cleanup_ui_out_tuple_begin_end (uiout, "optionlist");
 	  char *new_prefix = strstr (list->prefixname, "show ") + 5;
+
 	  if (ui_out_is_mi_like_p (uiout))
 	    ui_out_field_string (uiout, "prefix", new_prefix);
 	  cmd_show_list (*list->prefixlist, from_tty, new_prefix);
@@ -419,17 +434,21 @@ cmd_show_list (struct cmd_list_element *list, int from_tty, char *prefix)
 	}
       else
 	{
-	  struct cleanup *option_chain
-	    = make_cleanup_ui_out_tuple_begin_end (uiout, "option");
-	  ui_out_text (uiout, prefix);
-	  ui_out_field_string (uiout, "name", list->name);
-	  ui_out_text (uiout, ":  ");
-	  if (list->type == show_cmd)
-	    do_setshow_command ((char *) NULL, from_tty, list);
-	  else
-	    cmd_func (list, NULL, from_tty);
-          /* Close the tuple.  */
-	  do_cleanups (option_chain);
+	  if (list->class != no_set_class)
+	    {
+	      struct cleanup *option_chain
+		= make_cleanup_ui_out_tuple_begin_end (uiout, "option");
+
+	      ui_out_text (uiout, prefix);
+	      ui_out_field_string (uiout, "name", list->name);
+	      ui_out_text (uiout, ":  ");
+	      if (list->type == show_cmd)
+		do_setshow_command ((char *) NULL, from_tty, list);
+	      else
+		cmd_func (list, NULL, from_tty);
+	      /* Close the tuple.  */
+	      do_cleanups (option_chain);
+	    }
 	}
     }
   /* Close the tuple.  */

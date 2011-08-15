@@ -1,4 +1,4 @@
-<!-- Copyright (C) 2007, 2008 Free Software Foundation, Inc.
+<!-- Copyright (C) 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
 
      Copying and distribution of this file, with or without modification,
      are permitted in any medium without royalty provided the copyright
@@ -6,13 +6,21 @@
 
 <!-- The root element of a GDB target description is <target>.  -->
 
-<!ELEMENT target	(architecture?, feature*)>
+<!-- The osabi and compatible elements were added post GDB 6.8.  The version
+     wasn't bumped, since older GDBs silently ignore unknown elements.  -->
+
+<!ELEMENT target	(architecture?, osabi?, compatible*, feature*)>
 <!ATTLIST target
 	version		CDATA	#FIXED "1.0">
 
 <!ELEMENT architecture	(#PCDATA)>
 
-<!ELEMENT feature	((vector | union)*, reg*)>
+<!ELEMENT osabi	(#PCDATA)>
+
+<!ELEMENT compatible	(#PCDATA)>
+
+<!ELEMENT feature
+	((vector | flags | struct | union )*, reg*)>
 <!ATTLIST feature
 	name		ID	#REQUIRED>
 
@@ -32,6 +40,16 @@
 	type		CDATA	#REQUIRED
 	count		CDATA	#REQUIRED>
 
+<!ELEMENT flags		(field+)>
+<!ATTLIST flags
+	id		CDATA	#REQUIRED
+	size		CDATA	#REQUIRED>
+
+<!ELEMENT struct	(field+)>
+<!ATTLIST struct
+	id		CDATA	#REQUIRED
+	size		CDATA	#IMPLIED>
+
 <!ELEMENT union		(field+)>
 <!ATTLIST union
 	id		CDATA	#REQUIRED>
@@ -39,7 +57,9 @@
 <!ELEMENT field		EMPTY>
 <!ATTLIST field
 	name		CDATA	#REQUIRED
-	type		CDATA	#REQUIRED>
+	type		CDATA	#IMPLIED
+	start		CDATA	#IMPLIED
+	end		CDATA	#IMPLIED>
 
 <!ENTITY % xinclude SYSTEM "xinclude.dtd">
 %xinclude;

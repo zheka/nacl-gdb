@@ -1,6 +1,6 @@
 /* Target-dependent code for NetBSD/mips.
 
-   Copyright (C) 2002, 2003, 2004, 2006, 2007, 2008
+   Copyright (C) 2002, 2003, 2004, 2006, 2007, 2008, 2009, 2010, 2011
    Free Software Foundation, Inc.
 
    Contributed by Wasabi Systems, Inc.
@@ -173,7 +173,8 @@ mipsnbsd_fill_reg (const struct regcache *regcache, char *regs, int regno)
 }
 
 void
-mipsnbsd_supply_fpreg (struct regcache *regcache, const char *fpregs, int regno)
+mipsnbsd_supply_fpreg (struct regcache *regcache,
+		       const char *fpregs, int regno)
 {
   struct gdbarch *gdbarch = get_regcache_arch (regcache);
   int i;
@@ -244,40 +245,6 @@ static const unsigned char sigtramp_retcode_mipseb[RETCODE_SIZE] =
   0x00, 0x00, 0x00, 0x0c,	/* syscall */
 };
 
-static LONGEST
-mipsnbsd_sigtramp_offset (struct frame_info *next_frame)
-{
-  CORE_ADDR pc = frame_pc_unwind (next_frame);
-  const char *retcode = gdbarch_byte_order (get_frame_arch (next_frame))
-			== BFD_ENDIAN_BIG ? sigtramp_retcode_mipseb :
-			sigtramp_retcode_mipsel;
-  unsigned char ret[RETCODE_SIZE], w[4];
-  LONGEST off;
-  int i;
-
-  if (!safe_frame_unwind_memory (next_frame, pc, w, sizeof (w)))
-    return -1;
-
-  for (i = 0; i < RETCODE_NWORDS; i++)
-    {
-      if (memcmp (w, retcode + (i * 4), 4) == 0)
-	break;
-    }
-  if (i == RETCODE_NWORDS)
-    return -1;
-
-  off = i * 4;
-  pc -= off;
-
-  if (!safe_frame_unwind_memory (next_frame, pc, ret, sizeof (ret)))
-    return -1;
-
-  if (memcmp (ret, retcode, RETCODE_SIZE) == 0)
-    return off;
-
-  return -1;
-}
-
 /* Figure out where the longjmp will land.  We expect that we have
    just entered longjmp and haven't yet setup the stack frame, so the
    args are still in the argument regs.  MIPS_A0_REGNUM points at the
@@ -286,26 +253,28 @@ mipsnbsd_sigtramp_offset (struct frame_info *next_frame)
    success.  */
 
 #define NBSD_MIPS_JB_PC			(2 * 4)
-#define NBSD_MIPS_JB_ELEMENT_SIZE	mips_isa_regsize (current_gdbarch)
-#define NBSD_MIPS_JB_OFFSET		(NBSD_MIPS_JB_PC * \
-					 NBSD_MIPS_JB_ELEMENT_SIZE)
+#define NBSD_MIPS_JB_ELEMENT_SIZE(gdbarch)	mips_isa_regsize (gdbarch)
+#define NBSD_MIPS_JB_OFFSET(gdbarch)		(NBSD_MIPS_JB_PC * \
+					 NBSD_MIPS_JB_ELEMENT_SIZE (gdbarch))
 
 static int
 mipsnbsd_get_longjmp_target (struct frame_info *frame, CORE_ADDR *pc)
 {
+  struct gdbarch *gdbarch = get_frame_arch (frame);
+  enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
   CORE_ADDR jb_addr;
   char *buf;
 
-  buf = alloca (NBSD_MIPS_JB_ELEMENT_SIZE);
+  buf = alloca (NBSD_MIPS_JB_ELEMENT_SIZE (gdbarch));
 
   jb_addr = get_frame_register_unsigned (frame, MIPS_A0_REGNUM);
 
-  if (target_read_memory (jb_addr + NBSD_MIPS_JB_OFFSET, buf,
-  			  NBSD_MIPS_JB_ELEMENT_SIZE))
+  if (target_read_memory (jb_addr + NBSD_MIPS_JB_OFFSET (gdbarch), buf,
+  			  NBSD_MIPS_JB_ELEMENT_SIZE (gdbarch)))
     return 0;
 
-  *pc = extract_unsigned_integer (buf, NBSD_MIPS_JB_ELEMENT_SIZE);
-
+  *pc = extract_unsigned_integer (buf, NBSD_MIPS_JB_ELEMENT_SIZE (gdbarch),
+				  byte_order);
   return 1;
 }
 
@@ -407,14 +376,8 @@ mipsnbsd_init_abi (struct gdbarch_info info,
 }
 
 
-static enum gdb_osabi
-mipsnbsd_core_osabi_sniffer (bfd *abfd)
-{
-  if (strcmp (bfd_get_target (abfd), "netbsd-core") == 0)
-    return GDB_OSABI_NETBSD_ELF;
-
-  return GDB_OSABI_UNKNOWN;
-}
+/* Provide a prototype to silence -Wmissing-prototypes.  */
+extern initialize_file_ftype _initialize_mipsnbsd_tdep;
 
 void
 _initialize_mipsnbsd_tdep (void)

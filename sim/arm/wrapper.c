@@ -1,6 +1,6 @@
 /* run front end support for arm
-   Copyright (C) 1995, 1996, 1997, 2000, 2001, 2002, 2007, 2008
-   Free Software Foundation, Inc.
+   Copyright (C) 1995, 1996, 1997, 2000, 2001, 2002, 2007, 2008, 2009, 2010,
+   2011 Free Software Foundation, Inc.
 
    This file is part of ARM SIM.
 
@@ -158,7 +158,7 @@ int
 sim_write (sd, addr, buffer, size)
      SIM_DESC sd ATTRIBUTE_UNUSED;
      SIM_ADDR addr;
-     unsigned char * buffer;
+     const unsigned char * buffer;
      int size;
 {
   int i;
@@ -772,9 +772,12 @@ sim_target_parse_arg_array (argv)
 }
 
 void
-sim_target_display_usage ()
+sim_target_display_usage (help)
+     int help;
 {
-  fprintf (stderr, "%s=<list>  Comma seperated list of SWI protocols to supoport.\n\
+  FILE *stream = help ? stdout : stderr;
+
+  fprintf (stream, "%s=<list>  Comma seperated list of SWI protocols to supoport.\n\
                 This list can contain: NONE, DEMON, ANGEL, REDBOOT and/or ALL.\n",
 	   SWI_SWITCH);
 }

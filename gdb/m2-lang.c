@@ -1,7 +1,7 @@
 /* Modula 2 language support routines for GDB, the GNU debugger.
 
    Copyright (C) 1992, 1993, 1994, 1995, 1996, 1998, 2000, 2002, 2003, 2004,
-   2005, 2007, 2008 Free Software Foundation, Inc.
+   2005, 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -29,8 +29,8 @@
 #include "valprint.h"
 
 extern void _initialize_m2_language (void);
-static void m2_printchar (int, struct ui_file *);
-static void m2_emit_char (int, struct ui_file *, int);
+static void m2_printchar (int, struct type *, struct ui_file *);
+static void m2_emit_char (int, struct type *, struct ui_file *, int);
 
 /* Print the character C on STREAM as part of the contents of a literal
    string whose delimiter is QUOTER.  Note that that format for printing
@@ -39,10 +39,10 @@ static void m2_emit_char (int, struct ui_file *, int);
    be replaced with a true Modula version.  */
 
 static void
-m2_emit_char (int c, struct ui_file *stream, int quoter)
+m2_emit_char (int c, struct type *type, struct ui_file *stream, int quoter)
 {
 
-  c &= 0xFF;			/* Avoid sign bit follies */
+  c &= 0xFF;			/* Avoid sign bit follies.  */
 
   if (PRINT_LITERAL_FORM (c))
     {
@@ -88,10 +88,10 @@ m2_emit_char (int c, struct ui_file *stream, int quoter)
    be replaced with a true Modula version.  */
 
 static void
-m2_printchar (int c, struct ui_file *stream)
+m2_printchar (int c, struct type *type, struct ui_file *stream)
 {
   fputs_filtered ("'", stream);
-  LA_EMIT_CHAR (c, stream, '\'');
+  LA_EMIT_CHAR (c, type, stream, '\'');
   fputs_filtered ("'", stream);
 }
 
@@ -103,8 +103,9 @@ m2_printchar (int c, struct ui_file *stream)
    be replaced with a true Modula version.  */
 
 static void
-m2_printstr (struct ui_file *stream, const gdb_byte *string,
-	     unsigned int length, int width, int force_ellipses)
+m2_printstr (struct ui_file *stream, struct type *type, const gdb_byte *string,
+	     unsigned int length, const char *encoding, int force_ellipses,
+	     const struct value_print_options *options)
 {
   unsigned int i;
   unsigned int things_printed = 0;
@@ -117,7 +118,7 @@ m2_printstr (struct ui_file *stream, const gdb_byte *string,
       return;
     }
 
-  for (i = 0; i < length && things_printed < print_max; ++i)
+  for (i = 0; i < length && things_printed < options->print_max; ++i)
     {
       /* Position of the character we are examining
          to see whether it is repeated.  */
@@ -141,33 +142,33 @@ m2_printstr (struct ui_file *stream, const gdb_byte *string,
 	  ++reps;
 	}
 
-      if (reps > repeat_count_threshold)
+      if (reps > options->repeat_count_threshold)
 	{
 	  if (in_quotes)
 	    {
-	      if (inspect_it)
+	      if (options->inspect_it)
 		fputs_filtered ("\\\", ", stream);
 	      else
 		fputs_filtered ("\", ", stream);
 	      in_quotes = 0;
 	    }
-	  m2_printchar (string[i], stream);
+	  m2_printchar (string[i], type, stream);
 	  fprintf_filtered (stream, " <repeats %u times>", reps);
 	  i = rep1 - 1;
-	  things_printed += repeat_count_threshold;
+	  things_printed += options->repeat_count_threshold;
 	  need_comma = 1;
 	}
       else
 	{
 	  if (!in_quotes)
 	    {
-	      if (inspect_it)
+	      if (options->inspect_it)
 		fputs_filtered ("\\\"", stream);
 	      else
 		fputs_filtered ("\"", stream);
 	      in_quotes = 1;
 	    }
-	  LA_EMIT_CHAR (string[i], stream, '"');
+	  LA_EMIT_CHAR (string[i], type, stream, '"');
 	  ++things_printed;
 	}
     }
@@ -175,7 +176,7 @@ m2_printstr (struct ui_file *stream, const gdb_byte *string,
   /* Terminate the quotes if necessary.  */
   if (in_quotes)
     {
-      if (inspect_it)
+      if (options->inspect_it)
 	fputs_filtered ("\\\"", stream);
       else
 	fputs_filtered ("\"", stream);
@@ -193,6 +194,7 @@ evaluate_subexp_modula2 (struct type *expect_type, struct expression *exp,
   struct value *arg1;
   struct value *arg2;
   struct type *type;
+
   switch (op)
     {
     case UNOP_HIGH:
@@ -209,6 +211,7 @@ evaluate_subexp_modula2 (struct type *expect_type, struct expression *exp,
 	  if (m2_is_unbounded_array (type))
 	    {
 	      struct value *temp = arg1;
+
 	      type = TYPE_FIELD_TYPE (type, 1);
 	      /* i18n: Do not translate the "_m2_high" part!  */
 	      arg1 = value_struct_elt (&temp, NULL, "_m2_high", NULL,
@@ -238,10 +241,12 @@ evaluate_subexp_modula2 (struct type *expect_type, struct expression *exp,
 	{
 	  struct value *temp = arg1;
 	  type = TYPE_FIELD_TYPE (type, 0);
-	  if (type == NULL || (TYPE_CODE (type) != TYPE_CODE_PTR)) {
-	    warning (_("internal error: unbounded array structure is unknown"));
-	    return evaluate_subexp_standard (expect_type, exp, pos, noside);
-	  }
+	  if (type == NULL || (TYPE_CODE (type) != TYPE_CODE_PTR))
+	    {
+	      warning (_("internal error: unbounded "
+			 "array structure is unknown"));
+	      return evaluate_subexp_standard (expect_type, exp, pos, noside);
+	    }
 	  /* i18n: Do not translate the "_m2_contents" part!  */
 	  arg1 = value_struct_elt (&temp, NULL, "_m2_contents", NULL,
 				   _("unbounded structure "
@@ -250,8 +255,8 @@ evaluate_subexp_modula2 (struct type *expect_type, struct expression *exp,
 	  if (value_type (arg1) != type)
 	    arg1 = value_cast (type, arg1);
 
-	  type = check_typedef (value_type (arg1));
-	  return value_ind (value_add (arg1, arg2));
+	  check_typedef (value_type (arg1));
+	  return value_ind (value_ptradd (arg1, value_as_long (arg2)));
 	}
       else
 	if (TYPE_CODE (type) != TYPE_CODE_ARRAY)
@@ -266,14 +271,14 @@ evaluate_subexp_modula2 (struct type *expect_type, struct expression *exp,
       if (noside == EVAL_AVOID_SIDE_EFFECTS)
 	return value_zero (TYPE_TARGET_TYPE (type), VALUE_LVAL (arg1));
       else
-	return value_subscript (arg1, arg2);
+	return value_subscript (arg1, value_as_long (arg2));
 
     default:
       return evaluate_subexp_standard (expect_type, exp, pos, noside);
     }
 
  nosideret:
-  return value_from_longest (builtin_type_long, (LONGEST) 1);
+  return value_from_longest (builtin_type (exp->gdbarch)->builtin_int, 1);
 }
 
 
@@ -345,12 +350,16 @@ m2_language_arch_info (struct gdbarch *gdbarch,
     = builtin->builtin_real;
   lai->primitive_type_vector [m2_primitive_type_bool]
     = builtin->builtin_bool;
+
+  lai->bool_type_symbol = "BOOLEAN";
+  lai->bool_type_default = builtin->builtin_bool;
 }
 
 const struct exp_descriptor exp_descriptor_modula2 = 
 {
   print_subexp_standard,
   operator_length_standard,
+  operator_check_standard,
   op_name_standard,
   dump_subexp_body_standard,
   evaluate_subexp_modula2
@@ -364,6 +373,7 @@ const struct language_defn m2_language_defn =
   type_check_on,
   case_sensitive_on,
   array_row_major,
+  macro_expansion_no,
   &exp_descriptor_modula2,
   m2_parse,			/* parser */
   m2_error,			/* parser error function */
@@ -372,14 +382,16 @@ const struct language_defn m2_language_defn =
   m2_printstr,			/* function to print string constant */
   m2_emit_char,			/* Function to print a single character */
   m2_print_type,		/* Print a type using appropriate syntax */
+  m2_print_typedef,		/* Print a typedef using appropriate syntax */
   m2_val_print,			/* Print a value using appropriate syntax */
   c_value_print,		/* Print a top-level value */
   NULL,				/* Language specific skip_trampoline */
-  value_of_this,		/* value_of_this */
+  NULL,		                /* name_of_this */
   basic_lookup_symbol_nonlocal,	/* lookup_symbol_nonlocal */
   basic_lookup_transparent_type,/* lookup_transparent_type */
   NULL,				/* Language specific symbol demangler */
-  NULL,				/* Language specific class_name_from_physname */
+  NULL,				/* Language specific
+				   class_name_from_physname */
   m2_op_print_tab,		/* expression operators for printing */
   0,				/* arrays are first-class (not c-style) */
   0,				/* String lower bound */
@@ -388,6 +400,7 @@ const struct language_defn m2_language_defn =
   m2_language_arch_info,
   default_print_array_index,
   default_pass_by_reference,
+  default_get_string,
   LANG_MAGIC
 };
 
@@ -398,29 +411,16 @@ build_m2_types (struct gdbarch *gdbarch)
     = GDBARCH_OBSTACK_ZALLOC (gdbarch, struct builtin_m2_type);
 
   /* Modula-2 "pervasive" types.  NOTE:  these can be redefined!!! */
-  builtin_m2_type->builtin_int =
-    init_type (TYPE_CODE_INT,
-	       gdbarch_int_bit (gdbarch) / TARGET_CHAR_BIT,
-	       0, "INTEGER", (struct objfile *) NULL);
-  builtin_m2_type->builtin_card =
-    init_type (TYPE_CODE_INT, 
-	       gdbarch_int_bit (gdbarch) / TARGET_CHAR_BIT,
-	       TYPE_FLAG_UNSIGNED,
-	       "CARDINAL", (struct objfile *) NULL);
-  builtin_m2_type->builtin_real =
-    init_type (TYPE_CODE_FLT,
-	       gdbarch_float_bit (gdbarch) / TARGET_CHAR_BIT,
-	       0,
-	       "REAL", (struct objfile *) NULL);
-  builtin_m2_type->builtin_char =
-    init_type (TYPE_CODE_CHAR, TARGET_CHAR_BIT / TARGET_CHAR_BIT,
-	       TYPE_FLAG_UNSIGNED,
-	       "CHAR", (struct objfile *) NULL);
-  builtin_m2_type->builtin_bool =
-    init_type (TYPE_CODE_BOOL, 
-	       gdbarch_int_bit (gdbarch) / TARGET_CHAR_BIT,
-	       TYPE_FLAG_UNSIGNED,
-	       "BOOLEAN", (struct objfile *) NULL);
+  builtin_m2_type->builtin_int
+    = arch_integer_type (gdbarch, gdbarch_int_bit (gdbarch), 0, "INTEGER");
+  builtin_m2_type->builtin_card
+    = arch_integer_type (gdbarch, gdbarch_int_bit (gdbarch), 1, "CARDINAL");
+  builtin_m2_type->builtin_real
+    = arch_float_type (gdbarch, gdbarch_float_bit (gdbarch), "REAL", NULL);
+  builtin_m2_type->builtin_char
+    = arch_character_type (gdbarch, TARGET_CHAR_BIT, 1, "CHAR");
+  builtin_m2_type->builtin_bool
+    = arch_boolean_type (gdbarch, gdbarch_int_bit (gdbarch), 1, "BOOLEAN");
 
   return builtin_m2_type;
 }

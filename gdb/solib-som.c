@@ -1,6 +1,7 @@
 /* Handle SOM shared libraries.
 
-   Copyright (C) 2004, 2005, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -29,14 +30,17 @@
 #include "hppa-tdep.h"
 #include "solist.h"
 #include "solib.h"
+#include "solib-som.h"
+
+#include <string.h>
 
 #undef SOLIB_SOM_DBG 
 
 /* These ought to be defined in some public interface, but aren't.  They
    define the meaning of the various bits in the distinguished __dld_flags
    variable that is declared in every debuggable a.out on HP-UX, and that
-   is shared between the debugger and the dynamic linker.
- */
+   is shared between the debugger and the dynamic linker.  */
+
 #define DLD_FLAGS_MAPPRIVATE    0x1
 #define DLD_FLAGS_HOOKVALID     0x2
 #define DLD_FLAGS_LISTVALID     0x4
@@ -44,7 +48,8 @@
 
 struct lm_info
   {
-    /* Version of this structure (it is expected to change again in hpux10).  */
+    /* Version of this structure (it is expected to change again in
+       hpux10).  */
     unsigned char struct_version;
 
     /* Binding mode for this library.  */
@@ -82,8 +87,8 @@ struct lm_info
   };
 
 /* These addresses should be filled in by som_solib_create_inferior_hook.
-   They are also used elsewhere in this module.
- */
+   They are also used elsewhere in this module.  */
+
 typedef struct
   {
     CORE_ADDR address;
@@ -91,7 +96,7 @@ typedef struct
   }
 addr_and_unwind_t;
 
-/* When adding fields, be sure to clear them in _initialize_som_solib. */
+/* When adding fields, be sure to clear them in _initialize_som_solib.  */
 static struct
   {
     int is_valid;
@@ -107,7 +112,7 @@ dld_cache;
 
 static void
 som_relocate_section_addresses (struct so_list *so,
-				struct section_table *sec)
+				struct target_section *sec)
 {
   flagword aflag = bfd_get_section_flags(so->abfd, sec->the_bfd_section);
 
@@ -124,6 +129,37 @@ som_relocate_section_addresses (struct so_list *so,
   else
     ;
 }
+
+
+/* Variable storing HP-UX major release number.
+
+   On non-native system, simply assume that the major release number
+   is 11.  On native systems, hppa-hpux-nat.c initialization code
+   sets this number to the real one on startup.
+   
+   We cannot compute this value here, because we need to make a native
+   call to "uname".  We are are not allowed to do that from here, as
+   this file is used for both native and cross debugging.  */
+
+#define DEFAULT_HPUX_MAJOR_RELEASE 11
+int hpux_major_release = DEFAULT_HPUX_MAJOR_RELEASE;
+
+static int
+get_hpux_major_release (void)
+{
+  return hpux_major_release;
+}
+
+/* DL header flag defines.  */
+#define SHLIB_TEXT_PRIVATE_ENABLE 0x4000
+
+/* The DL header is documented in <shl.h>.  We are only interested
+   in the flags field to determine whether the executable wants shared
+   libraries mapped private.  */
+struct {
+    short junk[37];
+    short flags;
+} dl_header;
 
 /* This hook gets called just before the first instruction in the
    inferior process is executed.
@@ -146,17 +182,14 @@ som_relocate_section_addresses (struct so_list *so,
    means running until the "_start" is called.  */
 
 static void
-som_solib_create_inferior_hook (void)
+som_solib_create_inferior_hook (int from_tty)
 {
+  enum bfd_endian byte_order = gdbarch_byte_order (target_gdbarch);
   struct minimal_symbol *msymbol;
   unsigned int dld_flags, status, have_endo;
   asection *shlib_info;
   char buf[4];
   CORE_ADDR anaddr;
-
-  /* First, remove all the solib event breakpoints.  Their addresses
-     may have changed since the last time we ran the program.  */
-  remove_solib_event_breakpoints ();
 
   if (symfile_objfile == NULL)
     return;
@@ -170,6 +203,10 @@ som_solib_create_inferior_hook (void)
   if (bfd_section_size (symfile_objfile->obfd, shlib_info) == 0)
     return;
 
+  /* Read the DL header.  */
+  bfd_get_section_contents (symfile_objfile->obfd, shlib_info,
+			    (char *) &dl_header, 0, sizeof (dl_header));
+
   have_endo = 0;
   /* Slam the pid of the process into __d_pid.
 
@@ -182,7 +219,7 @@ som_solib_create_inferior_hook (void)
     goto keep_going;
 
   anaddr = SYMBOL_VALUE_ADDRESS (msymbol);
-  store_unsigned_integer (buf, 4, PIDGET (inferior_ptid));
+  store_unsigned_integer (buf, 4, byte_order, PIDGET (inferior_ptid));
   status = target_write_memory (anaddr, buf, 4);
   if (status != 0)
     {
@@ -200,8 +237,8 @@ GDB will be unable to track shl_load/shl_unload calls"));
      Note that the above is the pre-HP-UX 9.0 behaviour.  At 9.0 and above,
      the dld provides an export stub named "__d_trap" as well as the
      function named "__d_trap" itself, but doesn't provide "_DLD_HOOK".
-     We'll look first for the old flavor and then the new.
-   */
+     We'll look first for the old flavor and then the new.  */
+
   msymbol = lookup_minimal_symbol ("_DLD_HOOK", NULL, symfile_objfile);
   if (msymbol == NULL)
     msymbol = lookup_minimal_symbol ("__d_trap", NULL, symfile_objfile);
@@ -225,7 +262,7 @@ GDB will be unable to track shl_load/shl_unload calls"));
       anaddr = SYMBOL_VALUE (msymbol);
       dld_cache.hook_stub.address = anaddr;
     }
-  store_unsigned_integer (buf, 4, anaddr);
+  store_unsigned_integer (buf, 4, byte_order, anaddr);
 
   msymbol = lookup_minimal_symbol ("__dld_hook", NULL, symfile_objfile);
   if (msymbol == NULL)
@@ -250,7 +287,8 @@ Suggest linking with /opt/langtools/lib/end.o.\n\
 GDB will be unable to track shl_load/shl_unload calls"));
       goto keep_going;
     }
-  create_solib_event_breakpoint (SYMBOL_VALUE_ADDRESS (msymbol));
+  create_solib_event_breakpoint (target_gdbarch,
+				 SYMBOL_VALUE_ADDRESS (msymbol));
 
   /* We have all the support usually found in end.o, so we can track
      shl_load and shl_unload calls.  */
@@ -272,18 +310,33 @@ keep_going:
   status = target_read_memory (anaddr, buf, 4);
   if (status != 0)
     error (_("Unable to read __dld_flags."));
-  dld_flags = extract_unsigned_integer (buf, 4);
+  dld_flags = extract_unsigned_integer (buf, 4, byte_order);
+
+  /* If the libraries were not mapped private on HP-UX 11 and later, warn
+     the user.  On HP-UX 10 and earlier, there is no easy way to specify
+     that shared libraries should be privately mapped.  So, we just force
+     private mapping.  */
+  if (get_hpux_major_release () >= 11
+      && (dl_header.flags & SHLIB_TEXT_PRIVATE_ENABLE) == 0
+      && (dld_flags & DLD_FLAGS_MAPPRIVATE) == 0)
+    warning
+      (_("\
+Private mapping of shared library text was not specified\n\
+by the executable; setting a breakpoint in a shared library which\n\
+is not privately mapped will not work.  See the HP-UX 11i v3 chatr\n\
+manpage for methods to privately map shared library text."));
 
   /* Turn on the flags we care about.  */
-  dld_flags |= DLD_FLAGS_MAPPRIVATE;
+  if (get_hpux_major_release () < 11)
+    dld_flags |= DLD_FLAGS_MAPPRIVATE;
   if (have_endo)
     dld_flags |= DLD_FLAGS_HOOKVALID;
-  store_unsigned_integer (buf, 4, dld_flags);
+  store_unsigned_integer (buf, 4, byte_order, dld_flags);
   status = target_write_memory (anaddr, buf, 4);
   if (status != 0)
     error (_("Unable to write __dld_flags."));
 
-  /* Now find the address of _start and set a breakpoint there. 
+  /* Now find the address of _start and set a breakpoint there.
      We still need this code for two reasons:
 
      * Not all sites have /opt/langtools/lib/end.o, so it's not always
@@ -299,9 +352,9 @@ keep_going:
   anaddr = SYMBOL_VALUE_ADDRESS (msymbol);
 
   /* Make the breakpoint at "_start" a shared library event breakpoint.  */
-  create_solib_event_breakpoint (anaddr);
+  create_solib_event_breakpoint (target_gdbarch, anaddr);
 
-  clear_symtab_users ();
+  clear_symtab_users (0);
 }
 
 static void
@@ -320,8 +373,8 @@ som_solib_desire_dynamic_linker_symbols (void)
      we've no work to do.
 
      (If you add clauses to this test, be sure to likewise update the
-     test within the loop.)
-   */
+     test within the loop.)  */
+
   if (dld_cache.is_valid)
     return;
 
@@ -338,7 +391,7 @@ som_solib_desire_dynamic_linker_symbols (void)
 							  objfile);
     if (dld_msymbol != NULL)
       {
-	if (SYMBOL_TYPE (dld_msymbol) == mst_solib_trampoline)
+	if (MSYMBOL_TYPE (dld_msymbol) == mst_solib_trampoline)
 	  {
 	    u = find_unwind_entry (SYMBOL_VALUE (dld_msymbol));
 	    if ((u != NULL) && (u->stub_unwind.stub_type == EXPORT))
@@ -360,8 +413,8 @@ som_solib_desire_dynamic_linker_symbols (void)
 	   cover the body of "shl_unload", the second being 4 bytes past
 	   the end of the first.  This is a large hack to handle that
 	   case, but since I don't seem to have any legitimate way to
-	   look for this thing via the symbol table...
-	 */
+	   look for this thing via the symbol table...  */
+
 	if (dld_cache.unload.unwind != NULL)
 	  {
 	    u = find_unwind_entry (dld_cache.unload.unwind->region_end + 4);
@@ -377,7 +430,7 @@ som_solib_desire_dynamic_linker_symbols (void)
 							  objfile);
     if (dld_msymbol != NULL)
       {
-	if (SYMBOL_TYPE (dld_msymbol) == mst_solib_trampoline)
+	if (MSYMBOL_TYPE (dld_msymbol) == mst_solib_trampoline)
 	  {
 	    u = find_unwind_entry (SYMBOL_VALUE (dld_msymbol));
 	    if ((u != NULL) && (u->stub_unwind.stub_type == EXPORT))
@@ -388,7 +441,7 @@ som_solib_desire_dynamic_linker_symbols (void)
 	  }
       }
 
-    /* Did we find everything we were looking for?  If so, stop. */
+    /* Did we find everything we were looking for?  If so, stop.  */
     if ((dld_cache.load.address != 0)
 	&& (dld_cache.load_stub.address != 0)
 	&& (dld_cache.unload.address != 0)
@@ -403,8 +456,7 @@ som_solib_desire_dynamic_linker_symbols (void)
   dld_cache.hook_stub.unwind = find_unwind_entry (dld_cache.hook_stub.address);
 
   /* We're prepared not to find some of these symbols, which is why
-     this function is a "desire" operation, and not a "require".
-   */
+     this function is a "desire" operation, and not a "require".  */
 }
 
 static int
@@ -420,17 +472,17 @@ som_in_dynsym_resolve_code (CORE_ADDR pc)
      weren't mapped to a (writeable) private region.  However, in
      that case the debugger probably isn't able to set the fundamental
      breakpoint in the dld callback anyways, so this hack should be
-     safe.
-   */
+     safe.  */
+
   if ((pc & (CORE_ADDR) 0xc0000000) == (CORE_ADDR) 0xc0000000)
     return 1;
 
   /* Cache the address of some symbols that are part of the dynamic
-     linker, if not already known.
-   */
+     linker, if not already known.  */
+
   som_solib_desire_dynamic_linker_symbols ();
 
-  /* Are we in the dld callback?  Or its export stub? */
+  /* Are we in the dld callback?  Or its export stub?  */
   u_pc = find_unwind_entry (pc);
   if (u_pc == NULL)
     return 0;
@@ -438,7 +490,7 @@ som_in_dynsym_resolve_code (CORE_ADDR pc)
   if ((u_pc == dld_cache.hook.unwind) || (u_pc == dld_cache.hook_stub.unwind))
     return 1;
 
-  /* Or the interface of the dld (i.e., "shl_load" or friends)? */
+  /* Or the interface of the dld (i.e., "shl_load" or friends)?  */
   if ((u_pc == dld_cache.load.unwind)
       || (u_pc == dld_cache.unload.unwind)
       || (u_pc == dld_cache.unload2.unwind)
@@ -446,7 +498,7 @@ som_in_dynsym_resolve_code (CORE_ADDR pc)
       || (u_pc == dld_cache.unload_stub.unwind))
     return 1;
 
-  /* Apparently this address isn't part of the dld's text. */
+  /* Apparently this address isn't part of the dld's text.  */
   return 0;
 }
 
@@ -472,6 +524,7 @@ struct dld_list {
 static CORE_ADDR
 link_map_start (void)
 {
+  enum bfd_endian byte_order = gdbarch_byte_order (target_gdbarch);
   struct minimal_symbol *sym;
   CORE_ADDR addr;
   char buf[4];
@@ -482,15 +535,9 @@ link_map_start (void)
     error (_("Unable to find __dld_flags symbol in object file."));
   addr = SYMBOL_VALUE_ADDRESS (sym);
   read_memory (addr, buf, 4);
-  dld_flags = extract_unsigned_integer (buf, 4);
+  dld_flags = extract_unsigned_integer (buf, 4, byte_order);
   if ((dld_flags & DLD_FLAGS_LISTVALID) == 0)
     error (_("__dld_list is not valid according to __dld_flags."));
-
-  /* If the libraries were not mapped private, warn the user.  */
-  if ((dld_flags & DLD_FLAGS_MAPPRIVATE) == 0)
-    warning (_("The shared libraries were not privately mapped; setting a\n"
-	     "breakpoint in a shared library will not work until you rerun the "
-	     "program.\n"));
 
   sym = lookup_minimal_symbol ("__dld_list", NULL, NULL);
   if (!sym)
@@ -509,15 +556,15 @@ link_map_start (void)
     addr = SYMBOL_VALUE_ADDRESS (sym);
 
   read_memory (addr, buf, 4);
-  addr = extract_unsigned_integer (buf, 4);
+  addr = extract_unsigned_integer (buf, 4, byte_order);
   if (addr == 0)
     return 0;
 
   read_memory (addr, buf, 4);
-  return extract_unsigned_integer (buf, 4);
+  return extract_unsigned_integer (buf, 4, byte_order);
 }
 
-/* Does this so's name match the main binary? */
+/* Does this so's name match the main binary?  */
 static int
 match_main (const char *name)
 {
@@ -527,6 +574,7 @@ match_main (const char *name)
 static struct so_list *
 som_current_sos (void)
 {
+  enum bfd_endian byte_order = gdbarch_byte_order (target_gdbarch);
   CORE_ADDR lm;
   struct so_list *head = 0;
   struct so_list **link_ptr = &head;
@@ -551,7 +599,7 @@ som_current_sos (void)
       read_memory (lm, (gdb_byte *)&dbuf, sizeof (struct dld_list));
 
       addr = extract_unsigned_integer ((gdb_byte *)&dbuf.name,
-				       sizeof (dbuf.name));
+				       sizeof (dbuf.name), byte_order);
       target_read_string (addr, &namebuf, SO_NAME_MAX_PATH_SIZE - 1, &errcode);
       if (errcode != 0)
 	warning (_("Can't read pathname for load map: %s."),
@@ -572,7 +620,8 @@ som_current_sos (void)
 	    lmi->lm_addr = lm;
 
 #define EXTRACT(_fld) \
-  extract_unsigned_integer ((gdb_byte *)&dbuf._fld, sizeof (dbuf._fld));
+  extract_unsigned_integer ((gdb_byte *)&dbuf._fld, \
+			    sizeof (dbuf._fld), byte_order);
 
 	    lmi->text_addr = EXTRACT (text_addr);
 	    tmp = EXTRACT (info);
@@ -587,31 +636,32 @@ som_current_sos (void)
 	    lmi->got_value = EXTRACT (got_value);
 	    tmp = EXTRACT (tsd_start_addr_ptr);
 	    read_memory (tmp, tsdbuf, 4);
-	    lmi->tsd_start_addr = extract_unsigned_integer (tsdbuf, 4);
+	    lmi->tsd_start_addr
+	      = extract_unsigned_integer (tsdbuf, 4, byte_order);
 
 #ifdef SOLIB_SOM_DBG
-	    printf ("\n+ library \"%s\" is described at 0x%s\n", new->so_name, 
-	    	    paddr_nz (lm));
+	    printf ("\n+ library \"%s\" is described at %s\n", new->so_name,
+	    	    paddress (target_gdbarch, lm));
 	    printf ("  'version' is %d\n", new->lm_info->struct_version);
 	    printf ("  'bind_mode' is %d\n", new->lm_info->bind_mode);
 	    printf ("  'library_version' is %d\n", 
 	    	    new->lm_info->library_version);
-	    printf ("  'text_addr' is 0x%s\n", 
-	    	    paddr_nz (new->lm_info->text_addr));
-	    printf ("  'text_link_addr' is 0x%s\n", 
-	    	    paddr_nz (new->lm_info->text_link_addr));
-	    printf ("  'text_end' is 0x%s\n", 
-	    	    paddr_nz (new->lm_info->text_end));
-	    printf ("  'data_start' is 0x%s\n", 
-	    	    paddr_nz (new->lm_info->data_start));
-	    printf ("  'bss_start' is 0x%s\n", 
-	    	    paddr_nz (new->lm_info->bss_start));
-	    printf ("  'data_end' is 0x%s\n", 
-	    	    paddr_nz (new->lm_info->data_end));
-	    printf ("  'got_value' is %s\n", 
-	    	    paddr_nz (new->lm_info->got_value));
-	    printf ("  'tsd_start_addr' is 0x%s\n", 
-	    	    paddr_nz (new->lm_info->tsd_start_addr));
+	    printf ("  'text_addr' is %s\n",
+	    	    paddress (target_gdbarch, new->lm_info->text_addr));
+	    printf ("  'text_link_addr' is %s\n",
+	    	    paddress (target_gdbarch, new->lm_info->text_link_addr));
+	    printf ("  'text_end' is %s\n",
+	    	    paddress (target_gdbarch, new->lm_info->text_end));
+	    printf ("  'data_start' is %s\n",
+	    	    paddress (target_gdbarch, new->lm_info->data_start));
+	    printf ("  'bss_start' is %s\n",
+	    	    paddress (target_gdbarch, new->lm_info->bss_start));
+	    printf ("  'data_end' is %s\n",
+	    	    paddress (target_gdbarch, new->lm_info->data_end));
+	    printf ("  'got_value' is %s\n",
+	    	    paddress (target_gdbarch, new->lm_info->got_value));
+	    printf ("  'tsd_start_addr' is %s\n",
+	    	    paddress (target_gdbarch, new->lm_info->tsd_start_addr));
 #endif
 
 	    new->addr_low = lmi->text_addr;
@@ -641,6 +691,7 @@ som_current_sos (void)
 static int
 som_open_symbol_file_object (void *from_ttyp)
 {
+  enum bfd_endian byte_order = gdbarch_byte_order (target_gdbarch);
   CORE_ADDR lm, l_name;
   char *filename;
   int errcode;
@@ -648,19 +699,19 @@ som_open_symbol_file_object (void *from_ttyp)
   char buf[4];
 
   if (symfile_objfile)
-    if (!query ("Attempt to reload symbols from process? "))
+    if (!query (_("Attempt to reload symbols from process? ")))
       return 0;
 
   /* First link map member should be the executable.  */
   if ((lm = link_map_start ()) == 0)
-    return 0;	/* failed somehow... */
+    return 0;	/* failed somehow...  */
 
   /* Read address of name from target memory to GDB.  */
   read_memory (lm + offsetof (struct dld_list, name), buf, 4);
 
   /* Convert the address to host format.  Assume that the address is
      unsigned.  */
-  l_name = extract_unsigned_integer (buf, 4);
+  l_name = extract_unsigned_integer (buf, 4, byte_order);
 
   if (l_name == 0)
     return 0;		/* No filename.  */
@@ -716,10 +767,11 @@ som_solib_get_got_by_pc (CORE_ADDR addr)
   return got_value;
 }
 
-/* Return the address of the handle of the shared library in which ADDR belongs.
-   If ADDR isn't in any known shared library, return zero.  */
-/* this function is used in initialize_hp_cxx_exception_support in 
-   hppa-hpux-tdep.c  */
+/* Return the address of the handle of the shared library in which
+   ADDR belongs.  If ADDR isn't in any known shared library, return
+   zero.  */
+/* This function is used in initialize_hp_cxx_exception_support in 
+   hppa-hpux-tdep.c.  */
 
 static CORE_ADDR
 som_solib_get_solib_by_pc (CORE_ADDR addr)
@@ -757,20 +809,22 @@ _initialize_som_solib (void)
   som_so_ops.current_sos = som_current_sos;
   som_so_ops.open_symbol_file_object = som_open_symbol_file_object;
   som_so_ops.in_dynsym_resolve_code = som_in_dynsym_resolve_code;
+  som_so_ops.bfd_open = solib_bfd_open;
 }
 
-void som_solib_select (struct gdbarch *gdbarch)
+void
+som_solib_select (struct gdbarch *gdbarch)
 {
   struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
-  set_solib_ops (gdbarch, &som_so_ops);
 
+  set_solib_ops (gdbarch, &som_so_ops);
   tdep->solib_thread_start_addr = som_solib_thread_start_addr;
   tdep->solib_get_got_by_pc = som_solib_get_got_by_pc;
   tdep->solib_get_solib_by_pc = som_solib_get_solib_by_pc;
 }
 
 /* The rest of these functions are not part of the solib interface; they 
-   are used by somread.c or hppa-hpux-tdep.c */
+   are used by somread.c or hppa-hpux-tdep.c.  */
 
 int
 som_solib_section_offsets (struct objfile *objfile,

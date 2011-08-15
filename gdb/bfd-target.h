@@ -1,6 +1,7 @@
 /* Very simple "bfd" target, for GDB, the GNU debugger.
 
-   Copyright (C) 2003, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -27,11 +28,5 @@ struct target_ops;
    close, it will also close the corresponding BFD (which is like
    freopen and fdopen).  */
 struct target_ops *target_bfd_reopen (struct bfd *bfd);
-
-/* Map over ABFD's sections, creating corresponding entries in the
-   target's section table.  */
-
-void build_target_sections_from_bfd (struct target_ops *targ,
-				     struct bfd *abfd);
 
 #endif

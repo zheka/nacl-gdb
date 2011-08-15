@@ -1,3 +1,50 @@
+2011-06-27  Jan Kratochvil  <jan.kratochvil@redhat.com>
+
+	Avoid free from a signal handler.
+	* Makefile.in (xmalloc.o): Add readline.h.
+	* xmalloc.c: Include readline.h.
+	(xmalloc, xrealloc): Disable them by #if 0.
+	(xfree): Return on RL_STATE_SIGHANDLER, #undef free.
+	* xmalloc.h (xfree, free): New definition.
+
+2011-03-04  Michael Snyder  <msnyder@vmware.com>
+
+	* bind.c (rl_function_dumper): Free allocated memory.
+
+2009-08-22  Ralf Wildenhues  <Ralf.Wildenhues@gmx.de>
+
+	* configure: Regenerate.
+
+	* configure.in: m4_include toplevel config/override.m4.
+	* configure: Regenerate.
+
+2009-07-30  Ralf Wildenhues  <Ralf.Wildenhues@gmx.de>
+
+	* Makefile.in (datarootdir): New variable.
+	* doc/Makefile.in (datarootdir): New variable.
+	* shlib/Makefile.in (datarootdir): New variable.
+
+2009-04-17  Carlos O'Donell  <carlos@codesourcery.com>
+
+	* Makefile.in: Add html target.  Add dummy install-html and
+	install-pdf targets.
+
+2008-08-10  Pedro Alves  <pedro@codesourcery.com>
+
+	Build fixes for DJGPP.
+
+	* signals.c (rl_set_sighandler): Guard access to SIGWINCH.
+	* wcwidth.c [__GO32__]: Include wctype.h before wchar.h.
+
+2008-03-24  Jan Kratochvil  <jan.kratochvil@redhat.com>
+
+	PR gdb/544
+	* rltty.c (block_sigint, release_sigint): Rename to...
+	(_rl_block_sigint, _rl_release_sigint): ...these and make them global.
+	* rltty.h (_rl_block_sigint, _rl_release_sigint): New prototypes.
+	* display.c (rl_redisplay): Wrap the function by the calls to
+	_RL_BLOCK_SIGINT and _RL_RELEASE_SIGINT.
+
 2007-09-01  Daniel Jacobowitz  <dan@codesourcery.com>
 
 	PR gdb/2138

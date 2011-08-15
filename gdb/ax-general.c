@@ -1,5 +1,6 @@
 /* Functions for manipulating expressions designed to be executed on the agent
-   Copyright (C) 1998, 1999, 2000, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 1998, 1999, 2000, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -27,6 +28,8 @@
 #include "value.h"
 #include "gdb_string.h"
 
+#include "user-regs.h"
+
 static void grow_expr (struct agent_expr *x, int n);
 
 static void append_const (struct agent_expr *x, LONGEST val, int n);
@@ -39,14 +42,22 @@ static void generic_ext (struct agent_expr *x, enum agent_op op, int n);
 
 /* Allocate a new, empty agent expression.  */
 struct agent_expr *
-new_agent_expr (CORE_ADDR scope)
+new_agent_expr (struct gdbarch *gdbarch, CORE_ADDR scope)
 {
   struct agent_expr *x = xmalloc (sizeof (*x));
+
   x->len = 0;
   x->size = 1;			/* Change this to a larger value once
 				   reallocation code is tested.  */
   x->buf = xmalloc (x->size);
+
+  x->gdbarch = gdbarch;
   x->scope = scope;
+
+  /* Bit vector for registers used.  */
+  x->reg_mask_len = 1;
+  x->reg_mask = xmalloc (x->reg_mask_len * sizeof (x->reg_mask[0]));
+  memset (x->reg_mask, 0, x->reg_mask_len * sizeof (x->reg_mask[0]));
 
   return x;
 }
@@ -56,6 +67,7 @@ void
 free_agent_expr (struct agent_expr *x)
 {
   xfree (x->buf);
+  xfree (x->reg_mask);
   xfree (x);
 }
 
@@ -131,6 +143,18 @@ ax_simple (struct agent_expr *x, enum agent_op op)
   x->buf[x->len++] = op;
 }
 
+/* Append a pick operator to EXPR.  DEPTH is the stack item to pick,
+   with 0 being top of stack.  */
+
+void
+ax_pick (struct agent_expr *x, int depth)
+{
+  if (depth < 0 || depth > 255)
+    error (_("GDB bug: ax-general.c (ax_pick): stack depth out of range"));
+  ax_simple (x, aop_pick);
+  append_const (x, 1, depth);
+}
+
 
 /* Append a sign-extension or zero-extension instruction to EXPR, to
    extend an N-bit value.  */
@@ -142,7 +166,8 @@ generic_ext (struct agent_expr *x, enum agent_op op, int n)
     error (_("GDB bug: ax-general.c (generic_ext): bit count out of range"));
   /* That had better be enough range.  */
   if (sizeof (LONGEST) * 8 > 255)
-    error (_("GDB bug: ax-general.c (generic_ext): opcode has inadequate range"));
+    error (_("GDB bug: ax-general.c (generic_ext): "
+	     "opcode has inadequate range"));
 
   grow_expr (x, 2);
   x->buf[x->len++] = op;
@@ -172,7 +197,8 @@ ax_trace_quick (struct agent_expr *x, int n)
 {
   /* N must fit in a byte.  */
   if (n < 0 || n > 255)
-    error (_("GDB bug: ax-general.c (ax_trace_quick): size out of range for trace_quick"));
+    error (_("GDB bug: ax-general.c (ax_trace_quick): "
+	     "size out of range for trace_quick"));
 
   grow_expr (x, 2);
   x->buf[x->len++] = aop_trace_quick;
@@ -230,13 +256,13 @@ ax_const_l (struct agent_expr *x, LONGEST l)
      use the shortest representation.  */
   for (op = 0, size = 8; size < 64; size *= 2, op++)
     {
-      LONGEST lim = 1 << (size - 1);
+      LONGEST lim = ((LONGEST) 1) << (size - 1);
 
       if (-lim <= l && l <= lim - 1)
         break;
     }
 
-  /* Emit the right opcode... */
+  /* Emit the right opcode...  */
   ax_simple (x, ops[op]);
 
   /* Emit the low SIZE bytes as an unsigned number.  We know that
@@ -253,7 +279,8 @@ void
 ax_const_d (struct agent_expr *x, LONGEST d)
 {
   /* FIXME: floating-point support not present yet.  */
-  error (_("GDB bug: ax-general.c (ax_const_d): floating point not supported yet"));
+  error (_("GDB bug: ax-general.c (ax_const_d): "
+	   "floating point not supported yet"));
 }
 
 
@@ -262,13 +289,46 @@ ax_const_d (struct agent_expr *x, LONGEST d)
 void
 ax_reg (struct agent_expr *x, int reg)
 {
-  /* Make sure the register number is in range.  */
-  if (reg < 0 || reg > 0xffff)
-    error (_("GDB bug: ax-general.c (ax_reg): register number out of range"));
+  if (reg >= gdbarch_num_regs (x->gdbarch))
+    {
+      /* This is a pseudo-register.  */
+      if (!gdbarch_ax_pseudo_register_push_stack_p (x->gdbarch))
+	error (_("'%s' is a pseudo-register; "
+		 "GDB cannot yet trace its contents."),
+	       user_reg_map_regnum_to_name (x->gdbarch, reg));
+      if (gdbarch_ax_pseudo_register_push_stack (x->gdbarch, x, reg))
+	error (_("Trace '%s' failed."),
+	       user_reg_map_regnum_to_name (x->gdbarch, reg));
+    }
+  else
+    {
+      /* Make sure the register number is in range.  */
+      if (reg < 0 || reg > 0xffff)
+        error (_("GDB bug: ax-general.c (ax_reg): "
+		 "register number out of range"));
+      grow_expr (x, 3);
+      x->buf[x->len] = aop_reg;
+      x->buf[x->len + 1] = (reg >> 8) & 0xff;
+      x->buf[x->len + 2] = (reg) & 0xff;
+      x->len += 3;
+    }
+}
+
+/* Assemble code to operate on a trace state variable.  */
+
+void
+ax_tsv (struct agent_expr *x, enum agent_op op, int num)
+{
+  /* Make sure the tsv number is in range.  */
+  if (num < 0 || num > 0xffff)
+    internal_error (__FILE__, __LINE__, 
+		    _("ax-general.c (ax_tsv): variable "
+		      "number is %d, out of range"), num);
+
   grow_expr (x, 3);
-  x->buf[x->len] = aop_reg;
-  x->buf[x->len + 1] = (reg >> 8) & 0xff;
-  x->buf[x->len + 2] = (reg) & 0xff;
+  x->buf[x->len] = op;
+  x->buf[x->len + 1] = (num >> 8) & 0xff;
+  x->buf[x->len + 2] = (num) & 0xff;
   x->len += 3;
 }
 
@@ -279,55 +339,11 @@ ax_reg (struct agent_expr *x, int reg)
 
 struct aop_map aop_map[] =
 {
-  {0, 0, 0, 0, 0},
-  {"float", 0, 0, 0, 0},	/* 0x01 */
-  {"add", 0, 0, 2, 1},		/* 0x02 */
-  {"sub", 0, 0, 2, 1},		/* 0x03 */
-  {"mul", 0, 0, 2, 1},		/* 0x04 */
-  {"div_signed", 0, 0, 2, 1},	/* 0x05 */
-  {"div_unsigned", 0, 0, 2, 1},	/* 0x06 */
-  {"rem_signed", 0, 0, 2, 1},	/* 0x07 */
-  {"rem_unsigned", 0, 0, 2, 1},	/* 0x08 */
-  {"lsh", 0, 0, 2, 1},		/* 0x09 */
-  {"rsh_signed", 0, 0, 2, 1},	/* 0x0a */
-  {"rsh_unsigned", 0, 0, 2, 1},	/* 0x0b */
-  {"trace", 0, 0, 2, 0},	/* 0x0c */
-  {"trace_quick", 1, 0, 1, 1},	/* 0x0d */
-  {"log_not", 0, 0, 1, 1},	/* 0x0e */
-  {"bit_and", 0, 0, 2, 1},	/* 0x0f */
-  {"bit_or", 0, 0, 2, 1},	/* 0x10 */
-  {"bit_xor", 0, 0, 2, 1},	/* 0x11 */
-  {"bit_not", 0, 0, 1, 1},	/* 0x12 */
-  {"equal", 0, 0, 2, 1},	/* 0x13 */
-  {"less_signed", 0, 0, 2, 1},	/* 0x14 */
-  {"less_unsigned", 0, 0, 2, 1},	/* 0x15 */
-  {"ext", 1, 0, 1, 1},		/* 0x16 */
-  {"ref8", 0, 8, 1, 1},		/* 0x17 */
-  {"ref16", 0, 16, 1, 1},	/* 0x18 */
-  {"ref32", 0, 32, 1, 1},	/* 0x19 */
-  {"ref64", 0, 64, 1, 1},	/* 0x1a */
-  {"ref_float", 0, 0, 1, 1},	/* 0x1b */
-  {"ref_double", 0, 0, 1, 1},	/* 0x1c */
-  {"ref_long_double", 0, 0, 1, 1},	/* 0x1d */
-  {"l_to_d", 0, 0, 1, 1},	/* 0x1e */
-  {"d_to_l", 0, 0, 1, 1},	/* 0x1f */
-  {"if_goto", 2, 0, 1, 0},	/* 0x20 */
-  {"goto", 2, 0, 0, 0},		/* 0x21 */
-  {"const8", 1, 8, 0, 1},	/* 0x22 */
-  {"const16", 2, 16, 0, 1},	/* 0x23 */
-  {"const32", 4, 32, 0, 1},	/* 0x24 */
-  {"const64", 8, 64, 0, 1},	/* 0x25 */
-  {"reg", 2, 0, 0, 1},		/* 0x26 */
-  {"end", 0, 0, 0, 0},		/* 0x27 */
-  {"dup", 0, 0, 1, 2},		/* 0x28 */
-  {"pop", 0, 0, 1, 0},		/* 0x29 */
-  {"zero_ext", 1, 0, 1, 1},	/* 0x2a */
-  {"swap", 0, 0, 2, 2},		/* 0x2b */
-  {0, 0, 0, 0, 0},		/* 0x2c */
-  {0, 0, 0, 0, 0},		/* 0x2d */
-  {0, 0, 0, 0, 0},		/* 0x2e */
-  {0, 0, 0, 0, 0},		/* 0x2f */
-  {"trace16", 2, 0, 1, 1},	/* 0x30 */
+  {0, 0, 0, 0, 0}
+#define DEFOP(NAME, SIZE, DATA_SIZE, CONSUMED, PRODUCED, VALUE) \
+  , { # NAME, SIZE, DATA_SIZE, CONSUMED, PRODUCED }
+#include "ax.def"
+#undef DEFOP
 };
 
 
@@ -337,6 +353,12 @@ ax_print (struct ui_file *f, struct agent_expr *x)
 {
   int i;
   int is_float = 0;
+
+  fprintf_filtered (f, _("Scope: %s\n"), paddress (x->gdbarch, x->scope));
+  fprintf_filtered (f, _("Reg mask:"));
+  for (i = 0; i < x->reg_mask_len; ++i)
+    fprintf_filtered (f, _(" %02x"), x->reg_mask[i]);
+  fprintf_filtered (f, _("\n"));
 
   /* Check the size of the name array against the number of entries in
      the enum, to catch additions that people didn't sync.  */
@@ -377,18 +399,51 @@ ax_print (struct ui_file *f, struct agent_expr *x)
     }
 }
 
-
-/* Given an agent expression AX, fill in an agent_reqs structure REQS
-   describing it.  */
+/* Add register REG to the register mask for expression AX.  */
 void
-ax_reqs (struct agent_expr *ax, struct agent_reqs *reqs)
+ax_reg_mask (struct agent_expr *ax, int reg)
+{
+  if (reg >= gdbarch_num_regs (ax->gdbarch))
+    {
+      /* This is a pseudo-register.  */
+      if (!gdbarch_ax_pseudo_register_collect_p (ax->gdbarch))
+	error (_("'%s' is a pseudo-register; "
+		 "GDB cannot yet trace its contents."),
+	       user_reg_map_regnum_to_name (ax->gdbarch, reg));
+      if (gdbarch_ax_pseudo_register_collect (ax->gdbarch, ax, reg))
+	error (_("Trace '%s' failed."),
+	       user_reg_map_regnum_to_name (ax->gdbarch, reg));
+    }
+  else
+    {
+      int byte = reg / 8;
+
+      /* Grow the bit mask if necessary.  */
+      if (byte >= ax->reg_mask_len)
+        {
+          /* It's not appropriate to double here.  This isn't a
+	     string buffer.  */
+          int new_len = byte + 1;
+          unsigned char *new_reg_mask = xrealloc (ax->reg_mask,
+					          new_len
+					          * sizeof (ax->reg_mask[0]));
+          memset (new_reg_mask + ax->reg_mask_len, 0,
+	          (new_len - ax->reg_mask_len) * sizeof (ax->reg_mask[0]));
+          ax->reg_mask_len = new_len;
+          ax->reg_mask = new_reg_mask;
+        }
+
+      ax->reg_mask[byte] |= 1 << (reg % 8);
+    }
+}
+
+/* Given an agent expression AX, fill in requirements and other descriptive
+   bits.  */
+void
+ax_reqs (struct agent_expr *ax)
 {
   int i;
   int height;
-
-  /* Bit vector for registers used.  */
-  int reg_mask_len = 1;
-  unsigned char *reg_mask = xmalloc (reg_mask_len * sizeof (reg_mask[0]));
 
   /* Jump target table.  targets[i] is non-zero iff we have found a
      jump to offset i.  */
@@ -406,20 +461,18 @@ ax_reqs (struct agent_expr *ax, struct agent_reqs *reqs)
   /* Pointer to a description of the present op.  */
   struct aop_map *op;
 
-  memset (reg_mask, 0, reg_mask_len * sizeof (reg_mask[0]));
   memset (targets, 0, ax->len * sizeof (targets[0]));
   memset (boundary, 0, ax->len * sizeof (boundary[0]));
 
-  reqs->max_height = reqs->min_height = height = 0;
-  reqs->flaw = agent_flaw_none;
-  reqs->max_data_size = 0;
+  ax->max_height = ax->min_height = height = 0;
+  ax->flaw = agent_flaw_none;
+  ax->max_data_size = 0;
 
   for (i = 0; i < ax->len; i += 1 + op->op_size)
     {
       if (ax->buf[i] > (sizeof (aop_map) / sizeof (aop_map[0])))
 	{
-	  reqs->flaw = agent_flaw_bad_instruction;
-	  xfree (reg_mask);
+	  ax->flaw = agent_flaw_bad_instruction;
 	  return;
 	}
 
@@ -427,15 +480,13 @@ ax_reqs (struct agent_expr *ax, struct agent_reqs *reqs)
 
       if (!op->name)
 	{
-	  reqs->flaw = agent_flaw_bad_instruction;
-	  xfree (reg_mask);
+	  ax->flaw = agent_flaw_bad_instruction;
 	  return;
 	}
 
       if (i + 1 + op->op_size > ax->len)
 	{
-	  reqs->flaw = agent_flaw_incomplete_instruction;
-	  xfree (reg_mask);
+	  ax->flaw = agent_flaw_incomplete_instruction;
 	  return;
 	}
 
@@ -444,8 +495,7 @@ ax_reqs (struct agent_expr *ax, struct agent_reqs *reqs)
          source?  */
       if (targets[i] && (heights[i] != height))
 	{
-	  reqs->flaw = agent_flaw_height_mismatch;
-	  xfree (reg_mask);
+	  ax->flaw = agent_flaw_height_mismatch;
 	  return;
 	}
 
@@ -453,14 +503,14 @@ ax_reqs (struct agent_expr *ax, struct agent_reqs *reqs)
       heights[i] = height;
 
       height -= op->consumed;
-      if (height < reqs->min_height)
-	reqs->min_height = height;
+      if (height < ax->min_height)
+	ax->min_height = height;
       height += op->produced;
-      if (height > reqs->max_height)
-	reqs->max_height = height;
+      if (height > ax->max_height)
+	ax->max_height = height;
 
-      if (op->data_size > reqs->max_data_size)
-	reqs->max_data_size = op->data_size;
+      if (op->data_size > ax->max_data_size)
+	ax->max_data_size = op->data_size;
 
       /* For jump instructions, check that the target is a valid
          offset.  If it is, record the fact that that location is a
@@ -471,8 +521,7 @@ ax_reqs (struct agent_expr *ax, struct agent_reqs *reqs)
 	  int target = read_const (ax, i + 1, 2);
 	  if (target < 0 || target >= ax->len)
 	    {
-	      reqs->flaw = agent_flaw_bad_jump;
-	      xfree (reg_mask);
+	      ax->flaw = agent_flaw_bad_jump;
 	      return;
 	    }
 
@@ -482,8 +531,7 @@ ax_reqs (struct agent_expr *ax, struct agent_reqs *reqs)
 	    {
 	      if (heights[target] != height)
 		{
-		  reqs->flaw = agent_flaw_height_mismatch;
-		  xfree (reg_mask);
+		  ax->flaw = agent_flaw_height_mismatch;
 		  return;
 		}
 	    }
@@ -500,8 +548,7 @@ ax_reqs (struct agent_expr *ax, struct agent_reqs *reqs)
 	{
 	  if (!targets[i + 3])
 	    {
-	      reqs->flaw = agent_flaw_hole;
-	      xfree (reg_mask);
+	      ax->flaw = agent_flaw_hole;
 	      return;
 	    }
 
@@ -512,22 +559,8 @@ ax_reqs (struct agent_expr *ax, struct agent_reqs *reqs)
       if (aop_reg == op - aop_map)
 	{
 	  int reg = read_const (ax, i + 1, 2);
-	  int byte = reg / 8;
 
-	  /* Grow the bit mask if necessary.  */
-	  if (byte >= reg_mask_len)
-	    {
-	      /* It's not appropriate to double here.  This isn't a
-	         string buffer.  */
-	      int new_len = byte + 1;
-	      reg_mask = xrealloc (reg_mask,
-				   new_len * sizeof (reg_mask[0]));
-	      memset (reg_mask + reg_mask_len, 0,
-		      (new_len - reg_mask_len) * sizeof (reg_mask[0]));
-	      reg_mask_len = new_len;
-	    }
-
-	  reg_mask[byte] |= 1 << (reg % 8);
+	  ax_reg_mask (ax, reg);
 	}
     }
 
@@ -535,12 +568,9 @@ ax_reqs (struct agent_expr *ax, struct agent_reqs *reqs)
   for (i = 0; i < ax->len; i++)
     if (targets[i] && !boundary[i])
       {
-	reqs->flaw = agent_flaw_bad_jump;
-	xfree (reg_mask);
+	ax->flaw = agent_flaw_bad_jump;
 	return;
       }
 
-  reqs->final_height = height;
-  reqs->reg_mask_len = reg_mask_len;
-  reqs->reg_mask = reg_mask;
+  ax->final_height = height;
 }

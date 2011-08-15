@@ -1,6 +1,7 @@
 /* Portable <sys/ptrace.h>
 
-   Copyright (C) 2004, 2005, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -103,6 +104,21 @@
 #ifndef PT_DETACH
 # ifdef PTRACE_DETACH
 #  define PT_DETACH PTRACE_DETACH
+# endif
+#endif
+
+/* For systems such as HP/UX that do not provide PT_SYSCALL, define it
+   here as an alias for PT_CONTINUE.  This is what the PT_SYSCALL
+   request is expected to do, in addition to stopping when entering/
+   exiting a system call.  Chances are, if the system supports system
+   call tracing, enabling this feature is probably done separately;
+   and there is probably no special request that we would be required
+   to use when resuming the execution of our program.  */
+#ifndef PT_SYSCALL
+# ifdef PTRACE_SYSCALL
+#  define PT_SYSCALL PTRACE_SYSCALL
+#else
+#  define PT_SYSCALL PT_CONTINUE
 # endif
 #endif
 

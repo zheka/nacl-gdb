@@ -1,3 +1,505 @@
+2011-05-17  Mike Frysinger  <vapier@gentoo.org>
+
+	* dv-glue.c: Fix up style.
+
+2011-05-17  Mike Frysinger  <vapier@gentoo.org>
+
+	* hw-alloc.c (hw_alloc_data): Adjust brace.
+	* hw-base.c (hw_base_data): Likewise.
+	(generic_hw_unit_decode): Fix indentation.
+	* hw-device.h (_hw_unit, enum, hw): Adjust braces.
+	* hw-events.c (hw_event, hw_event_data): Likewise.
+	* hw-handles.c (hw_handle_mapping, hw_handle_data): Likewise.
+	* hw-instances.c (hw_instance_data): Likewise.
+	* hw-instances.h (hw_instance): Likewise.
+	* hw-main.h (hw_descriptor, enum): Likewise.
+	* hw-ports.c (hw_port_edge, hw_port_data, empty_hw_ports): Likewise.
+	* hw-ports.h (hw_port_descriptor): Likewise.
+	* hw-properties.c (hw_property_data): Likewise.
+	* hw-properties.h (enum, hw_property, _ihandle_runtime_property_spec,
+	_range_property_spec, _reg_property_spec): Likewise.
+	* hw-tree.c (_name_specifier, printer): Likewise.
+	(split_device_specifier, parse_string_property, hw_tree_traverse,
+	print_size, print_reg_property, print_string, print_properties):
+	Fix indentation.
+
+2011-03-29  Mike Frysinger  <vapier@gentoo.org>
+
+	* aclocal.m4 (SIM_AC_OPTION_HARDWARE): Add cfi to default list.
+	* Make-common.in (dv-cfi.o): New rule.
+	* dv-cfi.c, dv-cfi.h: New files.
+
+2011-03-21  Kevin Buettner  <kevinb@redhat.com>
+
+	* gennltvals.sh: Search sys/_default_fcntl.h, in addition to
+	fcntl.h and sys/fcntl.h, for constants.
+	* nltvals.def: Regenerate.
+	* sim-io.c (sim_io_stat, sim_io_fstat): New functions.
+	* sim-io.h (sys/types.h, sys/stat.h): Include.
+	(sim_io_stat, sim_io_fstat): Declare.
+
+2011-03-14  Mike Frysinger  <vapier@gentoo.org>
+
+	* callback.c, cgen-engine.h, dv-core.c, dv-glue.c, dv-pal.c,
+	hw-base.c, hw-device.c, hw-device.h, hw-handles.c, hw-instances.c,
+	hw-ports.c, hw-ports.h, hw-properties.c, hw-tree.c, nrun.c,
+	run-sim.h, run.c, sim-alu.h, sim-assert.h, sim-base.h, sim-basics.h,
+	sim-config.c, sim-core.c, sim-core.h, sim-engine.h, sim-events.c,
+	sim-events.h, sim-fpu.c, sim-hw.c, sim-inline.h, sim-load.c,
+	sim-memopt.c, sim-n-core.h, sim-options.c, sim-profile.c,
+	sim-signal.c, sim-trace.c, sim-trace.h, sim-utils.c, sim-watch.c,
+	syscall.c: Trim trailing whitespace.
+
+2011-03-05  Mike Frysinger  <vapier@gentoo.org>
+
+	* gennltvals.sh: Handle bfin targets.
+	* nltvals.def: Regenerate.
+
+2011-02-25  Kevin Buettner  <kevinb@redhat.com>
+
+	* callback.c (fdbad): Return EBADF rather than EINVAL for bad
+	file descriptors.
+
+2011-02-14  Mike Frysinger  <vapier@gentoo.org>
+
+	* hw-alloc.c (hw_alloc_data): Delete zalloc_p.
+	(hw_zalloc, hw_malloc): Delete zalloc_p reference.
+	(hw_free): Drop zfree logic and always call free.
+	* hw-base.c (hw_delete): Change zfree to free.
+	* hw-handles.c (hw_handle_remove_ihandle): Likewise.
+	(hw_handle_remove_phandle): Likewise.
+	* hw-instances.c (hw_instance_delete): Likewise.
+	* hw-tree.c (parse_reg_property): Likewise.
+	(parse_ranges_property): Likewise.
+	(parse_string_property): Likewise.
+	* sim-core.c (sim_core_uninstall): Likewise.
+	* sim-cpu.c (sim_cpu_free_all): Likewise.
+	* sim-hw.c (sim_hw_uninstall): Likewise.
+	* sim-memopt.c (do_memopt_delete): Likewise.
+	(sim_memory_uninstall): Likewise.
+	* sim-module.c (sim_module_uninstall): Likewise.
+	* sim-options.c (sim_parse_args): Likewise.
+	* sim-profile.c (profile_pc_cleanup): Likewise.
+	(profile_uninstall): Likewise.
+	* sim-watch.c (do_watchpoint_delete): Likewise.
+	* sim-utils.c (zfree): Delete.
+	(sim_state_free): Change zfree to free.
+	* sim-utils.h (zfree): Delete.
+
+2011-02-13  Mike Frysinger  <vapier@gentoo.org>
+
+	* sim-events.h (_sim_events.time_from_event): Change type to signed64.
+
+2011-01-12  Mike Frysinger  <vapier@gentoo.org>
+
+	* sim-hw.c (sim_hw_uninstall): Uncomment hw_tree_delete.
+
+2011-01-12  Mike Frysinger  <vapier@gentoo.org>
+
+	* sim-module.c (sim_pre_argv_init): Return SIM_RC_FAIL when asprintf
+	fails.
+	* sim-options.c (sim_parse_args): Issue an error and return SIM_RC_FAIL
+	when asprintf fails.
+	* sim-utils.c (sim_do_commandf): Issue an error and return when
+	asprintf fails.
+	* sim-watch.c (sim_watchpoint_install): Return SIM_RC_FAIL when
+	asprintf fails.
+
+2011-01-11  Mike Frysinger  <vapier@gentoo.org>
+
+	* sim-memopt.c (do_memopt_add): Set nr_bytes to s.st_size before
+	bytes has been calculated and when mmap_next_fd is valid and
+	nr_bytes is 0.
+	(memory_option_handler): Allow missing size when mmap_next_fd is
+	valid.
+
+2011-01-10  Mike Frysinger  <vapier@gentoo.org>
+
+	* aclocal.m4 (SIM_AC_OPTION_HARDWARE): Set $hardware to $2 when $2 is
+	not empty, and always append $3 to $hardware.
+
+2011-01-10  Mike Frysinger  <vapier@gentoo.org>
+
+	* hw-device.h (hw_abort, hw_vabort, hw_halt): Add noreturn attribute.
+	* sim-hw.h (sim_hw_abort): Likewise.
+
+2011-01-05  Mike Frysinger  <vapier@gentoo.org>
+
+	* sim-load.c (sim_load_file): Change buffer type to unsigned char *.
+
+2011-01-05  Joel Brobecker  <brobecker@adacore.com>
+
+	* run.1: Copyright year update.
+
+2010-12-28  Mike Frysinger  <vapier@gentoo.org>
+
+	* hw-alloc.h (HW_NALLOC): Define.
+
+010-12-28  Mike Frysinger  <vapier@gentoo.org>
+
+	* hw-alloc.h (HW_NZALLOC): Change ME,TYPE,N to me,type,n.
+
+2010-12-15  Mike Frysinger  <vapier@gentoo.org>
+
+	* sim-memopt.c (OPTION_MAP_INFO): Define.
+	(memory_options): Handle --map-info.
+	(memory_option_handler): Handle OPTION_MAP_INFO.
+
+2010-11-22  Mike Frysinger  <vapier@gentoo.org>
+
+	* sim-profile.c (PROFILE_PC_FREQ, PROFILE_PC_NR_BUCKETS,
+	PROFILE_PC_SHIFT, PROFILE_PC_START, PROFILE_PC_END,
+	PROFILE_INSN_COUNT): Add stubs when profile is disabled.
+
+2010-11-22  Mike Frysinger  <vapier@gentoo.org>
+
+	* sim-core.c (WITH_HW): Add device casts to device_error,
+	device_io_read_buffer, and device_io_write_buffer.
+
+2010-11-16  Mike Frysinger  <vapier@gentoo.org>
+
+	* dv-sockser.c (dv_sockser_write_buffer): New function.
+	(dv_sockser_write): Rewrite to use dv_sockser_write_buffer.
+	* dv-sockser.h (dv_sockser_write_buffer): New prototype.
+
+2010-10-07  Hans-Peter Nilsson  <hp@axis.com>
+
+	* callback.c (os_lseek): Call wrap on lseek result.
+
+2010-05-26  Ozkan Sezer  <sezeroz@gmail.com>
+
+	* dv-sockser.c (dv_sockser_init): Check error return from socket()
+	call by its equality to -1 not by it being negative.
+	(connected_p): Likewise for accept() call.
+
+2010-04-23  Mike Frysinger  <vapier@gentoo.org>
+
+	* sim-fpu.c (sim_fpu_zero, sim_fpu_qnan): Add 0 initializers.
+
+2010-04-21  Mike Frysinger  <vapier@gentoo.org>
+
+	* profile.c (sim_profile_print_bar): Add cpu argument.
+
+2010-04-21  Mike Frysinger  <vapier@gentoo.org>
+
+	* sim-profile.h (sim_profile_print_bar): Use sim_cpu, not SIM_CPU.
+
+2010-04-21  Mike Frysinger  <vapier@gentoo.org>
+
+	* sim-profile.c (profile_vprintf, profile_printf): New functions.
+	(profile_print_pc): Convert sim_io_printf to profile_printf.
+	(profile_print_insn): Likewise.
+	(profile_print_memory): Likewise.
+	(profile_print_core): Likewise.
+	(profile_print_model): Likewise.
+	(sim_profile_print_bar): Likewise.
+	(profile_print_speed): Likewise.
+	(profile_print_addr_ranges): Likewise.
+	(profile_info): Likewise.
+	* sim-profile.h (sim_profile_print_bar): Add cpu argument.
+
+2010-04-19  Mike Frysinger  <vapier@gentoo.org>
+
+	* sim-model.c (OPTION_MODEL): Convert to enum.
+	(OPTION_MODEL_INFO): New enum.
+	(model_options): Add model-info/info-model entries.
+	(model_option_handler): Handle OPTION_MODEL_INFO.
+
+2010-04-13  Mike Frysinger  <vapier@gentoo.org>
+
+	* dv-sockser.h (DV_SOCKSER_DISCONNECTED): Define.
+	* dv-sockser.c (dv_sockser_status): Set DV_SOCKSER_DISCONNECTED
+	initially.
+
+2010-04-13  Mike Frysinger  <vapier@gentoo.org>
+
+	* sim-hrw.c (sim_write): Add const to buf arg.
+	* sim-utils.h (sim_write_fn): Likewise.
+
+2010-04-12  Mike Frysinger  <vapier@gentoo.org>
+
+	* sim-profile.h (PROFILE_BRANCH_TAKEN, PROFILE_BRANCH_UNTAKEN): New
+	defines.
+
+2010-04-12  Mike Frysinger  <vapier@gentoo.org>
+
+	* dv-core.c (dv_core_descriptor): Add NULL initializer.
+	* dv-glue.c (hw_glue_ports, dv_glue_descriptor): Likewise.
+	* dv-pal.c (hw_pal_ports, dv_pal_descriptor): Likewise.
+	* dv-sockser.c (sockser_options): Likewise.
+	* hw-ports.c (empty_hw_ports): Likewise.
+	* sim-hw.c (hw_options): Likewise.
+	* sim-model.c (model_options): Likewise.
+	* sim-options.c (standard_options): Likewise.
+	* sim-profile.c (profile_options): Likewise.
+	* sim-trace.c (trace_options): Likewise.
+	* sim-watch.c (watchpoint_options): Likewise.
+
+2010-04-12  Mike Frysinger  <vapier@gentoo.org>
+
+	* sim-options.c (dup_arg_p): Add "const" to the "arg" argument,
+	the local "arg_table" variable, and the xmalloc cast.
+
+2010-04-10  Mike Frysinger  <vapier@gentoo.org>
+
+	* sim-fpu.c (sim_fpu_print_status): Add const markings to local
+	"prefix" var.
+	(sim_fpu_print_func): Add const markings to format buffer.
+
+2010-04-10  Mike Frysinger  <vapier@gentoo.org>
+
+	* sim-fpu.c (sim_fpu_print_status): Remove duplicate break statements.
+
+2010-04-10  Mike Frysinger  <vapier@gentoo.org>
+
+	* sim-trace.c (save_data): Add const markings to "buf" argument.
+
+2010-04-10  Mike Frysinger  <vapier@gentoo.org>
+
+	* sim-options.c (standard_option_handler): Add const markings to
+	local "type" var.
+
+2010-04-02  Mike Frysinger  <vapier@gentoo.org>
+
+	* hw-ports.h: Fix spelling typos.
+
+2010-03-30  Mike Frysinger  <vapier@gentoo.org>
+
+	* configure.ac: Check for socklen_t.
+	* configure, config.in: Regenerated.
+	* dv-sockser.c (connected_p): Change addrlen type to socklen_t.
+
+2010-03-30  Mike Frysinger  <vapier@gentoo.org>
+
+	* sim-utils.c (sim_io_eprintf_cpu): Use %s with printf string.
+	* sim-hw.c (hw_option_handler): Likewise.
+
+2010-03-30  Mike Frysinger  <vapier@gentoo.org>
+
+	* sim-watch.c (watchpoint_type_to_str): Add const to return.
+	(interrupt_nr_to_str): Likewise.
+	(default_interrupt_names): Add const to pointer type.
+	(sim_watchpoint_install): Add const to prefix.
+	* sim-watch.h (struct _sim_watchpoints): Add const to interrupt_names.
+
+2010-03-30  Mike Frysinger  <vapier@gentoo.org>
+
+	* sim-core.c (sim_core_read_buffer): Change raddr to address_word.
+	(sim_core_write_buffer): Likewise.
+
+2010-03-30  Mike Frysinger  <vapier@gentoo.org>
+
+	* sim-trace.c (trace_option_handler): Move cpu_nr decl behind
+	the SIM_HAVE_ADDR_RANGE define.
+
+2010-03-30  Mike Frysinger  <vapier@gentoo.org>
+
+	* sim-core.h (device_error): Add const to message, and add printf
+	format attribute.
+
+2010-03-30  Mike Frysinger  <vapier@gentoo.org>
+
+	* sim-profile.c (profile_print_addr_ranges): Wrap with the
+	SIM_HAVE_ADDR_RANGE define.
+
+2010-03-30  Mike Frysinger  <vapier@gentoo.org>
+
+	* dv-glue.c (hw_glue_ports): Swap static and const.
+
+2010-03-30  Mike Frysinger  <vapier@gentoo.org>
+
+	* nrun.c (usage): Use void in definition.
+	* sim-options.c (dup_arg_p): Convert old-style function definition.
+	(sim_parse_args): Likewise.
+	(sim_print_help): Likewise.
+	* sim-trace.c (set_trace_option_mask): Likewise.
+	(set_trace_option): Likewise.
+	* sim-utils.c (sim_analyze_program): Likewise.
+	(sim_elapsed_time_get): Likewise.
+	(sim_elapsed_time_since): Likewise.
+
+2010-03-22  Mike Frysinger  <vapier@gentoo.org>
+
+	* sim/common/sim-options.c (enum): Remove SIM_HAVE_BIENDIAN ifdef.
+	(standard_options): Likewise.
+	(standard_option_handler): Likewise.
+
+2010-03-16  Mike Frysinger  <vapier@gentoo.org>
+
+	* hw-ports.c (TRACE): Delete.
+	* hw-properties.c (TRACE): Delete.
+	(hw_find_ihandle_runtime_property): Change TRACE to HW_TRACE.
+	(hw_find_integer_property): Likewise.
+	(hw_find_integer_array_property): Likewise.
+	(hw_add_duplicate_property): Likewise.
+
+2010-03-15  Mike Frysinger  <vapier@gentoo.org>
+
+	* hw-properties.h (hw_add_boolean_property): Rename "bool" to
+	"boolean".
+
+2010-02-04  Mike Frysinger  <vapier@gentoo.org>
+
+	* sim-model.c: Include sim-model.h
+
+2010-02-04  Mike Frysinger  <vapier@gentoo.org>
+
+	* sim-base.h: Declare sim_state.cpu as a pointer in the comment.  Drop
+	& from the STATE_CPU() examples.
+
+2010-01-24  Doug Evans  <dje@sebabeach.org>
+
+	* cgen-accfp.c (fextsfdf): New arg how.  All callers updated.
+	(ftruncdfsf, floatsisf, flostsidf, ufloatsisf, fixsfsi, fixdfsi,
+	ufixsfsi): Ditto.
+	* cgen-fpu.h (CGEN_FPCONV_KIND): New enum.
+	(struct cgen_fp_ops): Update signatures of floating point conversion
+	operations.
+
+	* Make-common.in (CGEN_SIM_DEPS): Define.
+	(CGEN_INCLUDE_DEPS): Use it.
+	(CGEN_MAIN_CPU_DEPS): Simplify.
+
+2010-01-22  Doug Evans  <dje@sebabeach.org>
+
+	* cgen-ops.h (SUBWORDXFSI): Fix word ordering.
+	(SUBWORDTFSI, JOINSIDI): Ditto.
+
+2010-01-05  Doug Evans  <dje@sebabeach.org>
+
+	* cgen-types.h (SETDI): Delete, unused.
+
+2009-12-02  Doug Evans  <dje@sebabeach.org>
+
+	* cgen-engine.h: Remove duplicated comment.
+
+2009-11-23  Doug Evans  <dje@sebabeach.org>
+
+	* cgen-engine.h (EXTRACT_MSB0_SINT): Renamed from EXTRACT_MSB0_INT.
+	(EXTRACT_LSB0_SINT): Renamed from EXTRACT_LSB0_INT.
+
+2009-11-22  Doug Evans  <dje@sebabeach.org>
+
+	* cgen-engine.h (EXTRACT_MSB0_LGSINT, EXTRACT_MSB0_LGUINT): Define.
+	(EXTRACT_LSB0_LGSINT, EXTRACT_LSB0_LGUINT): Define.
+	(EXTRACT_FN, SEMANTIC_FN): Use CGEN_INSN_WORD in prototype
+	instead of CGEN_INSN_INT.
+
+	* cgen-trace.h (trace_extract): Add cast to fix warning.
+
+2009-11-05  Doug Evans  <dje@sebabeach.org>
+
+	* cgen-mem.h (DECLARE_GETT): Don't inline.
+	(DECLARE_SETT): Ditto.
+
+2009-10-15  Joel Sherrill <joel.sherrill@oarcorp.com>
+
+	* sim-inline.h: Fix spelling error.
+
+2009-10-02  Ralf Corsepius <ralf.corsepius@rtems.org>
+
+	* Make-common.in: Add datarootdir.
+
+2009-08-29  Ralf Wildenhues  <Ralf.Wildenhues@gmx.de>
+
+	* aclocal.m4 (SIM_CHECK_MEMBER, SIM_CHECK_MEMBERS)
+	(SIM_CHECK_MEMBERS_1): Remove.
+	* configure.ac: Replace SIM_CHECK_MEMBERS call with equivalent
+	AC_CHECK_MEMBERS one.
+	* configure: Regenerate.
+
+	* aclocal.m4 (SIM_CHECK_MEMBER): Use AU_ALIAS to define, not defn.
+	* configure: Regenerate.
+
+2009-08-22  Ralf Wildenhues  <Ralf.Wildenhues@gmx.de>
+
+	* config.in: Regenerate.
+	* configure: Likewise.
+
+	* aclocal.m4 (SIM_CHECK_MEMBER): Replace definition with
+	definition of AC_CHECK_MEMBER.
+
+	* aclocal.m4: m4_include toplevel config/override.m4.
+	* configure: Regenerate.
+
+2009-07-30  Ralf Wildenhues  <Ralf.Wildenhues@gmx.de>
+
+	* Makefile.in (datarootdir): New variable.
+
+2009-07-07  Doug Evans  <dje@sebabeach.org>
+
+	* Make-common.in (CPU_DIR): Define.
+
+2009-07-06  Doug Evans  <dje@sebabeach.org>
+
+	* Make-common.in (CGEN_CPU_EXTR,CGEN_CPU_READ): Pass canonical
+	identifiers for file types rather than encoding internal
+	implementation details of cgen.sh.
+	(CGEN_CPU_WRITE,CGEN_CPU_SEM,CGEN_CPU_SEMSW): Ditto.
+	* cgen.sh: Add support for parallel makes.
+	Rewrite cpu/decode handling to avoid generating "extrafiles" twice.
+
+2009-05-18  Jon Beniston <jon@beniston.com>
+
+        * gennltvals.sh: Add lm32 target.
+        * nltvals.def: Add lm32 syscall definitions. 
+
+2009-03-19  J"orn Rennecke  <joern.rennecke@arc.com>  (tiny change)
+
+	Speed up simulator startup:
+	* sim-utils.c (zalloc): Use xcalloc.
+
+2009-01-07  Hans-Peter Nilsson  <hp@axis.com>
+
+	* cgen-ops.h (ADDQI, SUBQI, MULQI, NEGQI, ABSQI, ADDHI, SUBHI)
+	(MULHI, NEGHI, ABSHI, ADDSI, SUBSI, MULSI, NEGSI, ABSSI, ADDDI)
+	(SUBDI, MULDI, NEGDI, ABSDI): Cast arguments to the unsigned type
+	variant; UQI, UHI, USI, UDI, and cast the result to the signed
+	type, QI, HI, SI, DI.
+
+	* callback.c (os_error): Mark as being a noreturn function.
+	* sim-io.h (sim_io_error): Similar for sim_io_error.
+
+2008-11-12  Joel Sherrill <joel.sherrill@oarcorp.com>
+
+	* aclocal.m4:  Fix underquoting of function names.
+
+2008-10-21  Julian Brown  <julian@codesourcery.com>
+
+	* Make-common.in (run$(EXEEXT)): Add LDFLAGS.
+
+2008-07-11  Hans-Peter Nilsson  <hp@axis.com>
+
+	* common.m4: Add test for libz and zlib.h.
+	* configure: Regenerate to track ../common/common.m4 changes.
+	* config.in: Ditto.
+
+2008-06-06  Vladimir Prus  <vladimir@codesourcery.com>
+            Daniel Jacobowitz  <dan@codesourcery.com>
+            Joseph Myers  <joseph@codesourcery.com>
+
+	* aclocal.m4: Include ../../config/acx.m4.
+	* common.m4: Use ACX_PKGVERSION and ACX_BUGURL.
+	* configure, config.in: Regenerate.
+	* Make-common.in (LIB_OBJS): Add version.o.
+	(version.c, version.o): New rules.
+	* run.c: Include version.h. 
+	(usage): Add help parameter. Print output either to stdout or
+	stderr depending on that parameter.
+	(print_version): New.
+	(main): Check for --help and --version.
+	* run-sim.h (sim_target_display_usage): Add help parameter.
+	* version.h: New.
+
+2008-04-14  Hans Kester  <kester.hans@gmail.com>
+
+	* sim-signal.c: Define missing signals for _WIN32.
+
+2008-02-12  M Ranga Swami Reddy  <MR.Swami.Reddy@nsc.com>
+
+	* gennltvals.sh: Add cr16.
+	* nltvals.def: Rebuild.
+
 2007-10-11  Jesper Nilsson  <jesper.nilsson@axis.com>
 
 	* callback.c (cb_is_stdin, cb_is_stdout, cb_is_stderr): Add functions.

@@ -1,7 +1,7 @@
 /* Target-dependent code for GDB, the GNU debugger.
 
-   Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2007, 2008
-   Free Software Foundation, Inc.
+   Copyright (C) 2000, 2001, 2002, 2003, 2004, 2005, 2007, 2008, 2009, 2010,
+   2011 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -27,13 +27,15 @@ struct value;
 struct regcache;
 struct type;
 
-/* From ppc-linux-tdep.c... */
+/* From ppc-sysv-tdep.c ...  */
 enum return_value_convention ppc_sysv_abi_return_value (struct gdbarch *gdbarch,
+							struct type *func_type,
 							struct type *valtype,
 							struct regcache *regcache,
 							gdb_byte *readbuf,
 							const gdb_byte *writebuf);
 enum return_value_convention ppc_sysv_abi_broken_return_value (struct gdbarch *gdbarch,
+							       struct type *func_type,
 							       struct type *valtype,
 							       struct regcache *regcache,
 							       gdb_byte *readbuf,
@@ -52,21 +54,16 @@ CORE_ADDR ppc64_sysv_abi_push_dummy_call (struct gdbarch *gdbarch,
 					  struct value **args, CORE_ADDR sp,
 					  int struct_return,
 					  CORE_ADDR struct_addr);
-CORE_ADDR ppc64_sysv_abi_adjust_breakpoint_address (struct gdbarch *gdbarch,
-						    CORE_ADDR bpaddr);
-int ppc_linux_memory_remove_breakpoint (struct gdbarch *, struct bp_target_info *);
-struct link_map_offsets *ppc_linux_svr4_fetch_link_map_offsets (void);
-const struct regset *ppc_linux_gregset (int);
-const struct regset *ppc_linux_fpregset (void);
-
 enum return_value_convention ppc64_sysv_abi_return_value (struct gdbarch *gdbarch,
+							  struct type *func_type,
 							  struct type *valtype,
 							  struct regcache *regcache,
 							  gdb_byte *readbuf,
 							  const gdb_byte *writebuf);
 
-/* From rs6000-tdep.c... */
+/* From rs6000-tdep.c...  */
 int altivec_register_p (struct gdbarch *gdbarch, int regno);
+int vsx_register_p (struct gdbarch *gdbarch, int regno);
 int spe_register_p (struct gdbarch *gdbarch, int regno);
 
 /* Return non-zero if the architecture described by GDBARCH has
@@ -76,6 +73,12 @@ int ppc_floating_point_unit_p (struct gdbarch *gdbarch);
 /* Return non-zero if the architecture described by GDBARCH has
    Altivec registers (vr0 --- vr31, vrsave and vscr).  */
 int ppc_altivec_support_p (struct gdbarch *gdbarch);
+
+/* Return non-zero if the architecture described by GDBARCH has
+   VSX registers (vsr0 --- vsr63).  */
+int vsx_support_p (struct gdbarch *gdbarch);
+int ppc_deal_with_atomic_sequence (struct frame_info *frame);
+
 
 /* Register set description.  */
 
@@ -104,6 +107,12 @@ struct ppc_reg_offsets
   int vrsave_offset;
 };
 
+extern void ppc_supply_reg (struct regcache *regcache, int regnum,
+			    const gdb_byte *regs, size_t offset, int regsize);
+
+extern void ppc_collect_reg (const struct regcache *regcache, int regnum,
+			     gdb_byte *regs, size_t offset, int regsize);
+
 /* Supply register REGNUM in the general-purpose register set REGSET
    from the buffer specified by GREGS and LEN to register cache
    REGCACHE.  If REGNUM is -1, do this for all registers in REGSET.  */
@@ -128,8 +137,16 @@ extern void ppc_supply_vrregset (const struct regset *regset,
 				 struct regcache *regcache,
 				 int regnum, const void *vrregs, size_t len);
 
+/* Supply register REGNUM in the VSX register set REGSET
+   from the buffer specified by VSXREGS and LEN to register cache
+   REGCACHE.  If REGNUM is -1, do this for all registers in REGSET.  */
+
+extern void ppc_supply_vsxregset (const struct regset *regset,
+				 struct regcache *regcache,
+				 int regnum, const void *vsxregs, size_t len);
+
 /* Collect register REGNUM in the general-purpose register set
-   REGSET. from register cache REGCACHE into the buffer specified by
+   REGSET, from register cache REGCACHE into the buffer specified by
    GREGS and LEN.  If REGNUM is -1, do this for all registers in
    REGSET.  */
 
@@ -138,7 +155,7 @@ extern void ppc_collect_gregset (const struct regset *regset,
 				 int regnum, void *gregs, size_t len);
 
 /* Collect register REGNUM in the floating-point register set
-   REGSET. from register cache REGCACHE into the buffer specified by
+   REGSET, from register cache REGCACHE into the buffer specified by
    FPREGS and LEN.  If REGNUM is -1, do this for all registers in
    REGSET.  */
 
@@ -155,7 +172,16 @@ extern void ppc_collect_vrregset (const struct regset *regset,
 				  const struct regcache *regcache,
 				  int regnum, void *vrregs, size_t len);
 
-/* Private data that this module attaches to struct gdbarch. */
+/* Collect register REGNUM in the VSX register set
+   REGSET from register cache REGCACHE into the buffer specified by
+   VSXREGS and LEN.  If REGNUM is -1, do this for all registers in
+   REGSET.  */
+
+extern void ppc_collect_vsxregset (const struct regset *regset,
+				  const struct regcache *regcache,
+				  int regnum, void *vsxregs, size_t len);
+
+/* Private data that this module attaches to struct gdbarch.  */
 
 /* Vector ABI used by the inferior.  */
 enum powerpc_vector_abi
@@ -188,21 +214,26 @@ struct gdbarch_tdep
        is not present in this variant.  */
 
     /* Floating-point registers.  */
-    int ppc_fp0_regnum;         /* floating-point register 0 */
-    int ppc_fpscr_regnum;	/* fp status and condition register */
+    int ppc_fp0_regnum;         /* Floating-point register 0.  */
+    int ppc_fpscr_regnum;	/* fp status and condition register.  */
 
     /* Multiplier-Quotient Register (older POWER architectures only).  */
     int ppc_mq_regnum;
 
+    /* POWER7 VSX registers.  */
+    int ppc_vsr0_regnum;	/* First VSX register.  */
+    int ppc_vsr0_upper_regnum;  /* First right most dword vsx register.  */
+    int ppc_efpr0_regnum;	/* First Extended FP register.  */
+
     /* Altivec registers.  */
-    int ppc_vr0_regnum;		/* First AltiVec register */
-    int ppc_vrsave_regnum;	/* Last AltiVec register */
+    int ppc_vr0_regnum;		/* First AltiVec register.  */
+    int ppc_vrsave_regnum;	/* Last AltiVec register.  */
 
     /* SPE registers.  */
-    int ppc_ev0_upper_regnum;   /* First GPR upper half register */
-    int ppc_ev0_regnum;         /* First ev register */
-    int ppc_acc_regnum;         /* SPE 'acc' register */
-    int ppc_spefscr_regnum;     /* SPE 'spefscr' register */
+    int ppc_ev0_upper_regnum;   /* First GPR upper half register.  */
+    int ppc_ev0_regnum;         /* First ev register.  */
+    int ppc_acc_regnum;         /* SPE 'acc' register.  */
+    int ppc_spefscr_regnum;     /* SPE 'spefscr' register.  */
 
     /* Decimal 128 registers.  */
     int ppc_dl0_regnum;		/* First Decimal128 argument register pair.  */
@@ -215,21 +246,22 @@ struct gdbarch_tdep
        simulator does not implement that register.  */
     int *sim_regno;
 
-    /* Minimum possible text address.  */
-    CORE_ADDR text_segment_base;
-
     /* ISA-specific types.  */
     struct type *ppc_builtin_type_vec64;
+    struct type *ppc_builtin_type_vec128;
 };
 
 
 /* Constants for register set sizes.  */
 enum
   {
-    ppc_num_gprs = 32,          /* 32 general-purpose registers */
-    ppc_num_fprs = 32,          /* 32 floating-point registers */
-    ppc_num_srs = 16,           /* 16 segment registers */
-    ppc_num_vrs = 32            /* 32 Altivec vector registers */
+    ppc_num_gprs = 32,		/* 32 general-purpose registers.  */
+    ppc_num_fprs = 32,		/* 32 floating-point registers.  */
+    ppc_num_srs = 16,		/* 16 segment registers.  */
+    ppc_num_vrs = 32,		/* 32 Altivec vector registers.  */
+    ppc_num_vshrs = 32,		/* 32 doublewords (dword 1 of vs0~vs31).  */
+    ppc_num_vsrs = 64,		/* 64 VSX vector registers.  */
+    ppc_num_efprs = 32		/* 32 Extended FP registers.  */
   };
 
 
@@ -255,6 +287,8 @@ enum {
   PPC_VR0_REGNUM = 106,
   PPC_VSCR_REGNUM = 138,
   PPC_VRSAVE_REGNUM = 139,
+  PPC_VSR0_UPPER_REGNUM = 140,
+  PPC_VSR31_UPPER_REGNUM = 171,
   PPC_NUM_REGS
 };
 
@@ -264,7 +298,5 @@ enum {
 
 /* Estimate for the maximum number of instrctions in a function epilogue.  */
 #define PPC_MAX_EPILOGUE_INSTRUCTIONS  52
-
-extern struct target_desc *tdesc_powerpc_e500;
 
 #endif /* ppc-tdep.h */

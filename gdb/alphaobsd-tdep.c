@@ -1,6 +1,7 @@
 /* Target-dependent code for OpenBSD/alpha.
 
-   Copyright (C) 2006, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2006, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -40,13 +41,14 @@
 static const int alphaobsd_page_size = 8192;
 
 static LONGEST
-alphaobsd_sigtramp_offset (CORE_ADDR pc)
+alphaobsd_sigtramp_offset (struct gdbarch *gdbarch, CORE_ADDR pc)
 {
   return (pc & (alphaobsd_page_size - 1));
 }
 
 static int
-alphaobsd_pc_in_sigtramp (CORE_ADDR pc, char *name)
+alphaobsd_pc_in_sigtramp (struct gdbarch *gdbarch,
+			  CORE_ADDR pc, char *name)
 {
   CORE_ADDR start_pc = (pc & ~(alphaobsd_page_size - 1));
   unsigned insn;
@@ -55,12 +57,12 @@ alphaobsd_pc_in_sigtramp (CORE_ADDR pc, char *name)
     return 0;
 
   /* Check for "".  */
-  insn = alpha_read_insn (start_pc + 5 * ALPHA_INSN_SIZE);
+  insn = alpha_read_insn (gdbarch, start_pc + 5 * ALPHA_INSN_SIZE);
   if (insn != 0x201f0067)
     return 0;
 
   /* Check for "".  */
-  insn = alpha_read_insn (start_pc + 6 * ALPHA_INSN_SIZE);
+  insn = alpha_read_insn (gdbarch, start_pc + 6 * ALPHA_INSN_SIZE);
   if (insn != 0x00000083)
     return 0;
 
@@ -68,26 +70,27 @@ alphaobsd_pc_in_sigtramp (CORE_ADDR pc, char *name)
 }
 
 static CORE_ADDR
-alphaobsd_sigcontext_addr (struct frame_info *next_frame)
+alphaobsd_sigcontext_addr (struct frame_info *this_frame)
 {
-  CORE_ADDR pc = frame_pc_unwind (next_frame);
+  struct gdbarch *gdbarch = get_frame_arch (this_frame);
+  CORE_ADDR pc = get_frame_pc (this_frame);
 
-  if (alphaobsd_sigtramp_offset (pc) < 3 * ALPHA_INSN_SIZE)
+  if (alphaobsd_sigtramp_offset (gdbarch, pc) < 3 * ALPHA_INSN_SIZE)
     {
       /* On entry, a pointer the `struct sigcontext' is passed in %a2.  */
-      return frame_unwind_register_unsigned (next_frame, ALPHA_A0_REGNUM + 2);
+      return get_frame_register_unsigned (this_frame, ALPHA_A0_REGNUM + 2);
     }
-  else if (alphaobsd_sigtramp_offset (pc) < 4 * ALPHA_INSN_SIZE)
+  else if (alphaobsd_sigtramp_offset (gdbarch, pc) < 4 * ALPHA_INSN_SIZE)
     {
       /* It is stored on the stack Before calling the signal handler.  */
       CORE_ADDR sp;
-      sp = frame_unwind_register_unsigned (next_frame, ALPHA_SP_REGNUM);
-      return get_frame_memory_unsigned (next_frame, sp, 8);
+      sp = get_frame_register_unsigned (this_frame, ALPHA_SP_REGNUM);
+      return get_frame_memory_unsigned (this_frame, sp, 8);
     }
   else
     {
       /* It is reloaded into %a0 for the sigreturn(2) call.  */
-      return frame_unwind_register_unsigned (next_frame, ALPHA_A0_REGNUM);
+      return get_frame_register_unsigned (this_frame, ALPHA_A0_REGNUM);
     }
 }
 

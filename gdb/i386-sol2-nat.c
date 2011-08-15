@@ -1,6 +1,7 @@
 /* Native-dependent code for Solaris x86.
 
-   Copyright (C) 2004, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -22,6 +23,8 @@
 
 #include <sys/procfs.h>
 #include "gregset.h"
+#include "target.h"
+#include "procfs.h"
 
 /* This file provids the (temporary) glue between the Solaris x86
    target dependent code and the machine independent SVR4 /proc
@@ -57,7 +60,7 @@ static int amd64_sol2_gregset64_reg_offset[] = {
   8 * 8,			/* %rdi */
   10 * 8,			/* %rbp */
   20 * 8,			/* %rsp */
-  7 * 8,			/* %r8 ... */
+  7 * 8,			/* %r8 ...  */
   6 * 8,
   5 * 8,
   4 * 8,
@@ -134,6 +137,15 @@ extern void _initialize_amd64_sol2_nat (void);
 void
 _initialize_amd64_sol2_nat (void)
 {
+  struct target_ops *t;
+
+  /* Fill in the generic procfs methods.  */
+  t = procfs_target ();
+
+#ifdef NEW_PROC_API	/* Solaris 6 and above can do HW watchpoints.  */
+  procfs_use_watchpoints (t);
+#endif
+
 #if defined (PR_MODEL_NATIVE) && (PR_MODEL_NATIVE == PR_MODEL_LP64)
   amd64_native_gregset32_reg_offset = amd64_sol2_gregset32_reg_offset;
   amd64_native_gregset32_num_regs =
@@ -142,4 +154,6 @@ _initialize_amd64_sol2_nat (void)
   amd64_native_gregset64_num_regs =
     ARRAY_SIZE (amd64_sol2_gregset64_reg_offset);
 #endif
+
+  add_target (t);
 }

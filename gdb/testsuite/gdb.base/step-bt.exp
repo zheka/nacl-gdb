@@ -1,4 +1,4 @@
-# Copyright 2006, 2007, 2008 Free Software Foundation, Inc.
+# Copyright 2006, 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -13,15 +13,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-# The intent of this testcase it to verify that various aliases and
-# shortcuts of the "delete" command never stop working.
+# The intent of this testcase is to assure that backtrace works while
+# single-stepping the instructions that prepare to call a function.
 
 if $tracelevel then {
     strace $tracelevel
 }
 
-set prms_id 0
-set bug_id 0
 
 set testfile step-bt
 set srcfile ${testfile}.c
@@ -58,7 +56,7 @@ gdb_expect {
 }
 
 gdb_test "stepi" \
-         "" \
+         ".*" \
          "step first instruction"
 
 gdb_test "bt" \
@@ -66,7 +64,7 @@ gdb_test "bt" \
          "backtrace after first instruction step"
 
 gdb_test "stepi" \
-         "" \
+         ".*" \
          "step second instruction"
 
 gdb_test "bt" \

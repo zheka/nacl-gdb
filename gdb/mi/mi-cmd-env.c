@@ -1,6 +1,7 @@
 /* MI Command Set - environment commands.
 
-   Copyright (C) 2002, 2003, 2004, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2002, 2003, 2004, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    Contributed by Red Hat Inc.
 
@@ -51,6 +52,7 @@ env_execute_cli_command (const char *cmd, const char *args)
     {
       struct cleanup *old_cleanups;
       char *run;
+
       if (args != NULL)
 	run = xstrprintf ("%s %s", cmd, args);
       else
@@ -64,36 +66,35 @@ env_execute_cli_command (const char *cmd, const char *args)
 
 
 /* Print working directory.  */
-enum mi_cmd_result
+void
 mi_cmd_env_pwd (char *command, char **argv, int argc)
 {
   if (argc > 0)
-    error (_("mi_cmd_env_pwd: No arguments required"));
+    error (_("-environment-pwd: No arguments required"));
           
   if (mi_version (uiout) < 2)
     {
       env_execute_cli_command ("pwd", NULL);
-      return MI_CMD_DONE;
+      return;
     }
      
   /* Otherwise the mi level is 2 or higher.  */
 
-  getcwd (gdb_dirbuf, sizeof (gdb_dirbuf));
+  if (! getcwd (gdb_dirbuf, sizeof (gdb_dirbuf)))
+    error (_("-environment-pwd: error finding name of working directory: %s"),
+           safe_strerror (errno));
+    
   ui_out_field_string (uiout, "cwd", gdb_dirbuf);
-
-  return MI_CMD_DONE;
 }
 
 /* Change working directory.  */
-enum mi_cmd_result
+void
 mi_cmd_env_cd (char *command, char **argv, int argc)
 {
   if (argc == 0 || argc > 1)
-    error (_("mi_cmd_env_cd: Usage DIRECTORY"));
+    error (_("-environment-cd: Usage DIRECTORY"));
           
   env_execute_cli_command ("cd", argv[0]);
-
-  return MI_CMD_DONE;
 }
 
 static void
@@ -108,7 +109,7 @@ env_mod_path (char *dirname, char **which_path)
 }
 
 /* Add one or more directories to start of executable search path.  */
-enum mi_cmd_result
+void
 mi_cmd_env_path (char *command, char **argv, int argc)
 {
   char *exec_path;
@@ -133,14 +134,15 @@ mi_cmd_env_path (char *command, char **argv, int argc)
     {
       for (i = argc - 1; i >= 0; --i)
 	env_execute_cli_command ("path", argv[i]);
-      return MI_CMD_DONE;
+      return;
     }
 
   /* Otherwise the mi level is 2 or higher.  */
   while (1)
     {
-      int opt = mi_getopt ("mi_cmd_env_path", argc, argv, opts,
+      int opt = mi_getopt ("-environment-path", argc, argv, opts,
                            &optind, &optarg);
+
       if (opt < 0)
         break;
       switch ((enum opt) opt)
@@ -162,7 +164,7 @@ mi_cmd_env_path (char *command, char **argv, int argc)
   else
     {
       /* Otherwise, get current path to modify.  */
-      env = get_in_environ (inferior_environ, path_var_name);
+      env = get_in_environ (current_inferior ()->environment, path_var_name);
 
       /* Can be null if path is not set.  */
       if (!env)
@@ -173,16 +175,14 @@ mi_cmd_env_path (char *command, char **argv, int argc)
   for (i = argc - 1; i >= 0; --i)
     env_mod_path (argv[i], &exec_path);
 
-  set_in_environ (inferior_environ, path_var_name, exec_path);
+  set_in_environ (current_inferior ()->environment, path_var_name, exec_path);
   xfree (exec_path);
-  env = get_in_environ (inferior_environ, path_var_name);
+  env = get_in_environ (current_inferior ()->environment, path_var_name);
   ui_out_field_string (uiout, "path", env);
-
-  return MI_CMD_DONE;
 }
 
 /* Add zero or more directories to the front of the source path.  */
-enum mi_cmd_result
+void
 mi_cmd_env_dir (char *command, char **argv, int argc)
 {
   int i;
@@ -205,14 +205,15 @@ mi_cmd_env_dir (char *command, char **argv, int argc)
     {
       for (i = argc - 1; i >= 0; --i)
 	env_execute_cli_command ("dir", argv[i]);
-      return MI_CMD_DONE;
+      return;
     }
 
   /* Otherwise mi level is 2 or higher.  */
   while (1)
     {
-      int opt = mi_getopt ("mi_cmd_env_dir", argc, argv, opts,
+      int opt = mi_getopt ("-environment-directory", argc, argv, opts,
                            &optind, &optarg);
+
       if (opt < 0)
         break;
       switch ((enum opt) opt)
@@ -234,48 +235,49 @@ mi_cmd_env_dir (char *command, char **argv, int argc)
 
   for (i = argc - 1; i >= 0; --i)
     env_mod_path (argv[i], &source_path);
-  init_last_source_visited ();
 
   ui_out_field_string (uiout, "source-path", source_path);
   forget_cached_source_info ();
-
-  return MI_CMD_DONE;
 }
 
 /* Set the inferior terminal device name.  */
-enum mi_cmd_result
+void
 mi_cmd_inferior_tty_set (char *command, char **argv, int argc)
 {
   set_inferior_io_terminal (argv[0]);
-
-  return MI_CMD_DONE;
 }
 
 /* Print the inferior terminal device name  */
-enum mi_cmd_result
+void
 mi_cmd_inferior_tty_show (char *command, char **argv, int argc)
 {
   const char *inferior_io_terminal = get_inferior_io_terminal ();
   
-  if ( !mi_valid_noargs ("mi_cmd_inferior_tty_show", argc, argv))
-    error (_("mi_cmd_inferior_tty_show: Usage: No args"));
+  if ( !mi_valid_noargs ("-inferior-tty-show", argc, argv))
+    error (_("-inferior-tty-show: Usage: No args"));
 
   if (inferior_io_terminal)
     ui_out_field_string (uiout, "inferior_tty_terminal", inferior_io_terminal);
-
-  return MI_CMD_DONE;
 }
 
 void 
 _initialize_mi_cmd_env (void)
 {
+  struct gdb_environ *environment;
   char *env;
 
-  /* We want original execution path to reset to, if desired later.  */
-  env = get_in_environ (inferior_environ, path_var_name);
+  /* We want original execution path to reset to, if desired later.
+     At this point, current inferior is not created, so cannot use
+     current_inferior ()->environment.  Also, there's no obvious
+     place where this code can be moved suchs that it surely run
+     before any code possibly mangles original PATH.  */
+  environment = make_environ ();
+  init_environ (environment);
+  env = get_in_environ (environment, path_var_name);
 
   /* Can be null if path is not set.  */
   if (!env)
     env = "";
   orig_path = xstrdup (env);
+  free_environ (environment);
 }

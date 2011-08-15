@@ -1,7 +1,8 @@
 /* Language independent support for printing types for GDB, the GNU debugger.
 
    Copyright (C) 1986, 1988, 1989, 1991, 1992, 1993, 1994, 1995, 1998, 1999,
-   2000, 2001, 2003, 2006, 2007, 2008 Free Software Foundation, Inc.
+   2000, 2001, 2003, 2006, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -33,11 +34,9 @@
 #include "cp-abi.h"
 #include "typeprint.h"
 #include "gdb_string.h"
+#include "exceptions.h"
+#include "valprint.h"
 #include <errno.h>
-
-/* For real-type printing in whatis_exp() */
-extern int objectprint;		/* Controls looking up an object's derived type
-				   using what we find in its vtables.  */
 
 extern void _initialize_typeprint (void);
 
@@ -47,48 +46,24 @@ static void whatis_command (char *, int);
 
 static void whatis_exp (char *, int);
 
+
 /* Print a description of a type in the format of a 
    typedef for the current language.
-   NEW is the new name for a type TYPE. */
+   NEW is the new name for a type TYPE.  */
 
 void
 typedef_print (struct type *type, struct symbol *new, struct ui_file *stream)
 {
-  CHECK_TYPEDEF (type);
-  switch (current_language->la_language)
-    {
-#ifdef _LANG_c
-    case language_c:
-    case language_cplus:
-      fprintf_filtered (stream, "typedef ");
-      type_print (type, "", stream, 0);
-      if (TYPE_NAME ((SYMBOL_TYPE (new))) == 0
-	  || strcmp (TYPE_NAME ((SYMBOL_TYPE (new))), DEPRECATED_SYMBOL_NAME (new)) != 0)
-	fprintf_filtered (stream, " %s", SYMBOL_PRINT_NAME (new));
-      break;
-#endif
-#ifdef _LANG_m2
-    case language_m2:
-      fprintf_filtered (stream, "TYPE ");
-      if (!TYPE_NAME (SYMBOL_TYPE (new))
-	  || strcmp (TYPE_NAME ((SYMBOL_TYPE (new))), DEPRECATED_SYMBOL_NAME (new)) != 0)
-	fprintf_filtered (stream, "%s = ", SYMBOL_PRINT_NAME (new));
-      else
-	fprintf_filtered (stream, "<builtin> = ");
-      type_print (type, "", stream, 0);
-      break;
-#endif
-#ifdef _LANG_pascal
-    case language_pascal:
-      fprintf_filtered (stream, "type ");
-      fprintf_filtered (stream, "%s = ", SYMBOL_PRINT_NAME (new));
-      type_print (type, "", stream, 0);
-      break;
-#endif
-    default:
-      error (_("Language not supported."));
-    }
-  fprintf_filtered (stream, ";\n");
+  LA_PRINT_TYPEDEF (type, new, stream);
+}
+
+/* The default way to print a typedef.  */
+
+void
+default_print_typedef (struct type *type, struct symbol *new_symbol,
+		       struct ui_file *stream)
+{
+  error (_("Language not supported."));
 }
 
 /* Print a description of a type TYPE in the form of a declaration of a
@@ -105,6 +80,33 @@ type_print (struct type *type, char *varstring, struct ui_file *stream,
   LA_PRINT_TYPE (type, varstring, stream, show, 0);
 }
 
+/* Print TYPE to a string, returning it.  The caller is responsible for
+   freeing the string.  */
+
+char *
+type_to_string (struct type *type)
+{
+  char *s = NULL;
+  struct ui_file *stb;
+  struct cleanup *old_chain;
+  volatile struct gdb_exception except;
+
+  stb = mem_fileopen ();
+  old_chain = make_cleanup_ui_file_delete (stb);
+
+  TRY_CATCH (except, RETURN_MASK_ALL)
+    {
+      type_print (type, "", stb, -1);
+      s = ui_file_xstrdup (stb, NULL);
+    }
+  if (except.reason < 0)
+    s = NULL;
+
+  do_cleanups (old_chain);
+
+  return s;
+}
+
 /* Print type of EXP, or last thing in value history if EXP == NULL.
    show is passed to type_print.  */
 
@@ -119,6 +121,7 @@ whatis_exp (char *exp, int show)
   int full = 0;
   int top = -1;
   int using_enc = 0;
+  struct value_print_options opts;
 
   if (exp)
     {
@@ -131,7 +134,8 @@ whatis_exp (char *exp, int show)
 
   type = value_type (val);
 
-  if (objectprint)
+  get_user_print_options (&opts);
+  if (opts.objectprint)
     {
       if (((TYPE_CODE (type) == TYPE_CODE_PTR)
 	   || (TYPE_CODE (type) == TYPE_CODE_REF))
@@ -232,7 +236,7 @@ print_type_scalar (struct type *type, LONGEST val, struct ui_file *stream)
       break;
 
     case TYPE_CODE_CHAR:
-      LA_PRINT_CHAR ((unsigned char) val, stream);
+      LA_PRINT_CHAR ((unsigned char) val, type, stream);
       break;
 
     case TYPE_CODE_BOOL:
@@ -286,13 +290,13 @@ maintenance_print_type (char *typename, int from_tty)
       old_chain = make_cleanup (free_current_contents, &expr);
       if (expr->elts[0].opcode == OP_TYPE)
 	{
-	  /* The user expression names a type directly, just use that type. */
+	  /* The user expression names a type directly, just use that type.  */
 	  type = expr->elts[1].type;
 	}
       else
 	{
 	  /* The user expression may name a type indirectly by naming an
-	     object of that type.  Find that indirectly named type. */
+	     object of that type.  Find that indirectly named type.  */
 	  val = evaluate_type (expr);
 	  type = value_type (val);
 	}

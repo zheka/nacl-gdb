@@ -1,4 +1,4 @@
-# Copyright 2005, 2007 Free Software Foundation, Inc.
+# Copyright 2005, 2007, 2009, 2010, 2011 Free Software Foundation, Inc.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -29,22 +29,19 @@ if {[gdb_compile_ada "${srcfile}" "${binfile}" executable [list debug ]] != "" }
   return -1
 }
 
-gdb_exit
-gdb_start
-gdb_reinitialize_dir $srcdir/$subdir
-gdb_load ${binfile}
+clean_restart ${testfile}
 
 set bp_location [gdb_get_line_number "START" ${testdir}/p.adb]
 runto "p.adb:$bp_location"
 
 gdb_test "print X ** Y = Z" \
-         "true" \
+         "= true" \
          "Long_Long_Integer ** Y"
 
 gdb_test "print long_float'min (long_float (X), 8.0)" \
-         "7.0" \
+         "= 7.0" \
          "long_float'min"
 
 gdb_test "print long_float'max (long_float (X), 8.0)" \
-         "8.0" \
+         "= 8.0" \
          "long_float'max"

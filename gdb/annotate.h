@@ -1,6 +1,6 @@
 /* Annotation routines for GDB.
    Copyright (C) 1986, 1989, 1990, 1991, 1992, 1994, 1998, 1999, 2000, 2007,
-   2008 Free Software Foundation, Inc.
+   2008, 2009, 2010, 2011 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -43,6 +43,8 @@ extern void annotate_record (void);
 extern void annotate_breakpoints_table_end (void);
 
 extern void annotate_frames_invalid (void);
+extern void annotate_new_thread (void);
+extern void annotate_thread_changed (void);
 
 struct type;
 
@@ -74,9 +76,10 @@ extern void annotate_arg_name_end (void);
 extern void annotate_arg_value (struct type *);
 extern void annotate_arg_end (void);
 
-extern void annotate_source (char *, int, int, int, CORE_ADDR);
+extern void annotate_source (char *, int, int, int,
+			     struct gdbarch *, CORE_ADDR);
 
-extern void annotate_frame_begin (int, CORE_ADDR);
+extern void annotate_frame_begin (int, struct gdbarch *, CORE_ADDR);
 extern void annotate_function_call (void);
 extern void annotate_signal_handler_caller (void);
 extern void annotate_frame_address (void);
@@ -97,8 +100,5 @@ extern void annotate_elt_rep_end (void);
 extern void annotate_elt (void);
 extern void annotate_array_section_end (void);
 
-extern void (*deprecated_annotate_starting_hook) (void);
-extern void (*deprecated_annotate_stopped_hook) (void);
 extern void (*deprecated_annotate_signalled_hook) (void);
 extern void (*deprecated_annotate_signal_hook) (void);
-extern void (*deprecated_annotate_exited_hook) (void);

@@ -1,5 +1,6 @@
 /* CRIS device support
-   Copyright (C) 2004, 2005, 2006, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
    Contributed by Axis Communications.
 
 This file is part of the GNU simulators.
@@ -33,7 +34,7 @@ struct _device { char dummy; } cris_devices;
 
 void
 device_error (device *me ATTRIBUTE_UNUSED,
-	      char *message ATTRIBUTE_UNUSED,
+	      const char *message ATTRIBUTE_UNUSED,
 	      ...)
 {
   abort ();

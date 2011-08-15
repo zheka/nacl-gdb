@@ -1,5 +1,5 @@
 /* Support for printing Java types for GDB, the GNU debugger.
-   Copyright (C) 1997, 1998, 1999, 2000, 2007, 2008
+   Copyright (C) 1997, 1998, 1999, 2000, 2007, 2008, 2009, 2010, 2011
    Free Software Foundation, Inc.
 
    This file is part of GDB.
@@ -28,6 +28,7 @@
 #include "typeprint.h"
 #include "c-lang.h"
 #include "cp-abi.h"
+#include "gdb_assert.h"
 
 /* Local functions */
 
@@ -89,8 +90,8 @@ java_type_print_base (struct type *type, struct ui_file *stream, int show,
   int len;
   char *mangled_name;
   char *demangled_name;
-  QUIT;
 
+  QUIT;
   wrap_here ("    ");
 
   if (type == NULL)
@@ -121,6 +122,7 @@ java_type_print_base (struct type *type, struct ui_file *stream, int show,
       if (TYPE_TAG_NAME (type) != NULL && TYPE_TAG_NAME (type)[0] == '[')
 	{			/* array type */
 	  char *name = java_demangle_type_signature (TYPE_TAG_NAME (type));
+
 	  fputs_filtered (name, stream);
 	  xfree (name);
 	  break;
@@ -169,7 +171,7 @@ java_type_print_base (struct type *type, struct ui_file *stream, int show,
 		  && is_cplus_marker ((TYPE_FIELD_NAME (type, i))[5]))
 		continue;
 
-	      /* Don't print the dummy field "class". */
+	      /* Don't print the dummy field "class".  */
 	      if (strncmp (TYPE_FIELD_NAME (type, i), "class", 5) == 0)
 		continue;
 
@@ -185,7 +187,7 @@ java_type_print_base (struct type *type, struct ui_file *stream, int show,
 		    fprintf_filtered (stream, "public ");
 		}
 
-	      if (TYPE_FIELD_STATIC (type, i))
+	      if (field_is_static (&TYPE_FIELD (type, i)))
 		fprintf_filtered (stream, "static ");
 
 	      java_print_type (TYPE_FIELD_TYPE (type, i),
@@ -195,12 +197,12 @@ java_type_print_base (struct type *type, struct ui_file *stream, int show,
 	      fprintf_filtered (stream, ";\n");
 	    }
 
-	  /* If there are both fields and methods, put a space between. */
+	  /* If there are both fields and methods, put a space between.  */
 	  len = TYPE_NFN_FIELDS (type);
 	  if (len)
 	    fprintf_filtered (stream, "\n");
 
-	  /* Print out the methods */
+	  /* Print out the methods.  */
 
 	  for (i = 0; i < len; i++)
 	    {
@@ -219,10 +221,19 @@ java_type_print_base (struct type *type, struct ui_file *stream, int show,
 
 	      for (j = 0; j < n_overloads; j++)
 		{
-		  char *physname;
+		  char *real_physname, *physname, *p;
 		  int is_full_physname_constructor;
 
-		  physname = TYPE_FN_FIELD_PHYSNAME (f, j);
+		  real_physname = TYPE_FN_FIELD_PHYSNAME (f, j);
+
+		  /* The physname will contain the return type
+		     after the final closing parenthesis.  Strip it off.  */
+		  p = strrchr (real_physname, ')');
+		  gdb_assert (p != NULL);
+		  ++p;   /* Keep the trailing ')'.  */
+		  physname = alloca (p - real_physname + 1);
+		  memcpy (physname, real_physname, p - real_physname);
+		  physname[p - real_physname] = '\0';
 
 		  is_full_physname_constructor
                     = (is_constructor_name (physname)
@@ -268,7 +279,7 @@ java_type_print_base (struct type *type, struct ui_file *stream, int show,
 		    /* Build something we can demangle.  */
 		    mangled_name = gdb_mangle_name (type, i, j);
 		  else
-		    mangled_name = TYPE_FN_FIELD_PHYSNAME (f, j);
+		    mangled_name = physname;
 
 		  demangled_name =
 		    cplus_demangle (mangled_name,
@@ -321,8 +332,8 @@ extern void c_type_print_varspec_suffix (struct type *, struct ui_file *,
 					 int, int, int);
 
 void
-java_print_type (struct type *type, char *varstring, struct ui_file *stream,
-		 int show, int level)
+java_print_type (struct type *type, const char *varstring,
+		 struct ui_file *stream, int show, int level)
 {
   int demangled_args;
 
@@ -335,7 +346,7 @@ java_print_type (struct type *type, char *varstring, struct ui_file *stream,
     }
 
   /* For demangled function names, we have the arglist as part of the name,
-     so don't print an additional pair of ()'s */
+     so don't print an additional pair of ()'s.  */
 
   demangled_args = varstring != NULL && strchr (varstring, '(') != NULL;
   c_type_print_varspec_suffix (type, stream, show, 0, demangled_args);

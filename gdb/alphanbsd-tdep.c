@@ -1,6 +1,6 @@
 /* Target-dependent code for NetBSD/alpha.
 
-   Copyright (C) 2002, 2003, 2004, 2006, 2007, 2008
+   Copyright (C) 2002, 2003, 2004, 2006, 2007, 2008, 2009, 2010, 2011
    Free Software Foundation, Inc.
 
    Contributed by Wasabi Systems, Inc.
@@ -35,6 +35,7 @@
 #include "alphabsd-tdep.h"
 #include "nbsd-tdep.h"
 #include "solib-svr4.h"
+#include "target.h"
 
 /* Core file support.  */
 
@@ -210,13 +211,13 @@ static const unsigned char sigtramp_retcode[] =
 #define RETCODE_SIZE		(RETCODE_NWORDS * 4)
 
 static LONGEST
-alphanbsd_sigtramp_offset (CORE_ADDR pc)
+alphanbsd_sigtramp_offset (struct gdbarch *gdbarch, CORE_ADDR pc)
 {
   unsigned char ret[RETCODE_SIZE], w[4];
   LONGEST off;
   int i;
 
-  if (read_memory_nobpt (pc, (char *) w, 4) != 0)
+  if (target_read_memory (pc, (char *) w, 4) != 0)
     return -1;
 
   for (i = 0; i < RETCODE_NWORDS; i++)
@@ -230,7 +231,7 @@ alphanbsd_sigtramp_offset (CORE_ADDR pc)
   off = i * 4;
   pc -= off;
 
-  if (read_memory_nobpt (pc, (char *) ret, sizeof (ret)) != 0)
+  if (target_read_memory (pc, (char *) ret, sizeof (ret)) != 0)
     return -1;
 
   if (memcmp (ret, sigtramp_retcode, RETCODE_SIZE) == 0)
@@ -240,10 +241,11 @@ alphanbsd_sigtramp_offset (CORE_ADDR pc)
 }
 
 static int
-alphanbsd_pc_in_sigtramp (CORE_ADDR pc, char *func_name)
+alphanbsd_pc_in_sigtramp (struct gdbarch *gdbarch,
+		 	  CORE_ADDR pc, char *func_name)
 {
   return (nbsd_pc_in_sigtramp (pc, func_name)
-	  || alphanbsd_sigtramp_offset (pc) >= 0);
+	  || alphanbsd_sigtramp_offset (gdbarch, pc) >= 0);
 }
 
 static CORE_ADDR
@@ -252,7 +254,9 @@ alphanbsd_sigcontext_addr (struct frame_info *frame)
   /* FIXME: This is not correct for all versions of NetBSD/alpha.
      We will probably need to disassemble the trampoline to figure
      out which trampoline frame type we have.  */
-  return get_frame_base (frame);
+  if (!get_next_frame (frame))
+    return 0;
+  return get_frame_base (get_next_frame (frame));
 }
 
 

@@ -1,12 +1,12 @@
 /* Xtensa ELF support for BFD.
-   Copyright 2003, 2004, 2007 Free Software Foundation, Inc.
+   Copyright 2003, 2004, 2007, 2008, 2010 Free Software Foundation, Inc.
    Contributed by Bob Wilson (bwilson@tensilica.com) at Tensilica.
 
    This file is part of BFD, the Binary File Descriptor library.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
-   the Free Software Foundation; either version 2 of the License, or
+   the Free Software Foundation; either version 3 of the License, or
    (at your option) any later version.
 
    This program is distributed in the hope that it will be useful,
@@ -76,6 +76,13 @@ START_RELOC_NUMBERS (elf_xtensa_reloc_type)
      RELOC_NUMBER (R_XTENSA_SLOT12_ALT, 47)
      RELOC_NUMBER (R_XTENSA_SLOT13_ALT, 48)
      RELOC_NUMBER (R_XTENSA_SLOT14_ALT, 49)
+     RELOC_NUMBER (R_XTENSA_TLSDESC_FN, 50)
+     RELOC_NUMBER (R_XTENSA_TLSDESC_ARG, 51)
+     RELOC_NUMBER (R_XTENSA_TLS_DTPOFF, 52)
+     RELOC_NUMBER (R_XTENSA_TLS_TPOFF, 53)
+     RELOC_NUMBER (R_XTENSA_TLS_FUNC, 54)
+     RELOC_NUMBER (R_XTENSA_TLS_ARG, 55)
+     RELOC_NUMBER (R_XTENSA_TLS_CALL, 56)
 END_RELOC_NUMBERS (R_XTENSA_max)
 
 /* Processor-specific flags for the ELF header e_flags field.  */

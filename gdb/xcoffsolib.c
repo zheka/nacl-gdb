@@ -1,6 +1,6 @@
 /* Shared library support for RS/6000 (xcoff) object files, for GDB.
-   Copyright (C) 1991, 1992, 1995, 1996, 1999, 2000, 2001, 2007, 2008
-   Free Software Foundation, Inc.
+   Copyright (C) 1991, 1992, 1995, 1996, 1999, 2000, 2001, 2007, 2008, 2009,
+   2010, 2011 Free Software Foundation, Inc.
    Contributed by IBM Corporation.
 
    This file is part of GDB.
@@ -62,6 +62,7 @@ static void sharedlibrary_command (char *pattern, int from_tty);
 static void
 solib_info (char *args, int from_tty)
 {
+  int addr_size = gdbarch_addr_bit (target_gdbarch) / 8;
   struct vmap *vp = vmap;
 
   /* Check for new shared libraries loaded with load ().  */
@@ -77,14 +78,16 @@ solib_info (char *args, int from_tty)
   /* Skip over the first vmap, it is the main program, always loaded.  */
   vp = vp->nxt;
 
-  printf_unfiltered ("\
-Text Range		Data Range		Syms	Shared Object Library\n");
+  printf_unfiltered ("Text Range		Data Range		"
+		     "Syms	Shared Object Library\n");
 
   for (; vp != NULL; vp = vp->nxt)
     {
       printf_unfiltered ("0x%s-0x%s	0x%s-0x%s	%s	%s%s%s%s\n",
-			 paddr (vp->tstart),paddr (vp->tend),
-			 paddr (vp->dstart), paddr (vp->dend),
+			 phex (vp->tstart, addr_size),
+			 phex (vp->tend, addr_size),
+			 phex (vp->dstart, addr_size),
+			 phex (vp->dend, addr_size),
 			 vp->loaded ? "Yes" : "No ",
 			 vp->name,
 			 *vp->member ? "(" : "",
@@ -121,7 +124,7 @@ sharedlibrary_command (char *pattern, int from_tty)
     if (!vp)
       return;
 
-    /* skip over the first vmap, it is the main program, always loaded. */
+    /* skip over the first vmap, it is the main program, always loaded.  */
     for (vp = vp->nxt; vp; vp = vp->nxt)
       if (! pattern
 	    || re_exec (vp->name)
@@ -170,7 +173,8 @@ Show autoloading of shared library symbols."), _("\
 If \"on\", symbols from all shared object libraries will be loaded\n\
 automatically when the inferior begins execution, when the dynamic linker\n\
 informs gdb that a new library has been loaded, or when attaching to the\n\
-inferior.  Otherwise, symbols must be loaded manually, using `sharedlibrary'."),
+inferior.  Otherwise, symbols must be loaded manually, using \
+`sharedlibrary'."),
 			   NULL,
 			   NULL, /* FIXME: i18n: */
 			   &setlist, &showlist);

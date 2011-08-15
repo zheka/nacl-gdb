@@ -1,7 +1,7 @@
 /* Target-dependent code for NetBSD/i386.
 
    Copyright (C) 1988, 1989, 1991, 1992, 1994, 1996, 2000, 2001, 2002, 2003,
-   2004, 2007, 2008 Free Software Foundation, Inc.
+   2004, 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -228,13 +228,14 @@ static const struct tramp_frame i386nbsd_sigtramp_si4 =
 
 static void
 i386nbsd_sigtramp_cache_init (const struct tramp_frame *self,
-			     struct frame_info *next_frame,
-			     struct trad_frame_cache *this_cache,
-			     CORE_ADDR func)
+			      struct frame_info *this_frame,
+			      struct trad_frame_cache *this_cache,
+			      CORE_ADDR func)
 {
-  struct gdbarch *gdbarch = get_frame_arch (next_frame);
+  struct gdbarch *gdbarch = get_frame_arch (this_frame);
   struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
-  CORE_ADDR sp = frame_unwind_register_unsigned (next_frame, I386_ESP_REGNUM);
+  enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
+  CORE_ADDR sp = get_frame_register_unsigned (this_frame, I386_ESP_REGNUM);
   CORE_ADDR base;
   int *reg_offset;
   int num_regs;
@@ -245,16 +246,16 @@ i386nbsd_sigtramp_cache_init (const struct tramp_frame *self,
       reg_offset = i386nbsd_sc_reg_offset;
       num_regs = ARRAY_SIZE (i386nbsd_sc_reg_offset);
 
-      /* Read in the sigcontext address */
-      base = read_memory_unsigned_integer (sp + 8, 4);
+      /* Read in the sigcontext address.  */
+      base = read_memory_unsigned_integer (sp + 8, 4, byte_order);
     }
   else
     {
       reg_offset = i386nbsd_mc_reg_offset;
       num_regs = ARRAY_SIZE (i386nbsd_mc_reg_offset);
 
-      /* Read in the ucontext address */
-      base = read_memory_unsigned_integer (sp + 8, 4);
+      /* Read in the ucontext address.  */
+      base = read_memory_unsigned_integer (sp + 8, 4, byte_order);
       /* offsetof(ucontext_t, uc_mcontext) == 36 */
       base += 36;
     }
@@ -284,7 +285,7 @@ i386nbsd_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
   /* NetBSD uses -freg-struct-return by default.  */
   tdep->struct_return = reg_struct_return;
 
-  /* NetBSD uses tramp_frame sniffers for signal trampolines. */
+  /* NetBSD uses tramp_frame sniffers for signal trampolines.  */
   tdep->sigcontext_addr= 0;
   tdep->sigtramp_start = 0;
   tdep->sigtramp_end = 0;
@@ -319,6 +320,9 @@ i386nbsdelf_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
   /* NetBSD ELF uses -fpcc-struct-return by default.  */
   tdep->struct_return = pcc_struct_return;
 }
+
+/* Provide a prototype to silence -Wmissing-prototypes.  */
+extern initialize_file_ftype _initialize_i386nbsd_tdep;
 
 void
 _initialize_i386nbsd_tdep (void)

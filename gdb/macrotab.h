@@ -1,5 +1,6 @@
 /* Interface to C preprocessor macro tables for GDB.
-   Copyright (C) 2002, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2002, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
    Contributed by Red Hat, Inc.
 
    This file is part of GDB.
@@ -72,6 +73,8 @@ struct bcache;
 /* A table of all the macro definitions for a given compilation unit.  */
 struct macro_table;
 
+/* The definition of a single macro.  */
+struct macro_definition;
 
 /* A source file that participated in a compilation unit --- either a
    main file, or an #included file.  If a file is #included more than
@@ -189,6 +192,11 @@ struct macro_source_file *macro_set_main (struct macro_table *table,
 /* Return the main source file of the macro table TABLE.  */
 struct macro_source_file *macro_main (struct macro_table *table);
 
+/* Mark the macro table TABLE so that macros defined in this table can
+   be redefined without error.  Note that it invalid to call this if
+   TABLE is allocated on an obstack.  */
+void macro_allow_redefinitions (struct macro_table *table);
+
 
 /* Record a #inclusion.
    Record in SOURCE's macro table that, at line number LINE in SOURCE,
@@ -247,7 +255,6 @@ void macro_define_function (struct macro_source_file *source, int line,
 void macro_undef (struct macro_source_file *source, int line,
                   const char *name);
 
-
 /* Different kinds of macro definitions.  */
 enum macro_kind
 {
@@ -263,12 +270,12 @@ struct macro_definition
   struct macro_table *table;
 
   /* What kind of macro it is.  */
-  enum macro_kind kind;
+  ENUM_BITFIELD (macro_kind) kind : 1;
 
   /* If `kind' is `macro_function_like', the number of arguments it
      takes, and their names.  The names, and the array of pointers to
      them, are in the table's bcache, if it has one.  */
-  int argc;
+  int argc : 31;
   const char * const *argv;
 
   /* The replacement string (body) of the macro.  This is in the
@@ -297,6 +304,26 @@ struct macro_source_file *(macro_definition_location
                             int line,
                             const char *name,
                             int *definition_line));
+
+/* Callback function when walking a macro table.  NAME is the name of
+   the macro, and DEFINITION is the definition.  USER_DATA is an
+   arbitrary pointer which is passed by the caller to macro_for_each
+   or macro_for_each_in_scope.  */
+typedef void (*macro_callback_fn) (const char *name,
+				   const struct macro_definition *definition,
+				   void *user_data);
+
+/* Call the function FN for each macro in the macro table TABLE.
+   USER_DATA is passed, untranslated, to FN.  */
+void macro_for_each (struct macro_table *table, macro_callback_fn fn,
+		     void *user_data);
+
+/* Call the function FN for each macro that is visible in a given
+   scope.  The scope is represented by FILE and LINE.  USER_DATA is
+   passed, untranslated, to FN.  */
+void macro_for_each_in_scope (struct macro_source_file *file, int line,
+			      macro_callback_fn fn,
+			      void *user_data);
 
 
 #endif /* MACROTAB_H */

@@ -1,7 +1,7 @@
 /* Main header file for the bfd library -- portable access to object files.
 
    Copyright 1990, 1991, 1992, 1993, 1994, 1995, 1996, 1997, 1998,
-   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
+   1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010
    Free Software Foundation, Inc.
 
    Contributed by Cygnus Support.
@@ -66,6 +66,8 @@ extern "C" {
 #define LITSTRCPY(DEST,STR2) memcpy ((DEST), (STR2), sizeof (STR2))
 
 
+#define BFD_SUPPORTS_PLUGINS @supports_plugins@
+
 /* The word size used by BFD on the host.  This may be 64 with a 32
    bit target if the host is 64 bit, or if other 64 bit targets have
    been selected with --enable-targets, or if --enable-64-bit-bfd.  */
@@ -128,26 +130,17 @@ typedef BFD_HOST_64_BIT bfd_signed_vma;
 typedef BFD_HOST_U_64_BIT bfd_size_type;
 typedef BFD_HOST_U_64_BIT symvalue;
 
-#ifndef fprintf_vma
 #if BFD_HOST_64BIT_LONG
-#define sprintf_vma(s,x) sprintf (s, "%016lx", x)
-#define fprintf_vma(f,x) fprintf (f, "%016lx", x)
-#elif BFD_HOST_64BIT_LONG_LONG
-#ifndef __MSVCRT__
-#define sprintf_vma(s,x) sprintf (s, "%016llx", x)
-#define fprintf_vma(f,x) fprintf (f, "%016llx", x)
+#define BFD_VMA_FMT "l"
+#elif defined (__MSVCRT__)
+#define BFD_VMA_FMT "I64"
 #else
-#define sprintf_vma(s,x) sprintf (s, "%016I64x", x)
-#define fprintf_vma(f,x) fprintf (f, "%016I64x", x)
+#define BFD_VMA_FMT "ll"
 #endif
-#else
-#define _bfd_int64_low(x) ((unsigned long) (((x) & 0xffffffff)))
-#define _bfd_int64_high(x) ((unsigned long) (((x) >> 32) & 0xffffffff))
-#define fprintf_vma(s,x) \
-  fprintf ((s), "%08lx%08lx", _bfd_int64_high (x), _bfd_int64_low (x))
-#define sprintf_vma(s,x) \
-  sprintf ((s), "%08lx%08lx", _bfd_int64_high (x), _bfd_int64_low (x))
-#endif
+
+#ifndef fprintf_vma
+#define sprintf_vma(s,x) sprintf (s, "%016" BFD_VMA_FMT "x", x)
+#define fprintf_vma(f,x) fprintf (f, "%016" BFD_VMA_FMT "x", x)
 #endif
 
 #else /* not BFD64  */
@@ -167,8 +160,9 @@ typedef unsigned long symvalue;
 typedef unsigned long bfd_size_type;
 
 /* Print a bfd_vma x on stream s.  */
-#define fprintf_vma(s,x) fprintf (s, "%08lx", x)
-#define sprintf_vma(s,x) sprintf (s, "%08lx", x)
+#define BFD_VMA_FMT "l"
+#define fprintf_vma(s,x) fprintf (s, "%08" BFD_VMA_FMT "x", x)
+#define sprintf_vma(s,x) sprintf (s, "%08" BFD_VMA_FMT "x", x)
 
 #endif /* not BFD64  */
 
@@ -209,70 +203,6 @@ typedef enum bfd_format
   bfd_type_end		/* Marks the end; don't use it!  */
 }
 bfd_format;
-
-/* Values that may appear in the flags field of a BFD.  These also
-   appear in the object_flags field of the bfd_target structure, where
-   they indicate the set of flags used by that backend (not all flags
-   are meaningful for all object file formats) (FIXME: at the moment,
-   the object_flags values have mostly just been copied from backend
-   to another, and are not necessarily correct).  */
-
-/* No flags.  */
-#define BFD_NO_FLAGS   	0x00
-
-/* BFD contains relocation entries.  */
-#define HAS_RELOC   	0x01
-
-/* BFD is directly executable.  */
-#define EXEC_P      	0x02
-
-/* BFD has line number information (basically used for F_LNNO in a
-   COFF header).  */
-#define HAS_LINENO  	0x04
-
-/* BFD has debugging information.  */
-#define HAS_DEBUG   	0x08
-
-/* BFD has symbols.  */
-#define HAS_SYMS    	0x10
-
-/* BFD has local symbols (basically used for F_LSYMS in a COFF
-   header).  */
-#define HAS_LOCALS  	0x20
-
-/* BFD is a dynamic object.  */
-#define DYNAMIC     	0x40
-
-/* Text section is write protected (if D_PAGED is not set, this is
-   like an a.out NMAGIC file) (the linker sets this by default, but
-   clears it for -r or -N).  */
-#define WP_TEXT     	0x80
-
-/* BFD is dynamically paged (this is like an a.out ZMAGIC file) (the
-   linker sets this by default, but clears it for -r or -n or -N).  */
-#define D_PAGED     	0x100
-
-/* BFD is relaxable (this means that bfd_relax_section may be able to
-   do something) (sometimes bfd_relax_section can do something even if
-   this is not set).  */
-#define BFD_IS_RELAXABLE 0x200
-
-/* This may be set before writing out a BFD to request using a
-   traditional format.  For example, this is used to request that when
-   writing out an a.out object the symbols not be hashed to eliminate
-   duplicates.  */
-#define BFD_TRADITIONAL_FORMAT 0x400
-
-/* This flag indicates that the BFD contents are actually cached in
-   memory.  If this is set, iostream points to a bfd_in_memory struct.  */
-#define BFD_IN_MEMORY 0x800
-
-/* The sections in this BFD specify a memory page.  */
-#define HAS_LOAD_PAGE 0x1000
-
-/* This BFD has been created by the linker and doesn't correspond
-   to any input file.  */
-#define BFD_LINKER_CREATED 0x2000
 
 /* Symbols and relocation.  */
 
@@ -295,7 +225,10 @@ typedef const struct reloc_howto_struct reloc_howto_type;
 #define bfd_asymbol_name(x) ((x)->name)
 /*Perhaps future: #define bfd_asymbol_bfd(x) ((x)->section->owner)*/
 #define bfd_asymbol_bfd(x) ((x)->the_bfd)
-#define bfd_asymbol_flavour(x) (bfd_asymbol_bfd(x)->xvec->flavour)
+#define bfd_asymbol_flavour(x)			\
+  (((x)->flags & BSF_SYNTHETIC) != 0		\
+   ? bfd_target_unknown_flavour			\
+   : bfd_asymbol_bfd (x)->xvec->flavour)
 
 /* A canonical archive symbol.  */
 /* This is a type pun with struct ranlib on purpose!  */
@@ -361,7 +294,7 @@ typedef struct bfd_section *sec_ptr;
   (((sec)->rawsize ? (sec)->rawsize : (sec)->size) \
    / bfd_octets_per_byte (bfd))
 
-/* Return TRUE if section has been discarded.  */
+/* Return TRUE if input section SEC has been discarded.  */
 #define elf_discarded_section(sec)				\
   (!bfd_is_abs_section (sec)					\
    && bfd_is_abs_section ((sec)->output_section)		\
@@ -471,6 +404,10 @@ extern struct bfd_hash_entry *bfd_hash_lookup
 extern struct bfd_hash_entry *bfd_hash_insert
   (struct bfd_hash_table *, const char *, unsigned long);
 
+/* Rename an entry in a hash table.  */
+extern void bfd_hash_rename
+  (struct bfd_hash_table *, const char *, struct bfd_hash_entry *);
+
 /* Replace an entry in a hash table.  */
 extern void bfd_hash_replace
   (struct bfd_hash_table *, struct bfd_hash_entry *old,
@@ -563,6 +500,7 @@ extern void warn_deprecated (const char *, const char *, int, const char *);
 #define bfd_applicable_section_flags(abfd) ((abfd)->xvec->section_flags)
 #define bfd_my_archive(abfd) ((abfd)->my_archive)
 #define bfd_has_map(abfd) ((abfd)->has_armap)
+#define bfd_is_thin_archive(abfd) ((abfd)->is_thin_archive)
 
 #define bfd_valid_reloc_types(abfd) ((abfd)->xvec->valid_reloc_types)
 #define bfd_usrdata(abfd) ((abfd)->usrdata)
@@ -701,8 +639,8 @@ extern struct bfd_link_needed_list *bfd_elf_get_needed_list
 extern bfd_boolean bfd_elf_get_bfd_needed_list
   (bfd *, struct bfd_link_needed_list **);
 extern bfd_boolean bfd_elf_size_dynamic_sections
-  (bfd *, const char *, const char *, const char *, const char * const *,
-   struct bfd_link_info *, struct bfd_section **,
+  (bfd *, const char *, const char *, const char *, const char *, const char *,
+   const char * const *, struct bfd_link_info *, struct bfd_section **,
    struct bfd_elf_version_tree *);
 extern bfd_boolean bfd_elf_size_dynsym_hash_dynstr
   (bfd *, struct bfd_link_info *);
@@ -775,7 +713,13 @@ extern bfd_boolean bfd_m68k_elf32_create_embedded_relocs
   (bfd *, struct bfd_link_info *, struct bfd_section *, struct bfd_section *,
    char **);
 
+extern void bfd_elf_m68k_set_target_options (struct bfd_link_info *, int);
+
 extern bfd_boolean bfd_bfin_elf32_create_embedded_relocs
+  (bfd *, struct bfd_link_info *, struct bfd_section *, struct bfd_section *,
+   char **);
+
+extern bfd_boolean bfd_cr16_elf32_create_embedded_relocs
   (bfd *, struct bfd_link_info *, struct bfd_section *, struct bfd_section *,
    char **);
 
@@ -827,6 +771,10 @@ extern bfd_boolean bfd_get_file_window
 
 /* XCOFF support routines for the linker.  */
 
+extern bfd_boolean bfd_xcoff_split_import_path
+  (bfd *, const char *, const char **, const char **);
+extern bfd_boolean bfd_xcoff_set_archive_import_path
+  (struct bfd_link_info *, bfd *, const char *);
 extern bfd_boolean bfd_xcoff_link_record_set
   (bfd *, struct bfd_link_info *, struct bfd_link_hash_entry *, bfd_size_type);
 extern bfd_boolean bfd_xcoff_import_symbol
@@ -841,7 +789,7 @@ extern bfd_boolean bfd_xcoff_record_link_assignment
 extern bfd_boolean bfd_xcoff_size_dynamic_sections
   (bfd *, struct bfd_link_info *, const char *, const char *,
    unsigned long, unsigned long, unsigned long, bfd_boolean,
-   int, bfd_boolean, bfd_boolean, struct bfd_section **, bfd_boolean);
+   int, bfd_boolean, unsigned int, struct bfd_section **, bfd_boolean);
 extern bfd_boolean bfd_xcoff_link_generate_rtinit
   (bfd *, const char *, const char *, bfd_boolean);
 
@@ -883,6 +831,9 @@ extern void bfd_elf32_arm_init_maps
 extern void bfd_elf32_arm_set_vfp11_fix
   (bfd *, struct bfd_link_info *);
 
+extern void bfd_elf32_arm_set_cortex_a8_fix
+  (bfd *, struct bfd_link_info *);
+
 extern bfd_boolean bfd_elf32_arm_vfp11_erratum_scan
   (bfd *, struct bfd_link_info *);
 
@@ -918,7 +869,7 @@ extern bfd_boolean bfd_elf32_arm_process_before_allocation
 
 void bfd_elf32_arm_set_target_relocs
   (bfd *, struct bfd_link_info *, int, char *, int, int, bfd_arm_vfp11_fix,
-   int, int);
+   int, int, int, int);
 
 extern bfd_boolean bfd_elf32_arm_get_bfd_for_interworking
   (bfd *, struct bfd_link_info *);
@@ -945,6 +896,28 @@ extern bfd_boolean bfd_arm_update_notes
 
 extern unsigned int bfd_arm_get_mach_from_notes
   (bfd *, const char *);
+
+/* ARM stub generation support.  Called from the linker.  */
+extern int elf32_arm_setup_section_lists
+  (bfd *, struct bfd_link_info *);
+extern void elf32_arm_next_input_section
+  (struct bfd_link_info *, struct bfd_section *);
+extern bfd_boolean elf32_arm_size_stubs
+  (bfd *, bfd *, struct bfd_link_info *, bfd_signed_vma,
+   struct bfd_section * (*) (const char *, struct bfd_section *), void (*) (void));
+extern bfd_boolean elf32_arm_build_stubs
+  (struct bfd_link_info *);
+
+/* ARM unwind section editing support.  */
+extern bfd_boolean elf32_arm_fix_exidx_coverage
+(struct bfd_section **, unsigned int, struct bfd_link_info *, bfd_boolean);
+
+/* PowerPC @tls opcode transform/validate.  */
+extern unsigned int _bfd_elf_ppc_at_tls_transform
+  (unsigned int, unsigned int);
+/* PowerPC @tprel opcode transform/validate.  */
+extern unsigned int _bfd_elf_ppc_at_tprel_transform
+  (unsigned int, unsigned int);
 
 /* TI COFF load page support.  */
 extern void bfd_ticoff_set_section_load_page

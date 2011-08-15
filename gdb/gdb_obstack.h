@@ -1,6 +1,7 @@
 /* Obstack wrapper for GDB.
 
-   Copyright (C) 2002, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2002, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -24,9 +25,12 @@
 
 /* Utility macros - wrap obstack alloc into something more robust.  */
 
-#define OBSTACK_ZALLOC(OBSTACK,TYPE) (memset (obstack_alloc ((OBSTACK), sizeof (TYPE)), 0, sizeof (TYPE)))
+#define OBSTACK_ZALLOC(OBSTACK,TYPE) \
+  (memset (obstack_alloc ((OBSTACK), sizeof (TYPE)), 0, sizeof (TYPE)))
 
-#define OBSTACK_CALLOC(OBSTACK,NUMBER,TYPE) (memset (obstack_alloc ((OBSTACK), (NUMBER) * sizeof (TYPE)), 0, (NUMBER) * sizeof (TYPE)))
+#define OBSTACK_CALLOC(OBSTACK,NUMBER,TYPE) \
+  (memset (obstack_alloc ((OBSTACK), (NUMBER) * sizeof (TYPE)), \
+	   0, (NUMBER) * sizeof (TYPE)))
 
 /* Unless explicitly specified, GDB obstacks always use xmalloc() and
    xfree().  */
@@ -44,5 +48,8 @@
   obstack_grow (OBSTACK, STRING, strlen (STRING))
 #define obstack_grow_str0(OBSTACK,STRING) \
   obstack_grow0 (OBSTACK, STRING, strlen (STRING))
+
+#define obstack_grow_wstr(OBSTACK, WSTRING) \
+  obstack_grow (OBSTACK, WSTRING, sizeof (gdb_wchar_t) * gdb_wcslen (WSTRING))
 
 #endif

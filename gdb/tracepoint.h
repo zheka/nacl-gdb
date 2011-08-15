@@ -1,5 +1,5 @@
 /* Data structures associated with tracepoints in GDB.
-   Copyright (C) 1997, 1998, 1999, 2000, 2007, 2008
+   Copyright (C) 1997, 1998, 1999, 2000, 2007, 2008, 2009, 2010, 2011
    Free Software Foundation, Inc.
 
    This file is part of GDB.
@@ -20,120 +20,241 @@
 #if !defined (TRACEPOINT_H)
 #define TRACEPOINT_H 1
 
-/* The data structure for an action: */
-struct action_line
+#include "breakpoint.h"
+#include "target.h"
+#include "memrange.h"
+
+/* A trace state variable is a value managed by a target being
+   traced.  A trace state variable (or tsv for short) can be accessed
+   and assigned to by tracepoint actions and conditionals, but is not
+   part of the program being traced, and it doesn't have to be
+   collected.  Effectively the variables are scratch space for
+   tracepoints.  */
+
+struct trace_state_variable
   {
-    struct action_line *next;
-    char *action;
-  };
+    /* The variable's name.  The user has to prefix with a dollar sign,
+       but we don't store that internally.  */
+    const char *name;
 
-/* The data structure for a tracepoint: */
-
-struct tracepoint
-  {
-    struct tracepoint *next;
-
-    int enabled_p;
-
-#if 0
-    /* Type of tracepoint.  (MVS FIXME: needed?) */
-    enum tptype type;
-
-    /* What to do with this tracepoint after we hit it 
-       MVS FIXME: needed?).  */
-    enum tpdisp disposition;
-#endif
-    /* Number assigned to distinguish tracepoints.  */
+    /* An id number assigned by GDB, and transmitted to targets.  */
     int number;
 
-    /* Address to trace at, or NULL if not an instruction tracepoint.
-       (MVS ?) */
-    CORE_ADDR address;
+    /* The initial value of a variable is a 64-bit signed integer.  */
+    LONGEST initial_value;
 
-    /* Line number of this address.  
-       Only matters if address is non-NULL.  */
-    int line_number;
+    /* 1 if the value is known, else 0.  The value is known during a
+       trace run, or in tfind mode if the variable was collected into
+       the current trace frame.  */
+    int value_known;
 
-    /* Source file name of this address.  
-       Only matters if address is non-NULL.  */
-    char *source_file;
+    /* The value of a variable is a 64-bit signed integer.  */
+    LONGEST value;
 
-    /* Number of times this tracepoint should single-step 
-       and collect additional data.  */
-    long step_count;
+    /* This is true for variables that are predefined and built into
+       the target.  */
+    int builtin;
+   };
 
-    /* Number of times this tracepoint should be hit before 
-       disabling/ending.  */
-    int pass_count;
+/* The trace status encompasses various info about the general state
+   of the tracing run.  */
 
-    /* Chain of action lines to execute when this tracepoint is hit.  */
-    struct action_line *actions;
-
-    /* Conditional (MVS ?).  */
-    struct expression *cond;
-
-    /* String we used to set the tracepoint (malloc'd).
-       Only matters if address is non-NULL.  */
-    char *addr_string;
-
-    /* Language we used to set the tracepoint.  */
-    enum language language;
-
-    /* Input radix we used to set the tracepoint.  */
-    int input_radix;
-
-    /* Count of the number of times this tracepoint was taken, dumped
-       with the info, but not used for anything else.  Useful for
-       seeing how many times you hit a tracepoint prior to the program
-       aborting, so you can back up to just before the abort.  */
-    int hit_count;
-
-    /* Thread number for thread-specific tracepoint, 
-       or -1 if don't care.  */
-    int thread;
-
-    /* BFD section, in case of overlays: no, I don't know if
-       tracepoints are really gonna work with overlays.  */
-    asection *section;
-  };
-
-enum actionline_type
+enum trace_stop_reason
   {
-    BADLINE = -1,
-    GENERIC = 0,
-    END = 1,
-    STEPPING = 2
+    trace_stop_reason_unknown,
+    trace_never_run,
+    tstop_command,
+    trace_buffer_full,
+    trace_disconnected,
+    tracepoint_passcount,
+    tracepoint_error
   };
 
+struct trace_status
+{
+  /* This is true if the status is coming from a file rather
+     than a live target.  */
+  int from_file;
 
-/* The tracepoint chain of all tracepoints.  */
+  /* This is true if the value of the running field is known.  */
+  int running_known;
 
-extern struct tracepoint *tracepoint_chain;
+  int running;
 
-extern unsigned long trace_running_p;
+  enum trace_stop_reason stop_reason;
+
+  /* If stop_reason is tracepoint_passcount or tracepoint_error, this
+     is the (on-target) number of the tracepoint which caused the
+     stop.  */
+  int stopping_tracepoint;
+
+  /* If stop_reason is tracepoint_error, this is a human-readable
+     string that describes the error that happened on the target.  */
+  char *error_desc;
+
+  /* Number of traceframes currently in the buffer.  */
+
+  int traceframe_count;
+
+  /* Number of traceframes created since start of run.  */
+
+  int traceframes_created;
+
+  /* Total size of the target's trace buffer.  */
+
+  int buffer_size;
+
+  /* Unused bytes left in the target's trace buffer.  */
+
+  int buffer_free;
+
+  /* 1 if the target will continue tracing after disconnection, else
+     0.  If the target does not report a value, assume 0.  */
+
+  int disconnected_tracing;
+
+  /* 1 if the target is using a circular trace buffer, else 0.  If the
+     target does not report a value, assume 0.  */
+
+  int circular_buffer;
+};
+
+struct trace_status *current_trace_status (void);
+
+extern char *default_collect;
+
+/* Struct to collect random info about tracepoints on the target.  */
+
+DEF_VEC_P (char_ptr);
+
+struct uploaded_tp
+{
+  int number;
+  enum bptype type;
+  ULONGEST addr;
+  int enabled;
+  int step;
+  int pass;
+  int orig_size;
+
+  /* String that is the encoded form of the tracepoint's condition.  */
+  char *cond;
+
+  /* Vectors of strings that are the encoded forms of a tracepoint's
+     actions.  */
+  VEC(char_ptr) *actions;
+  VEC(char_ptr) *step_actions;
+
+  /* The original string defining the location of the tracepoint.  */
+  char *at_string;
+
+  /* The original string defining the tracepoint's condition.  */
+  char *cond_string;
+
+  /* List of original strings defining the tracepoint's actions.  */
+  VEC(char_ptr) *cmd_strings;
+
+  struct uploaded_tp *next;
+};
+
+/* Struct recording info about trace state variables on the target.  */
+
+struct uploaded_tsv
+{
+  const char *name;
+  int number;
+  LONGEST initial_value;
+  int builtin;
+  struct uploaded_tsv *next;
+};
+
+/* Struct recording info about a target static tracepoint marker.  */
+
+struct static_tracepoint_marker
+{
+  struct gdbarch *gdbarch;
+  CORE_ADDR address;
+
+  /* The string ID of the marker.  */
+  char *str_id;
+
+  /* Extra target reported info associated with the marker.  */
+  char *extra;
+};
+
+extern void parse_static_tracepoint_marker_definition
+  (char *line, char **pp,
+   struct static_tracepoint_marker *marker);
+extern void release_static_tracepoint_marker (struct static_tracepoint_marker *);
 
 /* A hook used to notify the UI of tracepoint operations.  */
 
-void (*deprecated_create_tracepoint_hook) (struct tracepoint *);
-void (*deprecated_delete_tracepoint_hook) (struct tracepoint *);
-void (*deprecated_modify_tracepoint_hook) (struct tracepoint *);
-void (*deprecated_trace_find_hook) (char *arg, int from_tty);
-void (*deprecated_trace_start_stop_hook) (int start, int from_tty);
+extern void (*deprecated_trace_find_hook) (char *arg, int from_tty);
+extern void (*deprecated_trace_start_stop_hook) (int start, int from_tty);
 
-struct tracepoint *get_tracepoint_by_number (char **, int, int);
-int get_traceframe_number (void);
-void free_actions (struct tracepoint *);
-enum actionline_type validate_actionline (char **, struct tracepoint *);
+/* Returns the current traceframe number.  */
+extern int get_traceframe_number (void);
 
+/* Make the traceframe NUM be the current GDB trace frame number, and
+   do nothing more.  In particular, this does not flush the
+   register/frame caches or notify the target about the trace frame
+   change, so that is can be used when we need to momentarily access
+   live memory.  Targets lazily switch their current traceframe to
+   match GDB's traceframe number, at the appropriate times.  */
+extern void set_traceframe_number (int);
 
-/* Walk the following statement or block through all tracepoints.
-   ALL_TRACEPOINTS_SAFE does so even if the statment deletes the
-   current breakpoint.  */
+/* Make the traceframe NUM be the current trace frame, all the way to
+   the target, and flushes all global state (register/frame caches,
+   etc.).  */
+extern void set_current_traceframe (int num);
 
-#define ALL_TRACEPOINTS(t)  for (t = tracepoint_chain; t; t = t->next)
+struct cleanup *make_cleanup_restore_current_traceframe (void);
+struct cleanup *make_cleanup_restore_traceframe_number (void);
 
-#define ALL_TRACEPOINTS_SAFE(t,tmp)	\
-	for (t = tracepoint_chain;	\
-	     t ? (tmp = t->next, 1) : 0;\
-	     t = tmp)
+void free_actions (struct breakpoint *);
+extern void validate_actionline (char **, struct breakpoint *);
+
+extern void end_actions_pseudocommand (char *args, int from_tty);
+extern void while_stepping_pseudocommand (char *args, int from_tty);
+
+extern struct trace_state_variable *find_trace_state_variable (const char *name);
+extern struct trace_state_variable *create_trace_state_variable (const char *name);
+
+extern int encode_source_string (int num, ULONGEST addr,
+				 char *srctype, char *src,
+				 char *buf, int buf_size);
+
+extern void parse_trace_status (char *line, struct trace_status *ts);
+
+extern void parse_tracepoint_definition (char *line,
+					 struct uploaded_tp **utpp);
+extern void parse_tsv_definition (char *line, struct uploaded_tsv **utsvp);
+
+extern struct uploaded_tp *get_uploaded_tp (int num, ULONGEST addr,
+					    struct uploaded_tp **utpp);
+extern struct breakpoint *create_tracepoint_from_upload (struct uploaded_tp *utp);
+extern void merge_uploaded_tracepoints (struct uploaded_tp **utpp);
+extern void merge_uploaded_trace_state_variables (struct uploaded_tsv **utsvp);
+
+extern void disconnect_tracing (int from_tty);
+
+extern void start_tracing (void);
+extern void stop_tracing (void);
+
+extern void trace_status_mi (int on_stop);
+
+extern void tvariables_info_1 (void);
+extern void save_trace_state_variables (struct ui_file *fp);
+
+extern void tfind_1 (enum trace_find_type type, int num,
+		     ULONGEST addr1, ULONGEST addr2,
+		     int from_tty);
+
+extern void trace_save (const char *filename, int target_does_save);
+
+extern struct traceframe_info *parse_traceframe_info (const char *tframe_info);
+
+extern int traceframe_available_memory (VEC(mem_range_s) **result,
+					CORE_ADDR memaddr, ULONGEST len);
+
 #endif	/* TRACEPOINT_H */

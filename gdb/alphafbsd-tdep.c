@@ -1,6 +1,6 @@
 /* Target-dependent code for FreeBSD/alpha.
 
-   Copyright (C) 2001, 2002, 2003, 2006, 2007, 2008
+   Copyright (C) 2001, 2002, 2003, 2006, 2007, 2008, 2009, 2010, 2011
    Free Software Foundation, Inc.
 
    This file is part of GDB.
@@ -65,24 +65,25 @@ CORE_ADDR alphafbsd_sigtramp_start = 0x11ffff68;
 CORE_ADDR alphafbsd_sigtramp_end = 0x11ffffe0;
 
 static int
-alphafbsd_pc_in_sigtramp (CORE_ADDR pc, char *func_name)
+alphafbsd_pc_in_sigtramp (struct gdbarch *gdbarch,
+			  CORE_ADDR pc, char *func_name)
 {
   return (pc >= alphafbsd_sigtramp_start && pc < alphafbsd_sigtramp_end);
 }
 
 static LONGEST
-alphafbsd_sigtramp_offset (CORE_ADDR pc)
+alphafbsd_sigtramp_offset (struct gdbarch *gdbarch, CORE_ADDR pc)
 {
   return pc - alphafbsd_sigtramp_start;
 }
 
-/* Assuming NEXT_FRAME is for a frame following a BSD sigtramp
-   routine, return the address of the associated sigcontext structure.  */
+/* Assuming THIS_FRAME is the frame of a BSD sigtramp routine,
+   return the address of the associated sigcontext structure.  */
 
 static CORE_ADDR
-alphafbsd_sigcontext_addr (struct frame_info *next_frame)
+alphafbsd_sigcontext_addr (struct frame_info *this_frame)
 {
-  return frame_unwind_register_unsigned (next_frame, ALPHA_SP_REGNUM) + 24;
+  return get_frame_register_unsigned (this_frame, ALPHA_SP_REGNUM) + 24;
 }
 
 /* FreeBSD 5.0-RELEASE or later.  */

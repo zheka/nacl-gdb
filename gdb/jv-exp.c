@@ -120,7 +120,7 @@
 
 
 /* Copy the first part of user declarations.  */
-#line 39 "jv-exp.y"
+#line 37 "jv-exp.y"
 
 
 #include "defs.h"
@@ -136,12 +136,15 @@
 #include "objfiles.h" /* For have_full_symbols and have_partial_symbols */
 #include "block.h"
 
+#define parse_type builtin_type (parse_gdbarch)
+#define parse_java_type builtin_java_type (parse_gdbarch)
+
 /* Remap normal yacc parser interface names (yyparse, yylex, yyerror, etc),
    as well as gratuitiously global symbol names, so we can have multiple
    yacc generated parsers in gdb.  Note that these are only the variables
    produced by yacc.  If other parser generators (bison, byacc, etc) produce
    additional global names that conflict at link time, then those parser
-   generators need to be fixed instead of adding those names to this list. */
+   generators need to be fixed instead of adding those names to this list.  */
 
 #define	yymaxdepth java_maxdepth
 #define	yyparse	java_parse
@@ -219,7 +222,7 @@ static void insert_exp (int, struct expression *);
 #endif
 
 #if ! defined (YYSTYPE) && ! defined (YYSTYPE_IS_DECLARED)
-#line 128 "jv-exp.y"
+#line 129 "jv-exp.y"
 typedef union YYSTYPE {
     LONGEST lval;
     struct {
@@ -241,7 +244,7 @@ typedef union YYSTYPE {
     int *ivec;
   } YYSTYPE;
 /* Line 191 of yacc.c.  */
-#line 245 "jv-exp.c.tmp"
+#line 248 "jv-exp.c"
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */
 # define YYSTYPE_IS_DECLARED 1
 # define YYSTYPE_IS_TRIVIAL 1
@@ -250,19 +253,19 @@ typedef union YYSTYPE {
 
 
 /* Copy the second part of user declarations.  */
-#line 149 "jv-exp.y"
+#line 150 "jv-exp.y"
 
 /* YYSTYPE gets defined by %union */
 static int parse_number (char *, int, int, YYSTYPE *);
 
 
 /* Line 214 of yacc.c.  */
-#line 261 "jv-exp.c.tmp"
+#line 264 "jv-exp.c"
 
 #if ! defined (yyoverflow) || YYERROR_VERBOSE
 
 # ifndef YYFREE
-#  define YYFREE free
+#  define YYFREE xfree
 # endif
 # ifndef YYMALLOC
 #  define YYMALLOC xmalloc
@@ -483,16 +486,16 @@ static const yysigned_char yyrhs[] =
 /* YYRLINE[YYN] -- source line where rule number YYN was defined.  */
 static const unsigned short yyrline[] =
 {
-       0,   205,   205,   206,   209,   218,   219,   223,   232,   237,
-     245,   250,   255,   266,   267,   272,   273,   277,   279,   281,
-     283,   285,   290,   292,   304,   309,   313,   315,   320,   321,
-     325,   326,   330,   331,   335,   358,   359,   364,   365,   369,
-     370,   371,   372,   373,   374,   375,   383,   388,   393,   399,
-     401,   407,   408,   412,   415,   421,   422,   426,   430,   432,
-     437,   439,   443,   445,   451,   457,   456,   462,   464,   469,
-     486,   488,   493,   494,   496,   498,   499,   503,   508,   513,
-     514,   515,   516,   518,   520,   524,   529,   534,   535,   537,
-     539,   543,   547,   568,   576,   577,   579,   581,   586,   587,
+       0,   206,   206,   207,   210,   219,   220,   224,   233,   238,
+     246,   251,   256,   267,   268,   273,   274,   278,   280,   282,
+     284,   286,   291,   293,   305,   310,   314,   316,   321,   322,
+     326,   327,   331,   332,   336,   359,   360,   365,   366,   370,
+     371,   372,   373,   374,   375,   376,   384,   389,   394,   400,
+     402,   408,   409,   413,   416,   422,   423,   427,   431,   433,
+     438,   440,   444,   446,   452,   458,   457,   463,   465,   470,
+     487,   489,   494,   495,   497,   499,   500,   504,   509,   514,
+     515,   516,   517,   519,   521,   525,   530,   535,   536,   538,
+     540,   544,   548,   568,   576,   577,   579,   581,   586,   587,
      589,   594,   595,   597,   603,   604,   606,   608,   610,   616,
      617,   619,   624,   625,   630,   631,   635,   636,   641,   642,
      647,   648,   653,   654,   659,   660,   664,   666,   673,   675,
@@ -1387,7 +1390,7 @@ yyreduce:
   switch (yyn)
     {
         case 4:
-#line 210 "jv-exp.y"
+#line 211 "jv-exp.y"
     {
 		  write_exp_elt_opcode(OP_TYPE);
 		  write_exp_elt_type(yyvsp[0].tval);
@@ -1396,7 +1399,7 @@ yyreduce:
     break;
 
   case 7:
-#line 224 "jv-exp.y"
+#line 225 "jv-exp.y"
     {
 		  write_exp_elt_opcode (OP_STRING);
 		  write_exp_string (yyvsp[0].sval);
@@ -1405,7 +1408,7 @@ yyreduce:
     break;
 
   case 8:
-#line 233 "jv-exp.y"
+#line 234 "jv-exp.y"
     { write_exp_elt_opcode (OP_LONG);
 		  write_exp_elt_type (yyvsp[0].typed_val_int.type);
 		  write_exp_elt_longcst ((LONGEST)(yyvsp[0].typed_val_int.val));
@@ -1413,7 +1416,7 @@ yyreduce:
     break;
 
   case 9:
-#line 238 "jv-exp.y"
+#line 239 "jv-exp.y"
     { YYSTYPE val;
 		  parse_number (yyvsp[0].sval.ptr, yyvsp[0].sval.length, 0, &val);
 		  write_exp_elt_opcode (OP_LONG);
@@ -1424,7 +1427,7 @@ yyreduce:
     break;
 
   case 10:
-#line 246 "jv-exp.y"
+#line 247 "jv-exp.y"
     { write_exp_elt_opcode (OP_DOUBLE);
 		  write_exp_elt_type (yyvsp[0].typed_val_float.type);
 		  write_exp_elt_dblcst (yyvsp[0].typed_val_float.dval);
@@ -1432,90 +1435,90 @@ yyreduce:
     break;
 
   case 11:
-#line 251 "jv-exp.y"
+#line 252 "jv-exp.y"
     { write_exp_elt_opcode (OP_LONG);
-		  write_exp_elt_type (java_boolean_type);
+		  write_exp_elt_type (parse_java_type->builtin_boolean);
 		  write_exp_elt_longcst ((LONGEST)yyvsp[0].lval);
 		  write_exp_elt_opcode (OP_LONG); }
     break;
 
   case 14:
-#line 268 "jv-exp.y"
-    { yyval.tval = java_boolean_type; }
+#line 269 "jv-exp.y"
+    { yyval.tval = parse_java_type->builtin_boolean; }
     break;
 
   case 17:
-#line 278 "jv-exp.y"
-    { yyval.tval = java_byte_type; }
+#line 279 "jv-exp.y"
+    { yyval.tval = parse_java_type->builtin_byte; }
     break;
 
   case 18:
-#line 280 "jv-exp.y"
-    { yyval.tval = java_short_type; }
+#line 281 "jv-exp.y"
+    { yyval.tval = parse_java_type->builtin_short; }
     break;
 
   case 19:
-#line 282 "jv-exp.y"
-    { yyval.tval = java_int_type; }
+#line 283 "jv-exp.y"
+    { yyval.tval = parse_java_type->builtin_int; }
     break;
 
   case 20:
-#line 284 "jv-exp.y"
-    { yyval.tval = java_long_type; }
+#line 285 "jv-exp.y"
+    { yyval.tval = parse_java_type->builtin_long; }
     break;
 
   case 21:
-#line 286 "jv-exp.y"
-    { yyval.tval = java_char_type; }
+#line 287 "jv-exp.y"
+    { yyval.tval = parse_java_type->builtin_char; }
     break;
 
   case 22:
-#line 291 "jv-exp.y"
-    { yyval.tval = java_float_type; }
+#line 292 "jv-exp.y"
+    { yyval.tval = parse_java_type->builtin_float; }
     break;
 
   case 23:
-#line 293 "jv-exp.y"
-    { yyval.tval = java_double_type; }
+#line 294 "jv-exp.y"
+    { yyval.tval = parse_java_type->builtin_double; }
     break;
 
   case 24:
-#line 305 "jv-exp.y"
+#line 306 "jv-exp.y"
     { yyval.tval = java_type_from_name (yyvsp[0].sval); }
     break;
 
   case 26:
-#line 314 "jv-exp.y"
+#line 315 "jv-exp.y"
     { yyval.tval = java_array_type (yyvsp[-1].tval, yyvsp[0].lval); }
     break;
 
   case 27:
-#line 316 "jv-exp.y"
+#line 317 "jv-exp.y"
     { yyval.tval = java_array_type (java_type_from_name (yyvsp[-1].sval), yyvsp[0].lval); }
     break;
 
   case 34:
-#line 336 "jv-exp.y"
+#line 337 "jv-exp.y"
     { yyval.sval.length = yyvsp[-2].sval.length + yyvsp[0].sval.length + 1;
 		  if (yyvsp[-2].sval.ptr + yyvsp[-2].sval.length + 1 == yyvsp[0].sval.ptr
 		      && yyvsp[-2].sval.ptr[yyvsp[-2].sval.length] == '.')
-		    yyval.sval.ptr = yyvsp[-2].sval.ptr;  /* Optimization. */
+		    yyval.sval.ptr = yyvsp[-2].sval.ptr;  /* Optimization.  */
 		  else
 		    {
 		      yyval.sval.ptr = (char *) xmalloc (yyval.sval.length + 1);
-		      make_cleanup (free, yyval.sval.ptr);
+		      make_cleanup (xfree, yyval.sval.ptr);
 		      sprintf (yyval.sval.ptr, "%.*s.%.*s",
 			       yyvsp[-2].sval.length, yyvsp[-2].sval.ptr, yyvsp[0].sval.length, yyvsp[0].sval.ptr);
 		} }
     break;
 
   case 36:
-#line 360 "jv-exp.y"
+#line 361 "jv-exp.y"
     { write_exp_elt_opcode (BINOP_COMMA); }
     break;
 
   case 45:
-#line 376 "jv-exp.y"
+#line 377 "jv-exp.y"
     { write_exp_elt_opcode (OP_ARRAY);
 		  write_exp_elt_longcst ((LONGEST) 0);
 		  write_exp_elt_longcst ((LONGEST) yyvsp[0].lval);
@@ -1523,102 +1526,102 @@ yyreduce:
     break;
 
   case 46:
-#line 384 "jv-exp.y"
+#line 385 "jv-exp.y"
     { start_arglist (); }
     break;
 
   case 47:
-#line 389 "jv-exp.y"
+#line 390 "jv-exp.y"
     { yyval.lval = end_arglist () - 1; }
     break;
 
   case 48:
-#line 394 "jv-exp.y"
+#line 395 "jv-exp.y"
     { internal_error (__FILE__, __LINE__,
 				  _("FIXME - ClassInstanceCreationExpression")); }
     break;
 
   case 49:
-#line 400 "jv-exp.y"
+#line 401 "jv-exp.y"
     { arglist_len = 1; }
     break;
 
   case 50:
-#line 402 "jv-exp.y"
+#line 403 "jv-exp.y"
     { arglist_len++; }
     break;
 
   case 51:
-#line 407 "jv-exp.y"
+#line 408 "jv-exp.y"
     { arglist_len = 0; }
     break;
 
   case 53:
-#line 413 "jv-exp.y"
+#line 414 "jv-exp.y"
     { internal_error (__FILE__, __LINE__,
 				  _("FIXME - ArrayCreationExpression")); }
     break;
 
   case 54:
-#line 416 "jv-exp.y"
+#line 417 "jv-exp.y"
     { internal_error (__FILE__, __LINE__,
 				  _("FIXME - ArrayCreationExpression")); }
     break;
 
   case 58:
-#line 431 "jv-exp.y"
+#line 432 "jv-exp.y"
     { yyval.lval = 1; }
     break;
 
   case 59:
-#line 433 "jv-exp.y"
+#line 434 "jv-exp.y"
     { yyval.lval = yyvsp[-2].lval + 1; }
     break;
 
   case 61:
-#line 439 "jv-exp.y"
+#line 440 "jv-exp.y"
     { yyval.lval = 0; }
     break;
 
   case 62:
-#line 444 "jv-exp.y"
+#line 445 "jv-exp.y"
     { push_fieldnames (yyvsp[0].sval); }
     break;
 
   case 63:
-#line 446 "jv-exp.y"
+#line 447 "jv-exp.y"
     { push_fieldnames (yyvsp[0].sval); }
     break;
 
   case 64:
-#line 452 "jv-exp.y"
+#line 453 "jv-exp.y"
     { push_expression_name (yyvsp[-1].sval); }
     break;
 
   case 65:
-#line 457 "jv-exp.y"
+#line 458 "jv-exp.y"
     { start_arglist(); }
     break;
 
   case 66:
-#line 459 "jv-exp.y"
+#line 460 "jv-exp.y"
     { write_exp_elt_opcode (OP_FUNCALL);
 		  write_exp_elt_longcst ((LONGEST) end_arglist ());
 		  write_exp_elt_opcode (OP_FUNCALL); }
     break;
 
   case 67:
-#line 463 "jv-exp.y"
+#line 464 "jv-exp.y"
     { error (_("Form of method invocation not implemented")); }
     break;
 
   case 68:
-#line 465 "jv-exp.y"
+#line 466 "jv-exp.y"
     { error (_("Form of method invocation not implemented")); }
     break;
 
   case 69:
-#line 470 "jv-exp.y"
+#line 471 "jv-exp.y"
     {
                   /* Emit code for the Name now, then exchange it in the
 		     expout array with the Expression's code.  We could
@@ -1632,77 +1635,76 @@ yyreduce:
 		  expout_ptr -= name_expr->nelts;
 		  insert_exp (expout_ptr-length_of_subexp (expout, expout_ptr),
 			      name_expr);
-		  free (name_expr);
+		  xfree (name_expr);
 		  write_exp_elt_opcode (BINOP_SUBSCRIPT);
 		}
     break;
 
   case 70:
-#line 487 "jv-exp.y"
+#line 488 "jv-exp.y"
     { write_exp_elt_opcode (BINOP_SUBSCRIPT); }
     break;
 
   case 71:
-#line 489 "jv-exp.y"
+#line 490 "jv-exp.y"
     { write_exp_elt_opcode (BINOP_SUBSCRIPT); }
     break;
 
   case 73:
-#line 495 "jv-exp.y"
+#line 496 "jv-exp.y"
     { push_expression_name (yyvsp[0].sval); }
     break;
 
   case 77:
-#line 504 "jv-exp.y"
+#line 505 "jv-exp.y"
     { write_exp_elt_opcode (UNOP_POSTINCREMENT); }
     break;
 
   case 78:
-#line 509 "jv-exp.y"
+#line 510 "jv-exp.y"
     { write_exp_elt_opcode (UNOP_POSTDECREMENT); }
     break;
 
   case 82:
-#line 517 "jv-exp.y"
+#line 518 "jv-exp.y"
     { write_exp_elt_opcode (UNOP_NEG); }
     break;
 
   case 83:
-#line 519 "jv-exp.y"
+#line 520 "jv-exp.y"
     { write_exp_elt_opcode (UNOP_IND); }
     break;
 
   case 85:
-#line 525 "jv-exp.y"
+#line 526 "jv-exp.y"
     { write_exp_elt_opcode (UNOP_PREINCREMENT); }
     break;
 
   case 86:
-#line 530 "jv-exp.y"
+#line 531 "jv-exp.y"
     { write_exp_elt_opcode (UNOP_PREDECREMENT); }
     break;
 
   case 88:
-#line 536 "jv-exp.y"
+#line 537 "jv-exp.y"
     { write_exp_elt_opcode (UNOP_COMPLEMENT); }
     break;
 
   case 89:
-#line 538 "jv-exp.y"
+#line 539 "jv-exp.y"
     { write_exp_elt_opcode (UNOP_LOGICAL_NOT); }
     break;
 
   case 91:
-#line 544 "jv-exp.y"
+#line 545 "jv-exp.y"
     { write_exp_elt_opcode (UNOP_CAST);
 		  write_exp_elt_type (java_array_type (yyvsp[-3].tval, yyvsp[-2].lval));
 		  write_exp_elt_opcode (UNOP_CAST); }
     break;
 
   case 92:
-#line 548 "jv-exp.y"
+#line 549 "jv-exp.y"
     {
-		  int exp_size = expout_ptr;
 		  int last_exp_size = length_of_subexp(expout, expout_ptr);
 		  struct type *type;
 		  int i;
@@ -1711,7 +1713,7 @@ yyreduce:
 		    error (_("Invalid cast expression"));
 		  type = expout->elts[base+1].type;
 		  /* Remove the 'Expression' and slide the
-		     UnaryExpressionNotPlusMinus down to replace it. */
+		     UnaryExpressionNotPlusMinus down to replace it.  */
 		  for (i = 0;  i < last_exp_size;  i++)
 		    expout->elts[base + i] = expout->elts[base + i + 3];
 		  expout_ptr -= 3;
@@ -1846,7 +1848,7 @@ yyreduce:
     }
 
 /* Line 1000 of yacc.c.  */
-#line 1850 "jv-exp.c.tmp"
+#line 1852 "jv-exp.c"
 
   yyvsp -= yylen;
   yyssp -= yylen;
@@ -2080,11 +2082,7 @@ yyreturn:
 /*** Needs some error checking for the float case ***/
 
 static int
-parse_number (p, len, parsed_float, putithere)
-     char *p;
-     int len;
-     int parsed_float;
-     YYSTYPE *putithere;
+parse_number (char *p, int len, int parsed_float, YYSTYPE *putithere)
 {
   ULONGEST n = 0;
   ULONGEST limit, limit_div_base;
@@ -2096,25 +2094,28 @@ parse_number (p, len, parsed_float, putithere)
 
   if (parsed_float)
     {
-      /* It's a float since it contains a point or an exponent.  */
-      char c;
-      int num = 0;	/* number of tokens scanned by scanf */
-      char saved_char = p[len];
+      const char *suffix;
+      int suffix_len;
 
-      p[len] = 0;	/* null-terminate the token */
-      num = sscanf (p, "%" DOUBLEST_SCAN_FORMAT "%c",
-		    &putithere->typed_val_float.dval, &c);
-      p[len] = saved_char;	/* restore the input stream */
-      if (num != 1) 		/* check scanf found ONLY a float ... */
+      if (! parse_float (p, len, &putithere->typed_val_float.dval, &suffix))
 	return ERROR;
-      /* See if it has `f' or `d' suffix (float or double).  */
 
-      c = tolower (p[len - 1]);
+      suffix_len = p + len - suffix;
 
-      if (c == 'f' || c == 'F')
-	putithere->typed_val_float.type = builtin_type_float;
-      else if (isdigit (c) || c == '.' || c == 'd' || c == 'D')
-	putithere->typed_val_float.type = builtin_type_double;
+      if (suffix_len == 0)
+	putithere->typed_val_float.type = parse_type->builtin_double;
+      else if (suffix_len == 1)
+	{
+	  /* See if it has `f' or `d' suffix (float or double).  */
+	  if (tolower (*suffix) == 'f')
+	    putithere->typed_val_float.type =
+	      parse_type->builtin_float;
+	  else if (tolower (*suffix) == 'd')
+	    putithere->typed_val_float.type =
+	      parse_type->builtin_double;
+	  else
+	    return ERROR;
+	}
       else
 	return ERROR;
 
@@ -2153,17 +2154,17 @@ parse_number (p, len, parsed_float, putithere)
       }
 
   c = p[len-1];
-  /* A paranoid calculation of (1<<64)-1. */
+  /* A paranoid calculation of (1<<64)-1.  */
   limit = (ULONGEST)0xffffffff;
   limit = ((limit << 16) << 16) | limit;
   if (c == 'l' || c == 'L')
     {
-      type = java_long_type;
+      type = parse_java_type->builtin_long;
       len--;
     }
   else
     {
-      type = java_int_type;
+      type = parse_java_type->builtin_int;
     }
   limit_div_base = limit / (ULONGEST) base;
 
@@ -2187,12 +2188,12 @@ parse_number (p, len, parsed_float, putithere)
 	}
 
   /* If the type is bigger than a 32-bit signed integer can be, implicitly
-     promote to long.  Java does not do this, so mark it as builtin_type_uint64
-     rather than java_long_type.  0x80000000 will become -0x80000000 instead
-     of 0x80000000L, because we don't know the sign at this point.
-  */
-  if (type == java_int_type && n > (ULONGEST)0x80000000)
-    type = builtin_type_uint64;
+     promote to long.  Java does not do this, so mark it as
+     parse_type->builtin_uint64 rather than parse_java_type->builtin_long.
+     0x80000000 will become -0x80000000 instead of 0x80000000L, because we
+     don't know the sign at this point.  */
+  if (type == parse_java_type->builtin_int && n > (ULONGEST)0x80000000)
+    type = parse_type->builtin_uint64;
 
   putithere->typed_val_int.val = n;
   putithere->typed_val_int.type = type;
@@ -2238,7 +2239,7 @@ static const struct token tokentab2[] =
 /* Read one token, getting characters through lexptr.  */
 
 static int
-yylex ()
+yylex (void)
 {
   int c;
   int namelen;
@@ -2286,16 +2287,16 @@ yylex ()
     case '\'':
       /* We either have a character constant ('0' or '\177' for example)
 	 or we have a quoted symbol reference ('foo(int,int)' in C++
-	 for example). */
+	 for example).  */
       lexptr++;
       c = *lexptr++;
       if (c == '\\')
-	c = parse_escape (&lexptr);
+	c = parse_escape (parse_gdbarch, &lexptr);
       else if (c == '\'')
 	error (_("Empty character constant"));
 
       yylval.typed_val_int.val = c;
-      yylval.typed_val_int.type = java_char_type;
+      yylval.typed_val_int.type = parse_java_type->builtin_char;
 
       c = *lexptr++;
       if (c != '\'')
@@ -2335,7 +2336,7 @@ yylex ()
     case '.':
       /* Might be a floating point number.  */
       if (lexptr[1] < '0' || lexptr[1] > '9')
-	goto symbol;		/* Nope, must be a symbol. */
+	goto symbol;		/* Nope, must be a symbol.  */
       /* FALL THRU into number case.  */
 
     case '0':
@@ -2440,7 +2441,7 @@ yylex ()
 
       do {
 	/* Grow the static temp buffer if necessary, including allocating
-	   the first one on demand. */
+	   the first one on demand.  */
 	if (tempbufindex + 1 >= tempbufsize)
 	  {
 	    tempbuf = (char *) xrealloc (tempbuf, tempbufsize += 64);
@@ -2449,11 +2450,11 @@ yylex ()
 	  {
 	  case '\0':
 	  case '"':
-	    /* Do nothing, loop will terminate. */
+	    /* Do nothing, loop will terminate.  */
 	    break;
 	  case '\\':
 	    tokptr++;
-	    c = parse_escape (&tokptr);
+	    c = parse_escape (parse_gdbarch, &tokptr);
 	    if (c == -1)
 	      {
 		continue;
@@ -2584,8 +2585,7 @@ yylex ()
 }
 
 void
-yyerror (msg)
-     char *msg;
+yyerror (char *msg)
 {
   if (prev_lexptr)
     lexptr = prev_lexptr;
@@ -2597,9 +2597,7 @@ yyerror (msg)
 }
 
 static struct type *
-java_type_from_name (name)
-     struct stoken name;
- 
+java_type_from_name (struct stoken name)
 {
   char *tmp = copy_name (name);
   struct type *typ = java_lookup_class (tmp);
@@ -2609,7 +2607,7 @@ java_type_from_name (name)
 }
 
 /* If NAME is a valid variable name in this scope, push it and return 1.
-   Otherwise, return 0. */
+   Otherwise, return 0.  */
 
 static int
 push_variable (struct stoken name)
@@ -2618,7 +2616,7 @@ push_variable (struct stoken name)
   int is_a_field_of_this = 0;
   struct symbol *sym;
   sym = lookup_symbol (tmp, expression_context_block, VAR_DOMAIN,
-		       &is_a_field_of_this, (struct symtab **) NULL);
+		       &is_a_field_of_this);
   if (sym && SYMBOL_CLASS (sym) != LOC_TYPEDEF)
     {
       if (symbol_read_needs_frame (sym))
@@ -2655,11 +2653,10 @@ push_variable (struct stoken name)
 
 /* Assuming a reference expression has been pushed, emit the
    STRUCTOP_PTR ops to access the field named NAME.  If NAME is a
-   qualified name (has '.'), generate a field access for each part. */
+   qualified name (has '.'), generate a field access for each part.  */
 
 static void
-push_fieldnames (name)
-     struct stoken name;
+push_fieldnames (struct stoken name)
 {
   int i;
   struct stoken token;
@@ -2668,7 +2665,7 @@ push_fieldnames (name)
     {
       if (i == name.length || name.ptr[i] == '.')
 	{
-	  /* token.ptr is start of current field name. */
+	  /* token.ptr is start of current field name.  */
 	  token.length = &name.ptr[i] - token.ptr;
 	  write_exp_elt_opcode (STRUCTOP_PTR);
 	  write_exp_string (token);
@@ -2747,28 +2744,26 @@ push_qualified_expression_name (struct stoken name, int dot_index)
 }
 
 /* Handle Name in an expression (or LHS).
-   Handle VAR, TYPE, TYPE.FIELD1....FIELDN and VAR.FIELD1....FIELDN. */
+   Handle VAR, TYPE, TYPE.FIELD1....FIELDN and VAR.FIELD1....FIELDN.  */
 
 static void
-push_expression_name (name)
-     struct stoken name;
+push_expression_name (struct stoken name)
 {
   char *tmp;
   struct type *typ;
-  char *ptr;
   int i;
 
   for (i = 0;  i < name.length;  i++)
     {
       if (name.ptr[i] == '.')
 	{
-	  /* It's a Qualified Expression Name. */
+	  /* It's a Qualified Expression Name.  */
 	  push_qualified_expression_name (name, i);
 	  return;
 	}
     }
 
-  /* It's a Simple Expression Name. */
+  /* It's a Simple Expression Name.  */
   
   if (push_variable (name))
     return;
@@ -2786,11 +2781,7 @@ push_expression_name (name)
 
       msymbol = lookup_minimal_symbol (tmp, NULL, NULL);
       if (msymbol != NULL)
-	{
-	  write_exp_msymbol (msymbol,
-			     lookup_function_type (builtin_type_int),
-			     builtin_type_int);
-	}
+	write_exp_msymbol (msymbol);
       else if (!have_full_symbols () && !have_partial_symbols ())
 	error (_("No symbol table is loaded.  Use the \"file\" command"));
       else
@@ -2809,9 +2800,7 @@ push_expression_name (name)
    into a freshly xmalloc'ed struct expression.  Its language_defn is set
    to null.  */
 static struct expression *
-copy_exp (expr, endpos)
-     struct expression *expr;
-     int endpos;
+copy_exp (struct expression *expr, int endpos)
 {
   int len = length_of_subexp (expr, endpos);
   struct expression *new
@@ -2825,9 +2814,7 @@ copy_exp (expr, endpos)
 
 /* Insert the expression NEW into the current expression (expout) at POS.  */
 static void
-insert_exp (pos, new)
-     int pos;
-     struct expression *new;
+insert_exp (int pos, struct expression *new)
 {
   int newlen = new->nelts;
 

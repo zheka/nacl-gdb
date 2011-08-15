@@ -1,5 +1,6 @@
 /* CRIS exception, interrupt, and trap (EIT) support
-   Copyright (C) 2004, 2005, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
    Contributed by Axis Communications.
 
 This file is part of the GNU simulators.
@@ -65,6 +66,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 #define TARGET_SYS_time 13
 #define TARGET_SYS_lseek 19
 #define TARGET_SYS_getpid 20
+#define TARGET_SYS_access 33
 #define TARGET_SYS_kill 37
 #define TARGET_SYS_rename 38
 #define TARGET_SYS_pipe 42
@@ -87,6 +89,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 #define TARGET_SYS_uname 122
 #define TARGET_SYS_mprotect 125
 #define TARGET_SYS_llseek 140
+#define TARGET_SYS_writev 146
 #define TARGET_SYS__sysctl 149
 #define TARGET_SYS_sched_setparam 154
 #define TARGET_SYS_sched_getparam 155
@@ -111,6 +114,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 #define TARGET_SYS_getegid32 202
 #define TARGET_SYS_getgid32 200
 #define TARGET_SYS_fcntl64 221
+#define TARGET_SYS_set_thread_area 243
+#define TARGET_SYS_exit_group 252
 
 #define TARGET_PROT_READ	0x1
 #define TARGET_PROT_WRITE	0x2
@@ -122,6 +127,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 #define TARGET_MAP_TYPE		0x0f
 #define TARGET_MAP_FIXED	0x10
 #define TARGET_MAP_ANONYMOUS	0x20
+#define TARGET_MAP_DENYWRITE	0x800
 
 #define TARGET_CTL_KERN		1
 #define TARGET_CTL_VM		2
@@ -141,10 +147,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #define TARGET_TCGETS 0x5401
 
-#define TARGET_UTSNAME "#38 Sun Apr 1 00:00:00 MET 2001"
+#define TARGET_UTSNAME "#7 Thu Jan 1 00:00:00 MET 2009"
 
-/* Seconds since the above date + 10 minutes.  */
-#define TARGET_EPOCH 986080200
+/* Seconds since 1970-01-01 to the above date + 10 minutes;
+   'date -d "Thu Jan 1 00:00:10 MET 2009" +%s'.  */
+#define TARGET_EPOCH 1230764410
 
 /* Milliseconds since start of run.  We use the number of syscalls to
    avoid introducing noise in the execution time.  */
@@ -242,6 +249,12 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 /* From linux/limits.h. */
 #define TARGET_PIPE_BUF 4096
+
+/* From unistd.h.  */
+#define	TARGET_R_OK 4
+#define	TARGET_W_OK 2
+#define	TARGET_X_OK 1
+#define	TARGET_F_OK 0
 
 static const char stat_map[] =
 "st_dev,2:space,10:space,4:st_mode,4:st_nlink,4:st_uid,4"
@@ -743,6 +756,11 @@ static const CB_TARGET_DEFS_MAP open_map[] = {
   { -1, -1 }
 };
 
+/* Let's be less drastic and more traceable.  FIXME: mark as noreturn.  */
+#define abort()							\
+  sim_io_error (sd, "simulator unhandled condition at %s:%d",	\
+		__FUNCTION__, __LINE__)
+
 /* Needed for the cris_pipe_nonempty and cris_pipe_empty syscalls.  */
 static SIM_CPU *current_cpu_for_cb_callback;
 
@@ -912,7 +930,59 @@ is_mapped (SIM_DESC sd ATTRIBUTE_UNUSED,
   return 0;
 }
 
-/* Create mmapped memory.  */
+/* Check whether any part of [addr .. addr + len - 1] is *un*mapped.
+   Return 1 if the whole area is mapped, 0 otherwise.  */
+
+static USI
+is_mapped_only (SIM_DESC sd ATTRIBUTE_UNUSED,
+		struct cris_sim_mmapped_page **rootp,
+		USI addr, USI len)
+{
+  struct cris_sim_mmapped_page *mapp;
+
+  if (len == 0 || (len & 8191))
+    abort ();
+
+  /* Iterate over the reverse-address sorted pages until we find a page
+     lower than the checked area.  */
+  for (mapp = *rootp; mapp != NULL && mapp->addr >= addr; mapp = mapp->prev)
+    if (addr == mapp->addr && len == 8192)
+      return 1;
+    else if (addr + len > mapp->addr)
+      len -= 8192;
+
+  return 0;
+}
+
+/* Debug helper; to be run from gdb.  */
+
+void
+cris_dump_map (SIM_CPU *current_cpu)
+{
+  struct cris_sim_mmapped_page *mapp;
+  USI start, end;
+
+  for (mapp = current_cpu->highest_mmapped_page,
+	 start = mapp == NULL ? 0 : mapp->addr + 8192,
+	 end = mapp == NULL ? 0 : mapp->addr + 8191;
+       mapp != NULL;
+       mapp = mapp->prev)
+    {
+      if (mapp->addr != start - 8192)
+	{
+	  sim_io_eprintf (CPU_STATE (current_cpu), "0x%x..0x%x\n", start, end);
+	  end = mapp->addr + 8191;
+	}
+
+      start = mapp->addr;
+    }
+
+  if (current_cpu->highest_mmapped_page != NULL)
+    sim_io_eprintf (CPU_STATE (current_cpu), "0x%x..0x%x\n", start, end);
+}
+
+/* Create mmapped memory.  ADDR is -1 if any address will do.  Caller
+   must make sure that the address isn't already mapped.  */
 
 static USI
 create_map (SIM_DESC sd, struct cris_sim_mmapped_page **rootp, USI addr,
@@ -922,9 +992,9 @@ create_map (SIM_DESC sd, struct cris_sim_mmapped_page **rootp, USI addr,
   struct cris_sim_mmapped_page **higher_prevp = rootp;
   USI new_addr = 0x40000000;
 
-  if (addr != 0)
+  if (addr != (USI) -1)
     new_addr = addr;
-  else if (*rootp)
+  else if (*rootp && rootp[0]->addr >= new_addr)
     new_addr = rootp[0]->addr + 8192;
 
   if (len != 8192)
@@ -947,6 +1017,10 @@ create_map (SIM_DESC sd, struct cris_sim_mmapped_page **rootp, USI addr,
        mapp != NULL && mapp->addr > new_addr;
        mapp = mapp->prev)
     higher_prevp = &mapp->prev;
+
+  /* Assert for consistency that we don't create duplicate maps.  */
+  if (is_mapped (sd, rootp, new_addr, len))
+    abort ();
 
   /* Allocate the new page, on the next higher page from the last one
      allocated, and link in the new descriptor before previous ones.  */
@@ -978,6 +1052,7 @@ unmap_pages (SIM_DESC sd, struct cris_sim_mmapped_page **rootp, USI addr,
   if (len != 8192)
     {
       USI page_addr;
+      int ret = 0;
 
       if (len & 8191)
 	/* Which is better: return an error for this, or just round it up?  */
@@ -986,12 +1061,15 @@ unmap_pages (SIM_DESC sd, struct cris_sim_mmapped_page **rootp, USI addr,
       /* Loop backwards to make each call is O(1) over the number of pages
 	 allocated, if we're unmapping from the high end of the pages.  */
       for (page_addr = addr + len - 8192;
-	   page_addr >= addr;
+	   page_addr > addr;
 	   page_addr -= 8192)
-	if (unmap_pages (sd, rootp, page_addr, 8192) != 0)
-	  abort ();
+	if (unmap_pages (sd, rootp, page_addr, 8192))
+	  ret = EINVAL;
 
-      return 0;
+      if (unmap_pages (sd, rootp, addr, 8192))
+	ret = EINVAL;
+
+      return ret;
     }
 
   for (mapp = *rootp; mapp != NULL && mapp->addr > addr; mapp = mapp->prev)
@@ -1024,6 +1102,7 @@ cris_bmod_handler (SIM_CPU *current_cpu ATTRIBUTE_UNUSED,
 		   UINT srcreg ATTRIBUTE_UNUSED,
 		   USI dstreg ATTRIBUTE_UNUSED)
 {
+  SIM_DESC sd = CPU_STATE (current_cpu);
   abort ();
 }
 
@@ -1033,6 +1112,7 @@ h_supr_set_handler (SIM_CPU *current_cpu ATTRIBUTE_UNUSED,
 		    USI page ATTRIBUTE_UNUSED,
 		    USI newval ATTRIBUTE_UNUSED)
 {
+  SIM_DESC sd = CPU_STATE (current_cpu);
   abort ();
 }
 
@@ -1041,6 +1121,7 @@ h_supr_get_handler (SIM_CPU *current_cpu ATTRIBUTE_UNUSED,
 		    UINT index ATTRIBUTE_UNUSED,
 		    USI page ATTRIBUTE_UNUSED)
 {
+  SIM_DESC sd = CPU_STATE (current_cpu);
   abort ();
 }
 
@@ -1197,6 +1278,7 @@ schedule (SIM_CPU *current_cpu, int next)
 static void
 reschedule (SIM_CPU *current_cpu)
 {
+  SIM_DESC sd = CPU_STATE (current_cpu);
   int i;
 
   /* Iterate over all thread slots, because after a few thread creations
@@ -1334,6 +1416,7 @@ deliver_signal (SIM_CPU *current_cpu, int sig, unsigned int pid)
 static void
 make_first_thread (SIM_CPU *current_cpu)
 {
+  SIM_DESC sd = CPU_STATE (current_cpu);
   current_cpu->thread_data
     = xcalloc (1,
 	       SIM_TARGET_MAX_THREADS
@@ -1395,7 +1478,16 @@ cris_break_13_handler (SIM_CPU *current_cpu, USI callnum, USI arg1,
   s.arg2 = arg2;
   s.arg3 = arg3;
 
-  if (callnum == TARGET_SYS_exit && current_cpu->m1threads == 0)
+  /* The type of s.arg2 is long, so for hosts with 64-bit longs, we need
+     to sign-extend the lseek offset to be passed as a signed number,
+     else we'll truncate it to something > 2GB on hosts where sizeof
+     long > sizeof USI.  We avoid doing it for all syscalls, as arg2 is
+     e.g. an address for some syscalls.  */
+  if (callnum == TARGET_SYS_lseek)
+    s.arg2 = (SI) arg2;
+
+  if (callnum == TARGET_SYS_exit_group
+      || (callnum == TARGET_SYS_exit && current_cpu->m1threads == 0))
     {
       if (CPU_CRIS_MISC_PROFILE (current_cpu)->flags
 	  & FLAG_CRIS_MISC_PROFILE_ALL)
@@ -1510,15 +1602,22 @@ cris_break_13_handler (SIM_CPU *current_cpu, USI callnum, USI arg1,
 	case TARGET_SYS_uname:
 	  {
 	    /* Fill in a few constants to appease glibc.  */
-	    static const char sim_utsname[6][65] =
+	    static char sim_utsname[6][65] =
 	    {
 	      "Linux",
 	      "sim-target",
-	      "2.4.5",
+	      "2.6.27",
 	      TARGET_UTSNAME,
-	      "cris",
+	      "cris",		/* Overwritten below.  */
 	      "localdomain"
 	    };
+
+	    /* Having the hardware type in Linux equal to the bfd
+	       printable name is deliberate: if you make config.guess
+	       work on your Linux-type system the usual way, it
+	       probably will; either the bfd printable_name or the
+	       ambiguous arch_name.  */
+	    strcpy (sim_utsname[4], STATE_ARCHITECTURE (sd)->printable_name);
 
 	    if ((s.write_mem) (cb, &s, arg1, (const char *) sim_utsname,
 			       sizeof (sim_utsname))
@@ -1603,6 +1702,11 @@ cris_break_13_handler (SIM_CPU *current_cpu, USI callnum, USI arg1,
 	    USI fd = arg5;
 	    USI pgoff = arg6;
 
+	    /* At 2.6.27, Linux (many (all?) ports, in the mmap2 syscalls)
+	       still masked away this bit, so let's just ignore
+	       it.  */
+	    flags &= ~TARGET_MAP_DENYWRITE;
+
 	    /* If the simulator wants to mmap more than the very large
 	       limit, something is wrong.  FIXME: Return an error or
 	       abort?  Have command-line selectable?  */
@@ -1617,12 +1721,20 @@ cris_break_13_handler (SIM_CPU *current_cpu, USI callnum, USI arg1,
 		     != (TARGET_PROT_READ
 			 | TARGET_PROT_WRITE
 			 | TARGET_PROT_EXEC))
+		 && (prot != (TARGET_PROT_READ | TARGET_PROT_EXEC))
 		 && prot != TARGET_PROT_READ)
 		|| (flags != (TARGET_MAP_ANONYMOUS | TARGET_MAP_PRIVATE)
 		    && flags != TARGET_MAP_PRIVATE
+		    && flags != (TARGET_MAP_ANONYMOUS
+				 | TARGET_MAP_PRIVATE | TARGET_MAP_FIXED)
+		    && flags != (TARGET_MAP_PRIVATE | TARGET_MAP_FIXED)
 		    && flags != TARGET_MAP_SHARED)
-		|| (fd != (USI) -1 && prot != TARGET_PROT_READ)
-		|| pgoff != 0)
+		|| (fd != (USI) -1
+		    && prot != TARGET_PROT_READ
+		    && prot != (TARGET_PROT_READ | TARGET_PROT_EXEC)
+		    && prot != (TARGET_PROT_READ | TARGET_PROT_WRITE))
+		|| (fd == (USI) -1 && pgoff != 0)
+		|| (fd != (USI) -1 && (flags & TARGET_MAP_ANONYMOUS)))
 	      {
 		retval
 		  = cris_unknown_syscall (current_cpu, pc,
@@ -1647,19 +1759,41 @@ cris_break_13_handler (SIM_CPU *current_cpu, USI callnum, USI arg1,
 		/* A non-aligned argument is allowed for files.  */
 		USI newlen = (len + 8191) & ~8191;
 
-		/* We only support read, which we should already have
-		   checked.  Check again anyway.  */
-		if (prot != TARGET_PROT_READ)
+		/* We only support read, read|exec, and read|write,
+		   which we should already have checked.  Check again
+		   anyway.  */
+		if (prot != TARGET_PROT_READ
+		    && prot != (TARGET_PROT_READ | TARGET_PROT_EXEC)
+		    && prot != (TARGET_PROT_READ | TARGET_PROT_WRITE))
 		  abort ();
 
+		if (flags & TARGET_MAP_FIXED)
+		  unmap_pages (sd, &current_cpu->highest_mmapped_page,
+			       addr, newlen);
+		else if (is_mapped (sd, &current_cpu->highest_mmapped_page,
+				    addr, newlen))
+		  addr = 0;
+
 		newaddr
-		  = create_map (sd, &current_cpu->highest_mmapped_page, addr,
+		  = create_map (sd, &current_cpu->highest_mmapped_page,
+				addr != 0 || (flags & TARGET_MAP_FIXED)
+				? addr : -1,
 				newlen);
 
 		if (newaddr >= (USI) -8191)
 		  {
 		    abort ();
 		    retval = -cb_host_to_target_errno (cb, -(SI) newaddr);
+		    break;
+		  }
+
+		/* We were asked for MAP_FIXED, but couldn't.  */
+		if ((flags & TARGET_MAP_FIXED) && newaddr != addr)
+		  {
+		    abort ();
+		    unmap_pages (sd, &current_cpu->highest_mmapped_page,
+				 newaddr, newlen);
+		    retval = -cb_host_to_target_errno (cb, EINVAL);
 		    break;
 		  }
 
@@ -1675,6 +1809,17 @@ cris_break_13_handler (SIM_CPU *current_cpu, USI callnum, USI arg1,
 		if (s.result < 0)
 		  abort ();
 
+		/* Move to the correct offset in the file.  */
+		s.func = TARGET_SYS_lseek;
+		s.arg1 = fd;
+		s.arg2 = pgoff*8192;
+		s.arg3 = SEEK_SET;
+		if (cb_syscall (cb, &s) != CB_RC_OK)
+		  abort ();
+
+		if (s.result < 0)
+		  abort ();
+
 		/* Use the standard read callback to read in "len"
 		   bytes.  */
 		s.func = TARGET_SYS_read;
@@ -1684,7 +1829,9 @@ cris_break_13_handler (SIM_CPU *current_cpu, USI callnum, USI arg1,
 		if (cb_syscall (cb, &s) != CB_RC_OK)
 		  abort ();
 
-		if ((USI) s.result != len)
+		/* If the result is a page or more lesser than what
+		   was requested, something went wrong.  */
+		if (len >= 8192 && (USI) s.result <= len - 8192)
 		  abort ();
 
 		/* After reading, we need to go back to the previous
@@ -1702,31 +1849,51 @@ cris_break_13_handler (SIM_CPU *current_cpu, USI callnum, USI arg1,
 	      }
 	    else
 	      {
-		USI newaddr
-		  = create_map (sd, &current_cpu->highest_mmapped_page, addr,
-				(len + 8191) & ~8191);
+		USI newlen = (len + 8191) & ~8191;
+		USI newaddr;
+
+		if (flags & TARGET_MAP_FIXED)
+		  unmap_pages (sd, &current_cpu->highest_mmapped_page,
+			       addr, newlen);
+		else if (is_mapped (sd, &current_cpu->highest_mmapped_page,
+				    addr, newlen))
+		  addr = 0;
+
+		newaddr = create_map (sd, &current_cpu->highest_mmapped_page,
+				      addr != 0 || (flags & TARGET_MAP_FIXED)
+				      ? addr : -1,
+				      newlen);
 
 		if (newaddr >= (USI) -8191)
 		  retval = -cb_host_to_target_errno (cb, -(SI) newaddr);
 		else
 		  retval = newaddr;
+
+		if ((flags & TARGET_MAP_FIXED) && newaddr != addr)
+		  {
+		    abort ();
+		    unmap_pages (sd, &current_cpu->highest_mmapped_page,
+				 newaddr, newlen);
+		    retval = -cb_host_to_target_errno (cb, EINVAL);
+		    break;
+		  }
 	      }
 	    break;
 	  }
 
 	case TARGET_SYS_mprotect:
 	  {
-	    /* We only cover the case of linuxthreads mprotecting out its
-	       stack guard page.  */
+	    /* We only cover the case of linuxthreads mprotecting out
+	       its stack guard page and of dynamic loading mprotecting
+	       away the data (for some reason the whole library, then
+	       mprotects away the data part and mmap-FIX:es it again.  */
 	    USI addr = arg1;
 	    USI len = arg2;
 	    USI prot = arg3;
 
-	    if ((addr & 8191) != 0
-		|| len != 8192
-		|| prot != TARGET_PROT_NONE
-		|| !is_mapped (sd, &current_cpu->highest_mmapped_page, addr,
-			       len))
+	    if (prot != TARGET_PROT_NONE
+		|| !is_mapped_only (sd, &current_cpu->highest_mmapped_page,
+				    addr, (len + 8191) & ~8191))
 	      {
 		retval
 		  = cris_unknown_syscall (current_cpu, pc,
@@ -1738,10 +1905,10 @@ cris_break_13_handler (SIM_CPU *current_cpu, USI callnum, USI arg1,
 		break;
 	      }
 
-	    /* FIXME: We should account for pages like this that are
-	       "mprotected out".  For now, we just tell the simulator
-	       core to remove that page from its map.  */
-	    sim_core_detach (sd, NULL, 0, 0, addr);
+	    /* Just ignore this.  We could make this equal to munmap,
+	       but then we'd have to make sure no anon mmaps gets this
+	       address before a subsequent MAP_FIXED mmap intended to
+	       override it.  */
 	    retval = 0;
 	    break;
 	  }
@@ -1982,7 +2149,7 @@ cris_break_13_handler (SIM_CPU *current_cpu, USI callnum, USI arg1,
 
 		mapped_addr
 		  = create_map (sd, &current_cpu->highest_mmapped_page,
-				0, new_len);
+				-1, new_len);
 
 		if (mapped_addr > (USI) -8192)
 		  {
@@ -2170,6 +2337,55 @@ cris_break_13_handler (SIM_CPU *current_cpu, USI callnum, USI arg1,
 	      }
 	    break;
 	  }
+
+	  /* ssize_t writev(int fd, const struct iovec *iov, int iovcnt);
+	      where:
+	     struct iovec {
+	       void  *iov_base;    Starting address
+               size_t iov_len;     Number of bytes to transfer
+	     }; */
+	case TARGET_SYS_writev:
+	  {
+	    SI fd = arg1;
+	    SI iov = arg2;
+	    SI iovcnt = arg3;
+	    SI retcnt = 0;
+	    int i;
+
+	    /* We'll ignore strict error-handling and just do multiple write calls.  */
+	    for (i = 0; i < iovcnt; i++)
+	      {
+		int sysret;
+		USI iov_base
+		  = sim_core_read_unaligned_4 (current_cpu, pc, 0,
+					       iov + 8*i);
+		USI iov_len
+		  = sim_core_read_unaligned_4 (current_cpu, pc, 0,
+					       iov + 8*i + 4);
+		
+		s.func = TARGET_SYS_write;
+		s.arg1 = fd;
+		s.arg2 = iov_base;
+		s.arg3 = iov_len;
+
+		if (cb_syscall (cb, &s) != CB_RC_OK)
+		  abort ();
+		sysret = s.result == -1 ? -s.errcode : s.result;
+
+		if (sysret != iov_len)
+		  {
+		    if (i != 0)
+		      abort ();
+		    retcnt = sysret;
+		    break;
+		  }
+
+		retcnt += iov_len;
+	      }
+
+	    retval = retcnt;
+	  }
+	  break;
 
 	/* This one does have a generic callback function, but at the time
 	   of this writing, cb_syscall does not have code for it, and we
@@ -2488,6 +2704,56 @@ cris_break_13_handler (SIM_CPU *current_cpu, USI callnum, USI arg1,
 		  retval = -cb_host_to_target_errno (cb, EFAULT);
 	      }
 	    free (cwd);
+	    break;
+	  }
+
+	case TARGET_SYS_access:
+	  {
+	    SI path = arg1;
+	    SI mode = arg2;
+	    char *pbuf = xmalloc (SIM_PATHMAX);
+	    int i;
+	    int o = 0;
+	    int hmode = 0;
+
+	    if (sim_core_read_unaligned_1 (current_cpu, pc, 0, path) == '/')
+	      {
+		strcpy (pbuf, simulator_sysroot);
+		o += strlen (simulator_sysroot);
+	      }
+
+	    for (i = 0; i + o < SIM_PATHMAX; i++)
+	      {
+		pbuf[i + o]
+		  = sim_core_read_unaligned_1 (current_cpu, pc, 0, path + i);
+		if (pbuf[i + o] == 0)
+		  break;
+	      }
+
+	    if (i + o == SIM_PATHMAX)
+	      {
+		retval = -cb_host_to_target_errno (cb, ENAMETOOLONG);
+		break;
+	      }
+
+	    /* Assert that we don't get calls for files for which we
+	       don't have support.  */
+	    if (strncmp (pbuf + strlen (simulator_sysroot),
+			 "/proc/", 6) == 0)
+	      abort ();
+#define X_AFLAG(x) if (mode & TARGET_ ## x) hmode |= x
+	    X_AFLAG (R_OK);
+	    X_AFLAG (W_OK);
+	    X_AFLAG (X_OK);
+	    X_AFLAG (F_OK);
+#undef X_AFLAG
+
+	    if (access (pbuf, hmode) != 0)
+	      retval = -cb_host_to_target_errno (cb, errno);
+	    else
+	      retval = 0;
+
+	    free (pbuf);
 	    break;
 	  }
 
@@ -2924,6 +3190,17 @@ cris_break_13_handler (SIM_CPU *current_cpu, USI callnum, USI arg1,
 	  retval = -cb_host_to_target_errno (cb, ENOSYS);
 	  break;
 
+	case TARGET_SYS_set_thread_area:
+	  /* Do the same error check as Linux.  */
+	  if (arg1 & 255)
+	    {
+	      retval = -cb_host_to_target_errno (cb, EINVAL);
+	      break;
+	    }
+	  (*current_cpu->set_target_thread_data) (current_cpu, arg1);
+	  retval = 0;
+	  break;
+
 	unimplemented_syscall:
 	default:
 	  retval
@@ -3021,6 +3298,7 @@ cris_pipe_empty (host_callback *cb,
 {
   int i;
   SIM_CPU *cpu = current_cpu_for_cb_callback;
+  SIM_DESC sd = CPU_STATE (current_cpu_for_cb_callback);
   bfd_byte r10_buf[4];
   int remaining
     = cb->pipe_buffer[writer].size - cb->pipe_buffer[reader].size;

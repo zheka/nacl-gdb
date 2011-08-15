@@ -1,7 +1,7 @@
 /* TUI data manipulation routines.
 
-   Copyright (C) 1998, 1999, 2000, 2001, 2002, 2004, 2006, 2007, 2008
-   Free Software Foundation, Inc.
+   Copyright (C) 1998, 1999, 2000, 2001, 2002, 2004, 2006, 2007, 2008, 2009,
+   2010, 2011 Free Software Foundation, Inc.
 
    Contributed by Hewlett-Packard Company.
 
@@ -208,6 +208,8 @@ struct tui_locator_element
   char proc_name[MAX_LOCATOR_ELEMENT_LEN];
   int line_no;
   CORE_ADDR addr;
+  /* Architecture associated with code at this location.  */
+  struct gdbarch *gdbarch;
 };
 
 /* Flags to tell what kind of breakpoint is at current line.  */
@@ -270,6 +272,8 @@ struct tui_source_info
   int horizontal_offset;	/* Used for horizontal scroll.  */
   struct tui_line_or_address start_line_or_addr;
   char *filename;
+  /* Architecture associated with code at this location.  */
+  struct gdbarch *gdbarch;
 };
 
 

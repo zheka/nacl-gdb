@@ -1,6 +1,7 @@
 /* Serial interface for local (hardwired) serial ports on Windows systems
 
-   Copyright (C) 2006, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2006, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -32,6 +33,8 @@
 #include "gdb_assert.h"
 #include "gdb_string.h"
 
+#include "command.h"
+
 void _initialize_ser_windows (void);
 
 struct ser_windows_state
@@ -42,6 +45,11 @@ struct ser_windows_state
   HANDLE except_event;
 };
 
+/* CancelIo is not available for Windows 95 OS, so we need to use
+   LoadLibrary/GetProcAddress to avoid a startup failure.  */
+#define CancelIo dyn_CancelIo
+static BOOL WINAPI (*CancelIo) (HANDLE);
+
 /* Open up a real live device for serial I/O.  */
 
 static int
@@ -51,13 +59,6 @@ ser_windows_open (struct serial *scb, const char *name)
   struct ser_windows_state *state;
   COMMTIMEOUTS timeouts;
 
-  /* Only allow COM ports.  */
-  if (strncmp (name, "COM", 3) != 0)
-    {
-      errno = ENOENT;
-      return -1;
-    }
-
   h = CreateFile (name, GENERIC_READ | GENERIC_WRITE, 0, NULL,
 		  OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
   if (h == INVALID_HANDLE_VALUE)
@@ -66,7 +67,7 @@ ser_windows_open (struct serial *scb, const char *name)
       return -1;
     }
 
-  scb->fd = _open_osfhandle ((long) h, O_RDWR);
+  scb->fd = _open_osfhandle ((intptr_t) h, O_RDWR);
   if (scb->fd < 0)
     {
       errno = ENOENT;
@@ -171,7 +172,7 @@ ser_windows_raw (struct serial *scb)
   scb->current_timeout = 0;
 
   if (SetCommState (h, &state) == 0)
-    warning (_("SetCommState failed\n"));
+    warning (_("SetCommState failed"));
 }
 
 static int
@@ -220,8 +221,12 @@ ser_windows_close (struct serial *scb)
 {
   struct ser_windows_state *state;
 
-  /* Stop any pending selects.  */
-  CancelIo ((HANDLE) _get_osfhandle (scb->fd));
+  /* Stop any pending selects.  On Windows 95 OS, CancelIo function does
+     not exist.  In that case, it can be replaced by a call to CloseHandle,
+     but this is not necessary here as we do close the Windows handle
+     by calling close (scb->fd) below.  */
+  if (CancelIo)
+    CancelIo ((HANDLE) _get_osfhandle (scb->fd));
   state = scb->state;
   CloseHandle (state->ov.hEvent);
   CloseHandle (state->except_event);
@@ -384,7 +389,7 @@ struct ser_console_state
      the started state.  */
   HANDLE start_select;
   /* Signaled by the main program to tell the select thread to enter
-     the stopped state. */
+     the stopped state.  */
   HANDLE stop_select;
   /* Signaled by the main program to tell the select thread to
      exit.  */
@@ -521,7 +526,8 @@ console_select_thread (void *arg)
 	  wait_events[0] = state->stop_select;
 	  wait_events[1] = h;
 
-	  event_index = WaitForMultipleObjects (2, wait_events, FALSE, INFINITE);
+	  event_index = WaitForMultipleObjects (2, wait_events,
+						FALSE, INFINITE);
 
 	  if (event_index == WAIT_OBJECT_0
 	      || WaitForSingleObject (state->stop_select, 0) == WAIT_OBJECT_0)
@@ -578,6 +584,7 @@ console_select_thread (void *arg)
 
       SetEvent(state->have_stopped);
     }
+  return 0;
 }
 
 static int
@@ -638,6 +645,7 @@ pipe_select_thread (void *arg)
 
       SetEvent (state->have_stopped);
     }
+  return 0;
 }
 
 static DWORD WINAPI
@@ -655,13 +663,15 @@ file_select_thread (void *arg)
     {
       select_thread_wait (state);
 
-      if (SetFilePointer (h, 0, NULL, FILE_CURRENT) == INVALID_SET_FILE_POINTER)
+      if (SetFilePointer (h, 0, NULL, FILE_CURRENT)
+	  == INVALID_SET_FILE_POINTER)
 	SetEvent (state->except_event);
       else
 	SetEvent (state->read_event);
 
       SetEvent (state->have_stopped);
     }
+  return 0;
 }
 
 static void
@@ -753,6 +763,7 @@ ser_console_get_tty_state (struct serial *scb)
   if (isatty (scb->fd))
     {
       struct ser_console_ttystate *state;
+
       state = (struct ser_console_ttystate *) xmalloc (sizeof *state);
       state->is_a_tty = 1;
       return state;
@@ -803,8 +814,12 @@ free_pipe_state (struct pipe_state *ps)
   if (ps->input)
     fclose (ps->input);
   if (ps->pex)
-    pex_free (ps->pex);
-  /* pex_free closes ps->output.  */
+    {
+      pex_free (ps->pex);
+      /* pex_free closes ps->output.  */
+    }
+  else if (ps->output)
+    fclose (ps->output);
 
   xfree (ps);
 
@@ -824,12 +839,17 @@ pipe_windows_open (struct serial *scb, const char *name)
 {
   struct pipe_state *ps;
   FILE *pex_stderr;
+  char **argv;
+  struct cleanup *back_to;
 
-  char **argv = buildargv (name);
-  struct cleanup *back_to = make_cleanup_freeargv (argv);
+  if (name == NULL)
+    error_no_arg (_("child command"));
+
+  argv = gdb_buildargv (name);
+  back_to = make_cleanup_freeargv (argv);
+
   if (! argv[0] || argv[0][0] == '\0')
-    error ("missing child command");
-
+    error (_("missing child command"));
 
   ps = make_pipe_state ();
   make_cleanup (cleanup_pipe_state, ps);
@@ -856,10 +876,10 @@ pipe_windows_open (struct serial *scb, const char *name)
            all the same information here, plus err_msg provided by
            pex_run, so we just raise the error here.  */
         if (err)
-          error ("error starting child process '%s': %s: %s",
+          error (_("error starting child process '%s': %s: %s"),
                  name, err_msg, safe_strerror (err));
         else
-          error ("error starting child process '%s': %s",
+          error (_("error starting child process '%s': %s"),
                  name, err_msg);
       }
   }
@@ -884,6 +904,30 @@ pipe_windows_open (struct serial *scb, const char *name)
   return -1;
 }
 
+static int
+pipe_windows_fdopen (struct serial *scb, int fd)
+{
+  struct pipe_state *ps;
+
+  ps = make_pipe_state ();
+
+  ps->input = fdopen (fd, "r+");
+  if (! ps->input)
+    goto fail;
+
+  ps->output = fdopen (fd, "r+");
+  if (! ps->output)
+    goto fail;
+
+  scb->fd = fd;
+  scb->state = (void *) ps;
+
+  return 0;
+
+ fail:
+  free_pipe_state (ps);
+  return -1;
+}
 
 static void
 pipe_windows_close (struct serial *scb)
@@ -982,9 +1026,18 @@ pipe_avail (struct serial *scb, int fd)
   HANDLE h = (HANDLE) _get_osfhandle (fd);
   DWORD numBytes;
   BOOL r = PeekNamedPipe (h, NULL, 0, NULL, &numBytes, NULL);
+
   if (r == FALSE)
     numBytes = 0;
   return numBytes;
+}
+
+int
+gdb_pipe (int pdes[2])
+{
+  if (_pipe (pdes, 512, _O_BINARY | _O_NOINHERIT) == -1)
+    return -1;
+  return 0;
 }
 
 struct net_windows_state
@@ -1164,8 +1217,19 @@ _initialize_ser_windows (void)
   WSADATA wsa_data;
   struct serial_ops *ops;
 
-  /* First register the serial port driver.  */
+  HMODULE hm = NULL;
 
+  /* First find out if kernel32 exports CancelIo function.  */
+  hm = LoadLibrary ("kernel32.dll");
+  if (hm)
+    {
+      CancelIo = (void *) GetProcAddress (hm, "CancelIo");
+      FreeLibrary (hm);
+    }
+  else
+    CancelIo = NULL;
+
+  /* Now register the serial port driver.  */
   ops = XMALLOC (struct serial_ops);
   memset (ops, 0, sizeof (struct serial_ops));
   ops->name = "hardwire";
@@ -1180,6 +1244,7 @@ _initialize_ser_windows (void)
   /* These are only used for stdin; we do not need them for serial
      ports, so supply the standard dummies.  */
   ops->get_tty_state = ser_base_get_tty_state;
+  ops->copy_tty_state = ser_base_copy_tty_state;
   ops->set_tty_state = ser_base_set_tty_state;
   ops->print_tty_state = ser_base_print_tty_state;
   ops->noflush_set_tty_state = ser_base_noflush_set_tty_state;
@@ -1208,6 +1273,7 @@ _initialize_ser_windows (void)
 
   ops->close = ser_console_close;
   ops->get_tty_state = ser_console_get_tty_state;
+  ops->copy_tty_state = ser_base_copy_tty_state;
   ops->set_tty_state = ser_base_set_tty_state;
   ops->print_tty_state = ser_base_print_tty_state;
   ops->noflush_set_tty_state = ser_base_noflush_set_tty_state;
@@ -1225,6 +1291,7 @@ _initialize_ser_windows (void)
   ops->next = 0;
   ops->open = pipe_windows_open;
   ops->close = pipe_windows_close;
+  ops->fdopen = pipe_windows_fdopen;
   ops->readchar = ser_base_readchar;
   ops->write = ser_base_write;
   ops->flush_output = ser_base_flush_output;
@@ -1232,6 +1299,7 @@ _initialize_ser_windows (void)
   ops->send_break = ser_base_send_break;
   ops->go_raw = ser_base_raw;
   ops->get_tty_state = ser_base_get_tty_state;
+  ops->copy_tty_state = ser_base_copy_tty_state;
   ops->set_tty_state = ser_base_set_tty_state;
   ops->print_tty_state = ser_base_print_tty_state;
   ops->noflush_set_tty_state = ser_base_noflush_set_tty_state;
@@ -1263,9 +1331,10 @@ _initialize_ser_windows (void)
   ops->write = ser_base_write;
   ops->flush_output = ser_base_flush_output;
   ops->flush_input = ser_base_flush_input;
-  ops->send_break = ser_base_send_break;
+  ops->send_break = ser_tcp_send_break;
   ops->go_raw = ser_base_raw;
   ops->get_tty_state = ser_base_get_tty_state;
+  ops->copy_tty_state = ser_base_copy_tty_state;
   ops->set_tty_state = ser_base_set_tty_state;
   ops->print_tty_state = ser_base_print_tty_state;
   ops->noflush_set_tty_state = ser_base_noflush_set_tty_state;

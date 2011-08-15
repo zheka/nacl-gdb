@@ -1,6 +1,7 @@
 /* Native-dependent code for HP PA-RISC BSD's.
 
-   Copyright (C) 2004, 2005, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -122,7 +123,8 @@ hppabsd_collect_fpregset (struct regcache *regcache,
    for all registers (including the floating-point registers).  */
 
 static void
-hppabsd_fetch_registers (struct regcache *regcache, int regnum)
+hppabsd_fetch_registers (struct target_ops *ops,
+			 struct regcache *regcache, int regnum)
 {
   if (regnum == -1 || hppabsd_gregset_supplies_p (regnum))
     {
@@ -151,7 +153,8 @@ hppabsd_fetch_registers (struct regcache *regcache, int regnum)
    this for all registers (including the floating-point registers).  */
 
 static void
-hppabsd_store_registers (struct regcache *regcache, int regnum)
+hppabsd_store_registers (struct target_ops *ops,
+			 struct regcache *regcache, int regnum)
 {
   if (regnum == -1 || hppabsd_gregset_supplies_p (regnum))
     {

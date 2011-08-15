@@ -1,4 +1,4 @@
-# Copyright 1999, 2000, 2001, 2002, 2004, 2007, 2008
+# Copyright 1999, 2000, 2001, 2002, 2004, 2007, 2008, 2009, 2010, 2011
 # Free Software Foundation, Inc.
 #
 # This program is free software; you can redistribute it and/or modify
@@ -30,7 +30,7 @@ if [mi_gdb_start] {
 
 set testfile "var-cmd"
 set srcfile ${testfile}.c
-set binfile ${objdir}/${subdir}/${testfile}
+set binfile ${objdir}/${subdir}/mi-var-block
 if  { [gdb_compile "${srcdir}/${subdir}/${srcfile}" "${binfile}" executable {debug additional_flags=-DFAKEARGV}] != "" } {
     untested mi-var-block.exp
     return -1
@@ -44,13 +44,11 @@ mi_runto do_block_tests
 
 # Test: c_variable-3.2
 # Desc: create cb and foo
-mi_gdb_test "-var-create cb * cb" \
-	"\\^done,name=\"cb\",numchild=\"0\",value=\".*\",type=\"int\"" \
-	"create local variable cb"
+mi_create_varobj "cb" "cb" "create local variable cb"
 
 mi_gdb_test "-var-create foo * foo" \
-	"&\"mi_cmd_var_create: unable to create variable object\\\\n\".*\\^error,msg=\"mi_cmd_var_create: unable to create variable object\"" \
-	"create local variable foo"
+       "\\^error,msg=\"-var-create: unable to create variable object\"" \
+       "try to create local variable foo"
 
 # step to "foo = 123;"
 mi_step_to "do_block_tests" "" "var-cmd.c" \
@@ -60,15 +58,13 @@ mi_step_to "do_block_tests" "" "var-cmd.c" \
 
 # Be paranoid and assume 3.2 created foo
 mi_gdb_test "-var-delete foo" \
-	"&\"Variable object not found\\\\n\".*\\^error,msg=\"Variable object not found\"" \
+	"\\^error,msg=\"Variable object not found\"" \
 	"delete var foo"
 
 
 # Test: c_variable-3.3
 # Desc: create foo
-mi_gdb_test "-var-create foo * foo" \
-	"\\^done,name=\"foo\",numchild=\"0\",value=\".*\",type=\"int\"" \
-	"create local variable foo"
+mi_create_varobj "foo" "foo" "create local variable foo"
 
 # step to "foo2 = 123;"
 mi_step_to "do_block_tests" "" "var-cmd.c" \
@@ -78,7 +74,7 @@ mi_step_to "do_block_tests" "" "var-cmd.c" \
 # Test: c_variable-3.4
 # Desc: check foo, cb changed
 mi_gdb_test "-var-update *" \
-	"\\^done,changelist=\\\[\{name=\"foo\",in_scope=\"true\",type_changed=\"false\"\},\{name=\"cb\",in_scope=\"true\",type_changed=\"false\"\}\\\]" \
+	"\\^done,changelist=\\\[\{name=\"foo\",in_scope=\"true\",type_changed=\"false\",has_more=\"0\"\},\{name=\"cb\",in_scope=\"true\",type_changed=\"false\",has_more=\"0\"\}\\\]" \
 	"update all vars: cb foo changed"
 
 # step to "foo = 321;"
@@ -88,9 +84,7 @@ mi_step_to "do_block_tests" "" "var-cmd.c" \
 
 # Test: c_variable-3.5
 # Desc: create inner block foo
-mi_gdb_test "-var-create inner_foo * foo" \
-	"\\^done,name=\"inner_foo\",numchild=\"0\",value=\".*\",type=\"int\"" \
-	"create local variable inner_foo"
+mi_create_varobj "inner_foo" "foo" "create local variable inner_foo"
 
 # step to "foo2 = 0;"
 mi_step_to "do_block_tests" "" "var-cmd.c" \
@@ -99,9 +93,7 @@ mi_step_to "do_block_tests" "" "var-cmd.c" \
 
 # Test: c_variable-3.6
 # Desc: create foo2
-mi_gdb_test "-var-create foo2 * foo2" \
-	"\\^done,name=\"foo2\",numchild=\"0\",value=\".*\",type=\"int\"" \
-	"create local variable foo2"
+mi_create_varobj "foo2" "foo2" "create local variable foo2"
 
 # Test: c_variable-3.7
 # Desc: check that outer foo in scope and inner foo out of scope

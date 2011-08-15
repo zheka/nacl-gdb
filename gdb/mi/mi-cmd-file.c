@@ -1,5 +1,6 @@
 /* MI Command Set - breakpoint and watchpoint commands.
-   Copyright (C) 2000, 2001, 2002, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2000, 2001, 2002, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
    Contributed by Cygnus Solutions (a Red Hat company).
 
    This file is part of GDB.
@@ -24,19 +25,18 @@
 #include "symtab.h"
 #include "source.h"
 #include "objfiles.h"
+#include "psymtab.h"
 
 /* Return to the client the absolute path and line number of the 
    current file being executed. */
 
-enum mi_cmd_result
+void
 mi_cmd_file_list_exec_source_file (char *command, char **argv, int argc)
 {
   struct symtab_and_line st;
-  int optind = 0;
-  char *optarg;
   
-  if (!mi_valid_noargs ("mi_cmd_file_list_exec_source_file", argc, argv))
-    error (_("mi_cmd_file_list_exec_source_file: Usage: No args"));
+  if (!mi_valid_noargs ("-file-list-exec-source-file", argc, argv))
+    error (_("-file-list-exec-source-file: Usage: No args"));
 
   /* Set the default file and line, also get them */
   set_default_source_symtab_and_line ();
@@ -46,7 +46,7 @@ mi_cmd_file_list_exec_source_file (char *command, char **argv, int argc)
      Apparently, filename does not need to be tested for NULL.
      The documentation in symtab.h suggests it will always be correct */
   if (!st.symtab)
-    error (_("mi_cmd_file_list_exec_source_file: No symtab"));
+    error (_("-file-list-exec-source-file: No symtab"));
 
   /* Extract the fullname if it is not known yet */
   symtab_to_fullname (st.symtab);
@@ -60,19 +60,31 @@ mi_cmd_file_list_exec_source_file (char *command, char **argv, int argc)
   ui_out_field_string (uiout, "fullname", st.symtab->fullname);
 
   ui_out_field_int (uiout, "macro-info", st.symtab->macro_table ? 1 : 0);
-
-  return MI_CMD_DONE;
 }
 
-enum mi_cmd_result
+/* A callback for map_partial_symbol_filenames.  */
+static void
+print_partial_file_name (const char *filename, const char *fullname,
+			 void *ignore)
+{
+  ui_out_begin (uiout, ui_out_type_tuple, NULL);
+
+  ui_out_field_string (uiout, "file", filename);
+
+  if (fullname)
+    ui_out_field_string (uiout, "fullname", fullname);
+
+  ui_out_end (uiout, ui_out_type_tuple);
+}
+
+void
 mi_cmd_file_list_exec_source_files (char *command, char **argv, int argc)
 {
   struct symtab *s;
-  struct partial_symtab *ps;
   struct objfile *objfile;
 
-  if (!mi_valid_noargs ("mi_cmd_file_list_exec_source_files", argc, argv))
-    error (_("mi_cmd_file_list_exec_source_files: Usage: No args"));
+  if (!mi_valid_noargs ("-file-list-exec-source-files", argc, argv))
+    error (_("-file-list-exec-source-files: Usage: No args"));
 
   /* Print the table header */
   ui_out_begin (uiout, ui_out_type_list, "files");
@@ -93,26 +105,7 @@ mi_cmd_file_list_exec_source_files (char *command, char **argv, int argc)
     ui_out_end (uiout, ui_out_type_tuple);
   }
 
-  /* Look at all of the psymtabs */
-  ALL_PSYMTABS (objfile, ps)
-  {
-    if (!ps->readin)
-      {
-	ui_out_begin (uiout, ui_out_type_tuple, NULL);
-
-	ui_out_field_string (uiout, "file", ps->filename);
-
-	/* Extract the fullname if it is not known yet */
-	psymtab_to_fullname (ps);
-
-	if (ps->fullname)
-	  ui_out_field_string (uiout, "fullname", ps->fullname);
-
-	ui_out_end (uiout, ui_out_type_tuple);
-      }
-  }
+  map_partial_symbol_filenames (print_partial_file_name, NULL);
 
   ui_out_end (uiout, ui_out_type_list);
-
-  return MI_CMD_DONE;
 }

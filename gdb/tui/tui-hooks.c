@@ -1,7 +1,7 @@
 /* GDB hooks for TUI.
 
-   Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
-   Free Software Foundation, Inc.
+   Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
+   2011 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -31,7 +31,6 @@
 #include "event-top.h"
 #include "frame.h"
 #include "breakpoint.h"
-#include "gdb-events.h"
 #include "ui-out.h"
 #include "top.h"
 #include "observer.h"
@@ -65,7 +64,7 @@ tui_new_objfile_hook (struct objfile* objfile)
     tui_display_main ();
 }
 
-static int ATTR_FORMAT (printf, 1, 0)
+static int ATTRIBUTE_PRINTF (1, 0)
 tui_query_hook (const char *msg, va_list argp)
 {
   int retval;
@@ -157,28 +156,11 @@ tui_event_modify_breakpoint (int number)
   tui_update_all_breakpoint_info ();
 }
 
-static void
-tui_event_default (int number)
-{
-  ;
-}
-
-static struct gdb_events *tui_old_event_hooks;
-
-static struct gdb_events tui_event_hooks = {
-  tui_event_create_breakpoint,
-  tui_event_delete_breakpoint,
-  tui_event_modify_breakpoint,
-  tui_event_default,
-  tui_event_default,
-  tui_event_default
-};
-
 /* Called when going to wait for the target.
    Leave curses mode and setup program mode.  */
 static ptid_t
 tui_target_wait_hook (ptid_t pid, 
-		      struct target_waitstatus *status)
+		      struct target_waitstatus *status, int options)
 {
   ptid_t res;
 
@@ -192,7 +174,7 @@ tui_target_wait_hook (ptid_t pid,
     }
 #endif
   tui_target_has_run = 1;
-  res = target_wait (pid, status);
+  res = target_wait (pid, status, options);
 
   if (tui_active)
     {
@@ -208,6 +190,7 @@ static void
 tui_selected_frame_level_changed_hook (int level)
 {
   struct frame_info *fi;
+  CORE_ADDR pc;
 
   /* Negative level means that the selected frame was cleared.  */
   if (level < 0)
@@ -217,28 +200,29 @@ tui_selected_frame_level_changed_hook (int level)
   /* Ensure that symbols for this frame are read in.  Also, determine
      the source language of this frame, and switch to it if
      desired.  */
-  if (fi)
+  if (get_frame_pc_if_available (fi, &pc))
     {
       struct symtab *s;
-      
-      s = find_pc_symtab (get_frame_pc (fi));
+
+      s = find_pc_symtab (pc);
       /* elz: This if here fixes the problem with the pc not being
-         displayed in the tui asm layout, with no debug symbols.  The
-         value of s would be 0 here, and select_source_symtab would
-         abort the command by calling the 'error' function.  */
+	 displayed in the tui asm layout, with no debug symbols.  The
+	 value of s would be 0 here, and select_source_symtab would
+	 abort the command by calling the 'error' function.  */
       if (s)
-        select_source_symtab (s);
+	select_source_symtab (s);
+    }
 
-      /* Display the frame position (even if there is no symbols).  */
-      tui_show_frame_info (fi);
+  /* Display the frame position (even if there is no symbols or the PC
+     is not known).  */
+  tui_show_frame_info (fi);
 
-      /* Refresh the register window if it's visible.  */
-      if (tui_is_window_visible (DATA_WIN))
-        {
-          tui_refreshing_registers = 1;
-          tui_check_data_values (fi);
-          tui_refreshing_registers = 0;
-        }
+  /* Refresh the register window if it's visible.  */
+  if (tui_is_window_visible (DATA_WIN))
+    {
+      tui_refreshing_registers = 1;
+      tui_check_data_values (fi);
+      tui_refreshing_registers = 0;
     }
 }
 
@@ -262,18 +246,30 @@ tui_detach_hook (void)
   tui_display_main ();
 }
 
+/* Observers created when installing TUI hooks.  */
+static struct observer *tui_bp_created_observer;
+static struct observer *tui_bp_deleted_observer;
+static struct observer *tui_bp_modified_observer;
+
 /* Install the TUI specific hooks.  */
 void
 tui_install_hooks (void)
 {
   deprecated_target_wait_hook = tui_target_wait_hook;
-  deprecated_selected_frame_level_changed_hook = tui_selected_frame_level_changed_hook;
-  deprecated_print_frame_info_listing_hook = tui_print_frame_info_listing_hook;
+  deprecated_selected_frame_level_changed_hook
+    = tui_selected_frame_level_changed_hook;
+  deprecated_print_frame_info_listing_hook
+    = tui_print_frame_info_listing_hook;
 
   deprecated_query_hook = tui_query_hook;
 
   /* Install the event hooks.  */
-  tui_old_event_hooks = deprecated_set_gdb_event_hooks (&tui_event_hooks);
+  tui_bp_created_observer
+    = observer_attach_breakpoint_created (tui_event_create_breakpoint);
+  tui_bp_deleted_observer
+    = observer_attach_breakpoint_deleted (tui_event_delete_breakpoint);
+  tui_bp_modified_observer
+    = observer_attach_breakpoint_modified (tui_event_modify_breakpoint);
 
   deprecated_register_changed_hook = tui_register_changed_hook;
   deprecated_detach_hook = tui_detach_hook;
@@ -290,8 +286,13 @@ tui_remove_hooks (void)
   deprecated_register_changed_hook = 0;
   deprecated_detach_hook = 0;
 
-  /* Restore the previous event hooks.  */
-  deprecated_set_gdb_event_hooks (tui_old_event_hooks);
+  /* Remove our observers.  */
+  observer_detach_breakpoint_created (tui_bp_created_observer);
+  tui_bp_created_observer = NULL;
+  observer_detach_breakpoint_deleted (tui_bp_deleted_observer);
+  tui_bp_deleted_observer = NULL;
+  observer_detach_breakpoint_modified (tui_bp_modified_observer);
+  tui_bp_modified_observer = NULL;
 }
 
 void _initialize_tui_hooks (void);

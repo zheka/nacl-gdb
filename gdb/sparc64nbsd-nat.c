@@ -1,6 +1,7 @@
 /* Native-dependent code for NetBSD/sparc64.
 
-   Copyright (C) 2003, 2004, 2006, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2004, 2006, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -82,10 +83,10 @@ sparc64nbsd_collect_fpregset (const struct regcache *regcache,
 /* Determine whether `gregset_t' contains register REGNUM.  */
 
 static int
-sparc64nbsd_gregset_supplies_p (int regnum)
+sparc64nbsd_gregset_supplies_p (struct gdbarch *gdbarch, int regnum)
 {
-  if (gdbarch_ptr_bit (current_gdbarch) == 32)
-    return sparc32_gregset_supplies_p (regnum);
+  if (gdbarch_ptr_bit (gdbarch) == 32)
+    return sparc32_gregset_supplies_p (gdbarch, regnum);
 
   /* Integer registers.  */
   if ((regnum >= SPARC_G1_REGNUM && regnum <= SPARC_G7_REGNUM)
@@ -107,10 +108,10 @@ sparc64nbsd_gregset_supplies_p (int regnum)
 /* Determine whether `fpregset_t' contains register REGNUM.  */
 
 static int
-sparc64nbsd_fpregset_supplies_p (int regnum)
+sparc64nbsd_fpregset_supplies_p (struct gdbarch *gdbarch, int regnum)
 {
-  if (gdbarch_ptr_bit (current_gdbarch) == 32)
-    return sparc32_fpregset_supplies_p (regnum);
+  if (gdbarch_ptr_bit (gdbarch) == 32)
+    return sparc32_fpregset_supplies_p (gdbarch, regnum);
 
   /* Floating-point registers.  */
   if ((regnum >= SPARC_F0_REGNUM && regnum <= SPARC_F31_REGNUM)
@@ -140,9 +141,9 @@ sparc64nbsd_supply_pcb (struct regcache *regcache, struct pcb *pcb)
 
   /* The following is true for NetBSD 1.6.2:
 
-     The pcb contains %sp and %pc, %psr and %wim.  From this information
-     we reconstruct the register state as it would look when we just
-     returned from cpu_switch().  */
+     The pcb contains %sp and %pc, %pstate and %cwp.  From this
+     information we reconstruct the register state as it would look
+     when we just returned from cpu_switch().  */
 
   /* The stack pointer shouldn't be zero.  */
   if (pcb->pcb_sp == 0)
@@ -153,7 +154,6 @@ sparc64nbsd_supply_pcb (struct regcache *regcache, struct pcb *pcb)
   if (pcb->pcb_pc == 0)
       read_memory(pcb->pcb_sp + BIAS - 176 + (11 * 8), 
 		  (gdb_byte *)&pcb->pcb_pc, sizeof pcb->pcb_pc);
-
 
   regcache_raw_supply (regcache, SPARC_SP_REGNUM, &pcb->pcb_sp);
   regcache_raw_supply (regcache, SPARC64_PC_REGNUM, &pcb->pcb_pc);

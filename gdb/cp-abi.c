@@ -1,6 +1,6 @@
 /* Generic code for supporting multiple C++ ABI's
 
-   Copyright (C) 2001, 2002, 2003, 2005, 2006, 2007, 2008
+   Copyright (C) 2001, 2002, 2003, 2005, 2006, 2007, 2008, 2009, 2010, 2011
    Free Software Foundation, Inc.
 
    This file is part of GDB.
@@ -22,9 +22,10 @@
 #include "value.h"
 #include "cp-abi.h"
 #include "command.h"
+#include "exceptions.h"
 #include "gdbcmd.h"
 #include "ui-out.h"
-
+#include "gdb_assert.h"
 #include "gdb_string.h"
 
 static struct cp_abi_ops *find_cp_abi (const char *short_name);
@@ -69,33 +70,64 @@ is_operator_name (const char *name)
 }
 
 int
-baseclass_offset (struct type *type, int index, const bfd_byte *valaddr,
-		  CORE_ADDR address)
+baseclass_offset (struct type *type, int index, const gdb_byte *valaddr,
+		  int embedded_offset, CORE_ADDR address,
+		  const struct value *val)
 {
-  if (current_cp_abi.baseclass_offset == NULL)
-    error (_("ABI doesn't define required function baseclass_offset"));
-  return (*current_cp_abi.baseclass_offset) (type, index, valaddr, address);
+  volatile struct gdb_exception ex;
+  int res = 0;
+
+  gdb_assert (current_cp_abi.baseclass_offset != NULL);
+
+  TRY_CATCH (ex, RETURN_MASK_ERROR)
+    {
+      res = (*current_cp_abi.baseclass_offset) (type, index, valaddr,
+						embedded_offset,
+						address, val);
+    }
+
+  if (ex.reason < 0 && ex.error == NOT_AVAILABLE_ERROR)
+    throw_error (NOT_AVAILABLE_ERROR,
+		 _("Cannot determine virtual baseclass offset "
+		   "of incomplete object"));
+  else if (ex.reason < 0)
+    throw_exception (ex);
+  else
+    return res;
 }
 
 struct value *
-value_virtual_fn_field (struct value **arg1p, struct fn_field *f, int j,
+value_virtual_fn_field (struct value **arg1p,
+			struct fn_field *f, int j,
 			struct type *type, int offset)
 {
   if ((current_cp_abi.virtual_fn_field) == NULL)
     return NULL;
-  return (*current_cp_abi.virtual_fn_field) (arg1p, f, j, type, offset);
+  return (*current_cp_abi.virtual_fn_field) (arg1p, f, j,
+					     type, offset);
 }
 
 struct type *
-value_rtti_type (struct value *v, int *full, int *top, int *using_enc)
+value_rtti_type (struct value *v, int *full,
+		 int *top, int *using_enc)
 {
+  struct type *ret = NULL;
+  struct gdb_exception e;
+
   if ((current_cp_abi.rtti_type) == NULL)
     return NULL;
-  return (*current_cp_abi.rtti_type) (v, full, top, using_enc);
+  TRY_CATCH (e, RETURN_MASK_ERROR)
+    {
+      ret = (*current_cp_abi.rtti_type) (v, full, top, using_enc);
+    }
+  if (e.reason < 0)
+    return NULL;
+  return ret;
 }
 
 void
-cplus_print_method_ptr (const gdb_byte *contents, struct type *type,
+cplus_print_method_ptr (const gdb_byte *contents,
+			struct type *type,
 			struct ui_file *stream)
 {
   if (current_cp_abi.print_method_ptr == NULL)
@@ -104,23 +136,25 @@ cplus_print_method_ptr (const gdb_byte *contents, struct type *type,
 }
 
 int
-cplus_method_ptr_size (void)
+cplus_method_ptr_size (struct type *to_type)
 {
   if (current_cp_abi.method_ptr_size == NULL)
     error (_("GDB does not support pointers to methods on this target"));
-  return (*current_cp_abi.method_ptr_size) ();
+  return (*current_cp_abi.method_ptr_size) (to_type);
 }
 
 void
-cplus_make_method_ptr (gdb_byte *contents, CORE_ADDR value, int is_virtual)
+cplus_make_method_ptr (struct type *type, gdb_byte *contents,
+		       CORE_ADDR value, int is_virtual)
 {
   if (current_cp_abi.make_method_ptr == NULL)
     error (_("GDB does not support pointers to methods on this target"));
-  (*current_cp_abi.make_method_ptr) (contents, value, is_virtual);
+  (*current_cp_abi.make_method_ptr) (type, contents, value, is_virtual);
 }
 
 CORE_ADDR
-cplus_skip_trampoline (struct frame_info *frame, CORE_ADDR stop_pc)
+cplus_skip_trampoline (struct frame_info *frame,
+		       CORE_ADDR stop_pc)
 {
   if (current_cp_abi.skip_trampoline == NULL)
     return 0;
@@ -128,7 +162,8 @@ cplus_skip_trampoline (struct frame_info *frame, CORE_ADDR stop_pc)
 }
 
 struct value *
-cplus_method_ptr_to_value (struct value **this_p, struct value *method_ptr)
+cplus_method_ptr_to_value (struct value **this_p,
+			   struct value *method_ptr)
 {
   if (current_cp_abi.method_ptr_to_value == NULL)
     error (_("GDB does not support pointers to methods on this target"));
@@ -165,7 +200,8 @@ register_cp_abi (struct cp_abi_ops *abi)
 {
   if (num_cp_abis == CP_ABI_MAX)
     internal_error (__FILE__, __LINE__,
-		    _("Too many C++ ABIs, please increase CP_ABI_MAX in cp-abi.c"));
+		    _("Too many C++ ABIs, please increase "
+		      "CP_ABI_MAX in cp-abi.c"));
 
   cp_abis[num_cp_abis++] = abi;
 
@@ -228,9 +264,10 @@ list_cp_abis (int from_tty)
 {
   struct cleanup *cleanup_chain;
   int i;
-  ui_out_text (uiout, "The available C++ ABIs are:\n");
 
-  cleanup_chain = make_cleanup_ui_out_tuple_begin_end (uiout, "cp-abi-list");
+  ui_out_text (uiout, "The available C++ ABIs are:\n");
+  cleanup_chain = make_cleanup_ui_out_tuple_begin_end (uiout,
+						       "cp-abi-list");
   for (i = 0; i < num_cp_abis; i++)
     {
       char pad[14];
@@ -294,5 +331,6 @@ Set the ABI used for inspecting C++ objects.\n\
 	   &setlist);
 
   add_cmd ("cp-abi", class_obscure, show_cp_abi_cmd,
-	   _("Show the ABI used for inspecting C++ objects."), &showlist);
+	   _("Show the ABI used for inspecting C++ objects."),
+	   &showlist);
 }

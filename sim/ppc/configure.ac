@@ -209,10 +209,106 @@ case "${target}" in
 esac
 ])dnl
 
+AC_CACHE_CHECK([if union semun defined],
+  ac_cv_HAS_UNION_SEMUN,
+  [AC_TRY_COMPILE([
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/sem.h>],
+[union semun arg ;],
+[ac_cv_has_union_semun="yes"],
+[ac_cv_has_union_semun="no"])
+AC_MSG_RESULT($ac_cv_has_union_semun)
+])
+
+
+if test "$ac_cv_has_union_semun" = "yes"; then
+  AC_CACHE_CHECK(whether System V semaphores are supported,
+  ac_cv_sysv_sem,
+  [
+  AC_TRY_RUN(
+  [
+  #include <sys/types.h>
+  #include <sys/ipc.h>
+  #include <sys/sem.h>
+  int main () {
+    union semun arg ;
+
+    int id=semget(IPC_PRIVATE,1,IPC_CREAT|0400);
+    if (id == -1)
+      exit(1);
+    arg.val = 0; /* avoid implicit type cast to union */
+    if (semctl(id, 0, IPC_RMID, arg) == -1)
+      exit(1);
+    exit(0);
+  }
+  ],
+  ac_cv_sysv_sem="yes", ac_cv_sysv_sem="no", :)
+  ])
+else  # semun is not defined
+  AC_CACHE_CHECK(whether System V semaphores are supported,
+  ac_cv_sysv_sem,
+  [
+  AC_TRY_RUN(
+  [
+  #include <sys/types.h>
+  #include <sys/ipc.h>
+  #include <sys/sem.h>
+  union semun {
+    int val;
+    struct semid_ds *buf;
+    ushort *array;
+  };
+  int main () {
+    union semun arg ;
+
+    int id=semget(IPC_PRIVATE,1,IPC_CREAT|0400);
+    if (id == -1)
+      exit(1);
+    arg.val = 0; /* avoid implicit type cast to union */
+    if (semctl(id, 0, IPC_RMID, arg) == -1)
+      exit(1);
+    exit(0);
+  }
+  ],
+  ac_cv_sysv_sem="yes", ac_cv_sysv_sem="no", :)
+  ])
+fi
+
+AC_CACHE_CHECK(whether System V shared memory is supported,
+ac_cv_sysv_shm,
+[
+AC_TRY_RUN([
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+int main () {
+  int id=shmget(IPC_PRIVATE,1,IPC_CREAT|0400);
+  if (id == -1)
+    exit(1);
+  if (shmctl(id, IPC_RMID, 0) == -1)
+    exit(1);
+  exit(0);
+}
+],
+ac_cv_sysv_shm="yes", ac_cv_sysv_shm="no", :)
+])
+
+if test x"$ac_cv_sysv_shm" = x"yes" -a x"$ac_cv_sysv_sem" = x"yes" ; then
+  sim_sysv_ipc_hw=",sem,shm";
+else
+  sim_sysv_ipc_hw="";
+fi
+
+if test x"$ac_cv_has_union_semun" = x"yes" -a x"$ac_cv_sysv_sem" = x"yes" ; then
+  AC_DEFINE(HAVE_UNION_SEMUN, 1,
+	    [Define if union semun is defined in <sys/sem.h>])
+fi
+
 
 AC_ARG_ENABLE(sim-hardware,
 [  --enable-sim-hardware=list		Specify the hardware to be included in the build.],
-[hardware="cpu,memory,nvram,iobus,htab,disk,trace,register,vm,init,core,pal,com,eeprom,opic,glue,phb,ide"
+[hardware="cpu,memory,nvram,iobus,htab,disk,trace,register,vm,init,core,pal,com,eeprom,opic,glue,phb,ide${sim_sysv_ipc_hw}"
 case "${enableval}" in
   yes)	;;
   no)	AC_MSG_ERROR("List of hardware must be specified for --enable-sim-hardware"); hardware="";;
@@ -224,13 +320,12 @@ sim_hw_src=`echo $hardware | sed -e 's/,/.c hw_/g' -e 's/^/hw_/' -e s'/$/.c/'`
 sim_hw_obj=`echo $sim_hw_src | sed -e 's/\.c/.o/g'`
 if test x"$silent" != x"yes" && test x"$hardware" != x""; then
   echo "Setting hardware to $sim_hw_src, $sim_hw_obj"
-fi],[hardware="cpu,memory,nvram,iobus,htab,disk,trace,register,vm,init,core,pal,com,eeprom,opic,glue,phb,ide"
+fi],[hardware="cpu,memory,nvram,iobus,htab,disk,trace,register,vm,init,core,pal,com,eeprom,opic,glue,phb,ide${sim_sysv_ipc_hw}"
 sim_hw_src=`echo $hardware | sed -e 's/,/.c hw_/g' -e 's/^/hw_/' -e s'/$/.c/'`
 sim_hw_obj=`echo $sim_hw_src | sed -e 's/\.c/.o/g'`
 if test x"$silent" != x"yes"; then
   echo "Setting hardware to $sim_hw_src, $sim_hw_obj"
 fi])dnl
-
 
 AC_ARG_ENABLE(sim-hostbitsize,
 [  --enable-sim-hostbitsize=32|64	Specify host bitsize (32 or 64).],
@@ -563,8 +658,17 @@ if test x"$silent" != x"yes" && test x"$sim_xor_endian" != x""; then
 fi],[sim_xor_endian=""])dnl
 
 
+ACX_PKGVERSION([GDB])
+ACX_BUGURL([http://www.gnu.org/software/gdb/bugs/])
+AC_DEFINE_UNQUOTED([PKGVERSION], ["$PKGVERSION"], [Additional package description])
+AC_DEFINE_UNQUOTED([REPORT_BUGS_TO], ["$REPORT_BUGS_TO"], [Bug reporting address])
+
 AC_CANONICAL_SYSTEM
 AC_ARG_PROGRAM
+
+# BFD conditionally uses zlib, so we must link it in if libbfd does, by
+# using the same condition.
+AM_ZLIB
 
 . ${srcdir}/../../bfd/configure.host
 
@@ -742,6 +846,31 @@ else
   AC_MSG_RESULT(no)
   sim_fpu_cflags=
   sim_fpu=
+fi
+
+# Since we run commands on the build system, we have to create a
+# separate config header for the build system if build != host.
+if test x$host = x$build; then
+  AC_CONFIG_COMMANDS([build-config.h],[cp config.h build-config.h])
+else
+  tempdir=build.$$
+  rm -rf $tempdir
+  mkdir $tempdir
+  cd $tempdir
+  case ${srcdir} in
+  /* | [A-Za-z]:[\\/]* ) realsrcdir=${srcdir};;
+  *) realsrcdir=../${srcdir};;
+  esac
+  saved_CFLAGS="${CFLAGS}"
+  CC="${CC_FOR_BUILD}" CFLAGS="${CFLAGS_FOR_BUILD}" \
+  LDFLAGS="${LDFLAGS_FOR_BUILD}" \
+  ${realsrcdir}/configure \
+    --enable-languages=${enable_languages-all} \
+    --target=$target_alias --host=$build_alias --build=$build_alias
+  CFLAGS="${saved_CFLAGS}"
+  mv config.h ../build-config.h
+  cd ..
+  rm -rf $tempdir
 fi
 
 dnl Check for exe extension

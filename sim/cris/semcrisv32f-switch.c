@@ -2,7 +2,7 @@
 
 THIS FILE IS MACHINE GENERATED WITH CGEN.
 
-Copyright 1996-2007 Free Software Foundation, Inc.
+Copyright 1996-2010 Free Software Foundation, Inc.
 
 This file is part of the GNU simulators.
 
@@ -275,11 +275,7 @@ This file is part of the GNU simulators.
 #endif
 
 #undef GET_ATTR
-#if defined (__STDC__) || defined (ALMOST_STDC) || defined (HAVE_STRINGIZE)
 #define GET_ATTR(cpu, num, attr) CGEN_ATTR_VALUE (NULL, abuf->idesc->attrs, CGEN_INSN_##attr)
-#else
-#define GET_ATTR(cpu, num, attr) CGEN_ATTR_VALUE (NULL, abuf->idesc->attrs, CGEN_INSN_/**/attr)
-#endif
 
 {
 
@@ -310,7 +306,7 @@ SWITCH (sem, SEM_ARGBUF (vpc) -> semantic.sem_case)
 {
   SEM_ARG sem_arg = SEM_SEM_ARG (vpc, sc);
   ARGBUF *abuf = SEM_ARGBUF (sem_arg);
-#define FLD(f) abuf->fields.fmt_empty.f
+#define FLD(f) abuf->fields.sfmt_empty.f
   int UNUSED written = 0;
   IADDR UNUSED pc = abuf->addr;
   vpc = SEM_NEXT_VPC (sem_arg, pc, 0);
@@ -335,7 +331,7 @@ SWITCH (sem, SEM_ARGBUF (vpc) -> semantic.sem_case)
 {
   SEM_ARG sem_arg = SEM_SEM_ARG (vpc, sc);
   ARGBUF *abuf = SEM_ARGBUF (sem_arg);
-#define FLD(f) abuf->fields.fmt_empty.f
+#define FLD(f) abuf->fields.sfmt_empty.f
   int UNUSED written = 0;
   IADDR UNUSED pc = abuf->addr;
   vpc = SEM_NEXT_VPC (sem_arg, pc, 0);
@@ -354,7 +350,7 @@ SWITCH (sem, SEM_ARGBUF (vpc) -> semantic.sem_case)
 {
   SEM_ARG sem_arg = SEM_SEM_ARG (vpc, sc);
   ARGBUF *abuf = SEM_ARGBUF (sem_arg);
-#define FLD(f) abuf->fields.fmt_empty.f
+#define FLD(f) abuf->fields.sfmt_empty.f
   int UNUSED written = 0;
   IADDR UNUSED pc = abuf->addr;
   vpc = SEM_NEXT_VPC (sem_arg, pc, 0);
@@ -373,7 +369,7 @@ SWITCH (sem, SEM_ARGBUF (vpc) -> semantic.sem_case)
 {
   SEM_ARG sem_arg = SEM_SEM_ARG (vpc, sc);
   ARGBUF *abuf = SEM_ARGBUF (sem_arg);
-#define FLD(f) abuf->fields.fmt_empty.f
+#define FLD(f) abuf->fields.sfmt_empty.f
   int UNUSED written = 0;
   IADDR UNUSED pc = abuf->addr;
   vpc = SEM_NEXT_VPC (sem_arg, pc, 0);
@@ -401,7 +397,7 @@ SWITCH (sem, SEM_ARGBUF (vpc) -> semantic.sem_case)
 {
   SEM_ARG sem_arg = SEM_SEM_ARG (vpc, sc);
   ARGBUF *abuf = SEM_ARGBUF (sem_arg);
-#define FLD(f) abuf->fields.fmt_empty.f
+#define FLD(f) abuf->fields.sfmt_empty.f
   int UNUSED written = 0;
   IADDR UNUSED pc = abuf->addr;
   vpc = SEM_NEXT_VPC (sem_arg, pc, 0);
@@ -423,7 +419,7 @@ SWITCH (sem, SEM_ARGBUF (vpc) -> semantic.sem_case)
 {
   SEM_ARG sem_arg = SEM_SEM_ARG (vpc, sc);
   ARGBUF *abuf = SEM_ARGBUF (sem_arg);
-#define FLD(f) abuf->fields.fmt_empty.f
+#define FLD(f) abuf->fields.sfmt_empty.f
   int UNUSED written = 0;
   IADDR UNUSED pc = abuf->addr;
   vpc = SEM_NEXT_VPC (sem_arg, pc, 0);
@@ -3118,16 +3114,12 @@ cgen_rtx_error (current_cpu, "move-r-spr: trying to set a read-only special regi
   tmp_prno = FLD (f_operand2);
   tmp_newval = GET_H_SR (FLD (f_operand2));
 if (EQSI (tmp_prno, 2)) {
-{
-  SI tmp_oldregval;
-  tmp_oldregval = GET_H_RAW_GR_ACR (FLD (f_operand1));
   {
-    SI opval = ORSI (ANDSI (tmp_newval, 255), ANDSI (tmp_oldregval, 0xffffff00));
+    SI opval = tmp_newval;
     SET_H_GR (FLD (f_operand1), opval);
     written |= (1 << 4);
     TRACE_RESULT (current_cpu, abuf, "gr", 'x', opval);
   }
-}
 }
  else if (EQSI (tmp_prno, 3)) {
 {
@@ -3301,16 +3293,16 @@ cgen_rtx_error (current_cpu, "move-spr-r from unimplemented register");
   SI tmp_newval;
   tmp_rno = FLD (f_operand2);
 if (EQSI (tmp_rno, 2)) {
-  tmp_newval = EXTQISI (({   SI tmp_addr;
-  QI tmp_tmp_mem;
+  tmp_newval = ({   SI tmp_addr;
+  SI tmp_tmp_mem;
   BI tmp_postinc;
   tmp_postinc = FLD (f_memmode);
 ;   tmp_addr = ((EQBI (GET_H_INSN_PREFIXED_P (), 0)) ? (GET_H_GR (FLD (f_operand1))) : (GET_H_PREFIXREG_V32 ()));
-;   tmp_tmp_mem = GETMEMQI (current_cpu, pc, tmp_addr);
+;   tmp_tmp_mem = GETMEMSI (current_cpu, pc, tmp_addr);
 ; if (NEBI (tmp_postinc, 0)) {
 {
 if (EQBI (GET_H_INSN_PREFIXED_P (), 0)) {
-  tmp_addr = ADDSI (tmp_addr, 1);
+  tmp_addr = ADDSI (tmp_addr, 4);
 }
   {
     SI opval = tmp_addr;
@@ -3320,7 +3312,7 @@ if (EQBI (GET_H_INSN_PREFIXED_P (), 0)) {
   }
 }
 }
-; tmp_tmp_mem; }));
+; tmp_tmp_mem; });
 }
  else if (EQSI (tmp_rno, 3)) {
   tmp_newval = EXTQISI (({   SI tmp_addr;
@@ -4009,9 +4001,9 @@ if (ANDIF (GET_H_V32_V32 (), NEBI (CPU (h_xbit), 0))) {
 if (EQBI (CPU (h_pbit), 0)) {
 {
   {
-    QI opval = GET_H_SR (FLD (f_operand2));
-    SETMEMQI (current_cpu, pc, tmp_addr, opval);
-    written |= (1 << 12);
+    SI opval = GET_H_SR (FLD (f_operand2));
+    SETMEMSI (current_cpu, pc, tmp_addr, opval);
+    written |= (1 << 13);
     TRACE_RESULT (current_cpu, abuf, "memory", 'x', opval);
   }
   {
@@ -4031,16 +4023,16 @@ if (EQBI (CPU (h_pbit), 0)) {
 }
 } else {
   {
-    QI opval = GET_H_SR (FLD (f_operand2));
-    SETMEMQI (current_cpu, pc, tmp_addr, opval);
-    written |= (1 << 12);
+    SI opval = GET_H_SR (FLD (f_operand2));
+    SETMEMSI (current_cpu, pc, tmp_addr, opval);
+    written |= (1 << 13);
     TRACE_RESULT (current_cpu, abuf, "memory", 'x', opval);
   }
 }
 if (NEBI (tmp_postinc, 0)) {
 {
 if (EQBI (GET_H_INSN_PREFIXED_P (), 0)) {
-  tmp_addr = ADDSI (tmp_addr, 1);
+  tmp_addr = ADDSI (tmp_addr, 4);
 }
   {
     SI opval = tmp_addr;
@@ -12385,7 +12377,7 @@ if (NESI (ANDSI (tmp_tmp, SLLSI (1, 7)), 0)) {
 {
   SEM_ARG sem_arg = SEM_SEM_ARG (vpc, sc);
   ARGBUF *abuf = SEM_ARGBUF (sem_arg);
-#define FLD(f) abuf->fields.fmt_empty.f
+#define FLD(f) abuf->fields.sfmt_empty.f
   int UNUSED written = 0;
   IADDR UNUSED pc = abuf->addr;
   vpc = SEM_NEXT_VPC (sem_arg, pc, 2);
@@ -12438,7 +12430,7 @@ crisv32f_rfg_handler (current_cpu, pc);
 {
   SEM_ARG sem_arg = SEM_SEM_ARG (vpc, sc);
   ARGBUF *abuf = SEM_ARGBUF (sem_arg);
-#define FLD(f) abuf->fields.fmt_empty.f
+#define FLD(f) abuf->fields.sfmt_empty.f
   int UNUSED written = 0;
   IADDR UNUSED pc = abuf->addr;
   SEM_BRANCH_INIT

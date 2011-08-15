@@ -1,3 +1,371 @@
+2011-03-05  Mike Frysinger  <vapier@gentoo.org>
+
+	* MAINTAINERS: Add bfin entry.
+	* configure.tgt (bfin-*-*): Handle bfin targets.
+	* configure: Regenerate.
+
+2011-01-05  Mike Frysinger  <vapier@gentoo.org>
+
+	* .gitignore: Add /*/hw-config.h.
+
+2010-12-23  Mike Frysinger  <vapier@gentoo.org>
+
+	* .gitignore: New file.
+
+2010-07-28  DJ Delorie  <dj@redhat.com>
+
+	* MAINTAINERS: Add self as RX maintainer.  Sort list.
+
+2010-06-08  Nick Clifton  <nickc@redhat.com>
+
+	* reg.c (set_oszc): Use unsigned int for the mask.
+	(set_szc, set_osz, set_sz): Likewise.
+
+2010-04-26  Mike Frysinger  <vapier@gentoo.org>
+
+	* configure.ac: Target logic moved out to and included from ...
+	* configure.tgt: ... this new file.
+	* configure: Regenerated.
+
+2010-04-12  Mike Frysinger  <vapier@gentoo.org>
+
+	* README-HACKING: Add more sections.
+
+2010-02-11  Doug Evans  <dje@sebabeach.org>
+
+	* cris/cpuv10.h, * cris/cpuv32.h, * cris/cris-desc.c,
+	* cris/cris-desc.h, * cris/decodev10.c, * cris/decodev32.c,
+	* cris/modelv10.c, * cris/modelv32.c, * cris/semcrisv10f-switch.c,
+	* cris/semcrisv32f-switch.c: Regenerate.
+
+2010-01-09  Ralf Wildenhues  <Ralf.Wildenhues@gmx.de>
+
+	* avr/configure: Regenerate.
+	* cris/configure: Regenerate.
+	* microblaze/configure: Regenerate.
+
+2010-01-02  Doug Evans  <dje@sebabeach.org>
+
+	* cris/arch.c, * cris/arch.h, * cris/cpuall.h, * cris/cpuv10.c,
+	* cris/cpuv10.h, * cris/cpuv32.c, * cris/cpuv32.h, * cris/cris-desc.c,
+	* cris/cris-desc.h, * cris/cris-opc.h, * cris/decodev10.c,
+	* cris/decodev10.h, * cris/decodev32.c, * cris/decodev32.h,
+	* cris/modelv10.c, * cris/modelv32.c, * cris/semcrisv10f-switch.c,
+	* cris/semcrisv32f-switch.c: Regenerate, update copyright year.
+
+2010-01-01  Doug Evans  <dje@sebabeach.org>
+
+	* cris/mloop.in: Fix copyright year update snafu.
+
+2009-11-24  Joel Brobecker  <brobecker@adacore.com>
+
+	* common/aclocal.m4: Add include of ../../config/zlib.m4.
+	* common/common.m4: Use AM_ZLIB to check for zlib support.
+	* ppc/configure.ac: Likewise.
+	* arm/configure, avr/configure, common/configure, cr16/configure,
+	cris/configure, d10v/configure, erc32/configure, frv/configure,
+	h8300/configure, iq2000/configure, lm32/configure, m32c/configure,
+	m32r/configure, m68hc11/configure, mcore/configure,
+	microblaze/configure, mips/configure, mn10300/configure,
+	moxie/configure, ppc/configure, sh/configure, sh64/configure,
+	v850/configure: Regenerate.
+
+2009-11-24  DJ Delorie  <dj@redhat.com>
+
+	* rx: New directory.
+	* configure.ac: Add entry for Renesas RX.
+	* configure: Regenerate.
+
+2009-11-22  Doug Evans  <dje@sebabeach.org>
+
+	* cris/cpuall.h: Regenerate.
+	* cris/cpuv10.h: Regenerate.
+	* cris/cpuv32.h: Regenerate.
+	* cris/decodev10.c: Regenerate.
+	* cris/decodev10.h: Regenerate.
+	* cris/decodev32.c: Regenerate.
+	* cris/decodev32.h: Regenerate.
+
+2009-11-12  Tristan Gingold  <gingold@adacore.com>
+
+	* avr/interp.c (sim_write): Allow byte access.
+	(sim_read): Ditto.
+
+2009-11-12  Tristan Gingold  <gingold@adacore.com>
+
+	* avr/interp.c (sim_load): Clear memory before loading.
+
+2009-11-09  Tristan Gingold  <gingold@adacore.com>
+
+	* avr/interp.c (sim_resume): Fix typo for OP_ret.
+
+2009-10-23  Doug Evans  <dje@sebabeach.org>
+
+	* cris/arch.c: Regenerate.
+	* cris/arch.h: Regenerate.
+	* cris/cpuall.h: Regenerate.
+	* cris/cpuv10.c: Regenerate.
+	* cris/cpuv10.h: Regenerate.
+	* cris/cpuv32.c: Regenerate.
+	* cris/cpuv32.h: Regenerate.
+	* cris/cris-desc.c: Regenerate.
+	* cris/cris-desc.h: Regenerate.
+	* cris/cris-opc.h: Regenerate.
+	* cris/decodev10.c: Regenerate.
+	* cris/decodev10.h: Regenerate.
+	* cris/decodev32.c: Regenerate.
+	* cris/decodev32.h: Regenerate.
+	* cris/modelv10.c: Regenerate.
+	* cris/modelv32.c: Regenerate.
+	* cris/semcrisv10f-switch.c: Regenerate.
+	* cris/semcrisv32f-switch.c: Regenerate.
+
+2009-10-22  Tristan Gingold  <gingold@adacore.com>
+
+	* avr/interp.c (sim_stop): Return 1.
+
+2009-10-16  Doug Evans  <dje@sebabeach.org>
+
+	* MAINTAINERS: Add myself as m32r maintainer.
+
+2009-10-15  Michael Egaer  <eager@eagercon.com>
+
+	* MAINTAINERS: Add self as MicroBlaze maintainer.
+
+2009-10-14  Ben Elliston  <bje@gnu.org>
+
+	* MAINTAINERS (common): Move myself to "past maintainers" section.
+
+2009-10-06  Michael Eager  <eager@eagercon.com>
+
+	* microblaze/interp.c: Add include microblaze-dis.h.
+	
+2009-09-23  Michael Eager  <eager@eagercon.com>
+
+	* configure: Add microblaze-*.* (not regenerated).
+	* configure.ac: Likewise.
+	* microblaze/config.in: New.
+	* microblaze/configure: Generate.
+	* microblaze/configure.ac: New.
+	* microblaze/interp.c: New.
+	* microblaze/Makefile.in: New.
+	* microblaze/microblaze.h: New.
+	* microblaze/microblaze.isa: New.
+	* microblaze/sim-main.h: New.
+	* microblaze/sysdep.h: New.
+
+2009-08-22  Ralf Wildenhues  <Ralf.Wildenhues@gmx.de>
+
+	* avr/config.in: Regenerate.
+	* avr/configure: Likewise.
+	* configure: Likewise.
+	* cris/config.in: Likewise.
+	* cris/configure: Likewise.
+
+	* configure.ac: m4_include toplevel config/override.m4.
+	* configure: Regenerate.
+	* avr/configure: Regenerate.
+	* cris/configure: Regenerate.
+
+2009-07-30  Ralf Wildenhues  <Ralf.Wildenhues@gmx.de>
+
+	* Makefile.in (datarootdir): New variable.
+
+2009-05-18  Jon Beniston <jon@beniston.com>
+
+        * MAINTAINERS: Add Jon Beniston as maintainer of lm32 sim.
+        * configure.ac: Add lm32 target. 
+        * lm32: New directory.               
+
+2009-05-11  Andrew Cagney  <cagney@gnu.org>
+
+	* MAINTAINERS: Orphan ppc.
+
+2009-05-08  Kevin Buettner  <kevinb@redhat.com>
+
+	* m32c/gdb-if.c (m32c_signal_to_host): Rename to
+	m32c_signal_to_target.  Change signal return values from SIGILL,
+	SIGTRAP, SIGSEGV, etc. to TARGET_SIGNAL_ILL, TARGET_SIGNAL_TRAP,
+	TARGET_SIGNAL_SEGV, etc.  Fix all callers.
+
+2009-04-30  Anthony Green  <green@moxielogic.com>
+
+	* MAINTAINERS: Add myself for the moxie port.
+	* moxie: New directory.
+	* configure.ac: Add entry for moxie.
+	* configure: Regenerate.
+
+2009-04-27  Tristan Gingold  <gingold@adacore.com>
+
+	* avr: New directory.
+	* avr/interp.c, avr/Makefile.in, avr/configure.ac: New files.
+	* avr/config.in: New file, generated by autoheader.
+	* avr/configure: New file generated by autoconf.
+	* configure.ac: Add avr.
+	* configure: Regenerated.
+
+2009-04-17  Carlos O'Donell  <carlos@codesourcery.com>
+
+	* Makefile.in: Add dummy install-pdf, html, and
+	install-html targets.
+
+2009-01-18  Hans-Peter Nilsson  <hp@axis.com>
+
+	* cris/sim-if.c: Include errno.h.
+	(cris_start_address, cris_program_offset): New variables.
+	(OPTION_CRIS_PROGRAM_OFFSET, OPTION_CRIS_STARTADDR): New option
+	enums.
+	(cris_options): New options --cris-program-offset and
+	--cris-start-address.
+	(cris_option_handler): Handle new options.
+	(cris_program_offset_write, cris_set_section_offset_iterator)
+	(cris_offset_sections, cris_offset_sections): New functions.
+	(sim_load): Use cris_program_offset_write as function argument to
+	cris_load_elf_file, not sim_write.
+	(struct offsetinfo): New struct.
+	(cris_handle_interpreter): Fix typo in comment.
+	(sim_open): Call cris_offset_sections as soon as the bfd of the
+	infile is available.  Gate bfd validity checks on abfd non-NULL.
+	(sim_create_inferior): Let cris_start_address when != -1 override
+	other start-address choices.
+
+2009-01-06  Hans-Peter Nilsson  <hp@axis.com>
+
+	* cris/traps.c (abort): Define to call sim_io_error.
+	(create_map): Make -1 imply a non-fixed address, not 0.  All
+	callers changed.  Only prefer the next higher unmapped address if
+	the last mapped address is no less than 0x40000000.  Check that
+	the address to be mapped is not already mapped.  Update head
+	comment.
+	(unmap_pages): Don't call abort when recursive call fails, just
+	note and return an error if a page in the range couldn't be unmapped.
+	(cris_bmod_handler, h_supr_set_handler, h_supr_get_handler)
+	(schedule, make_first_thread, cris_pipe_empty): New local variable sd.
+	(cris_break_13_handler) <case TARGET_SYS_mmap2>: Handle
+	non-MAP_FIXED argument overlapping existing map.  For MAP_FIXED,
+	don't abort on page not being mapped.  Handle non-anon filemap
+	with length padded to pagesize.
+
+2009-01-03  Hans-Peter Nilsson  <hp@axis.com>
+
+	* cris/sim-if.c (TARGET_AT_NULL, TARGET_AT_PHDR, TARGET_AT_PHENT)
+	(TARGET_AT_PHNUM, TARGET_AT_PAGESZ, TARGET_AT_BASE)
+	(TARGET_AT_FLAGS, TARGET_AT_ENTRY, TARGET_AT_UID, TARGET_AT_EUID)
+	(TARGET_AT_GID, TARGET_AT_EGID, TARGET_AT_HWCAP)
+	(TARGET_AT_CLKTCK): Remove redundant macros.
+	(AUX_ENT): Adjust to use standard ELF AT_* macros.
+	(AUX_ENTF): Ditto.  Remove always-0 middle argument.  Update all
+	callers.
+	(sim_open): Also pass AT_SECURE.
+
+	* cris/sim-main.h (struct _sim_cpu): New member
+	set_target_thread_data.
+	* cris/crisv32f.c (CRIS_TLS_REGISTER): Define.
+	* cris/crisv10f.c: Ditto.
+	* cris/cris-tmpl.c (MY (set_target_thread_data)): New function.
+	(MY (f_specific_init)): Set new _sim_cpu member to new function.
+	* cris/traps.c (TARGET_SYS_set_thread_area): Define.
+	(cris_break_13_handler) <case TARGET_SYS_set_thread_area>: New
+	case.
+
+	* cris/traps.c (TARGET_SYS_exit_group): Define.
+	(cris_break_13_handler): Handle it like the exit for the last
+	thread.
+
+	* cris/traps.c (TARGET_UTSNAME): Update to 2009-01-01.
+	(TARGET_EPOCH): Update to match TARGET_UTSNAME.  Correct comment.
+	(cris_break_13_handler) <case TARGET_SYS_uname>: Update to
+	2.6.27.  Set machine field to the BFD printable name of the
+	machine.
+
+	* cris/traps.c (TARGET_MAP_DENYWRITE): Define.
+	(cris_break_13_handler) <case TARGET_SYS_mmap2>: Handle
+	TARGET_MAP_DENYWRITE.
+
+	* cris/traps.c (TARGET_SYS_access, TARGET_R_OK, TARGET_W_OK)
+	(TARGET_X_OK, TARGET_F_OK): Define.
+	(cris_break_13_handler) <case TARGET_SYS_access>: New case.
+
+	* cris/semcrisv32f-switch.c: Regenerate.
+
+2008-12-30  Hans-Peter Nilsson  <hp@axis.com>
+
+	* cris/sim-if.c (sim_open): If sim_analyze_program fails, emit
+	just a short CRIS-specific notice.  Tweak the wording for a
+	failing architecture test.
+
+	* cris/traps.c (TARGET_SYS_writev): New macro.
+	(is_mapped_only, cris_dump_map): New functions.
+	(cris_break_13_handler) <case TARGET_SYS_mmap2>: Handle more flags
+	and prot combinations and a non-zero page-offset.  If
+	TARGET_MAP_FIXED, unmap pages before mapping them.
+	<case TARGET_SYS_mprotect>: When checking, allow any length
+	argument.  Don't actually do anything.
+	<case TARGET_SYS_writev>: New case.
+
+	* cris/Makefile.in (SIM_OBJS): Remove sim-hload.o.
+	* cris/sim-if.c: Include elf-bfd.h.
+	(struct progbounds): New members end_loadmem, start_nonloadmem.
+	(xprintf, eprintf): New functions, copied from common/sim-load.c.
+	(cris_load_elf_file, sim_load, cris_get_progbounds): New functions.
+	(get_progbounds_iterator): Renamed from get_progbounds.  Make
+	static.  Update head comment.  Set new struct progbounds members.
+	(exec_load_addr, interp_load_addr, interp_start_addr): New static
+	variables.
+	(aux_ent_phdr, aux_ent_phent, aux_ent_phnum, aux_ent_base)
+	(aux_ent_entry, cris_write_interp, cris_handle_interpreter): New
+	functions.
+	(sim_open): New constant array auxv_entries.  Rewrite AUX_ENT
+	handling to use auxv_entries.  Improve error message and checking
+	for invalid programs.  Use new variable abfd for the program
+	instead of for each access reaching into sd to get it.
+	(sim_create_inferior): If non-zero, use interp_start_addr instead
+	of the program start address.
+	(cris_disassemble_insn): Remove incorrect and unclear, supposedly
+	stale comment.  Always specify little-endian.
+
+2008-07-29  Nick Clifton  <nickc@redhat.com>
+
+	* common/genmloop.sh: Add new parameter: -shell to specify the
+	command interpreter to use to run the input file.  This is
+	necessary because otherwise SHELL is taken from the user's
+	environment, and not from the makefile that invoked this script
+	and the user might not be running an sh-like shell.
+	* cris/Makefile.in: Pass -shell parameter to genmloop.sh.
+	* fr30/Makefile.in: Likewise.
+	* frv/Makefile.in: Likewise.
+	* i960/Makefile.in: Likewise.
+	* iq2000/Makefile.in: Likewise.
+	* m32r/Makefile.in: Likewise.
+
+	* frv/mloop.in: Add missing start of line comment marker.
+
+2008-07-11  Hans-Peter Nilsson  <hp@axis.com>
+
+	* cris/configure: Regenerate to track ../common/common.m4 changes.
+	* cris/config.in: Ditto.
+
+2008-06-06  Vladimir Prus  <vladimir@codesourcery.com>
+            Daniel Jacobowitz  <dan@codesourcery.com>
+            Joseph Myers  <joseph@codesourcery.com>
+
+	* cris/configure: Regenerate.
+
+2008-05-09  Olivier Hainque  <hainque@adacore.com>
+
+	* ppc/altivec.igen (vperm): Latch inputs into temporaries.
+
+2008-03-25  M R Swami Reddy <MR.Swami.Reddy@nsc.com>
+
+	* MAINTAINERS: Add myself as maintainer of cr16 port.
+
+2008-02-12  M Ranga Swami Reddy <MR.Swami.Reddy@nsc.com>
+
+	Add simulator for National cr16 processor.
+	* cr16: New directory.
+	* configure.ac: Add entry for National cr16.
+	* configure: Regenerate.
+
 2008-02-05  DJ Delorie  <dj@redhat.com>
 
 	* configure.ac (v850): V850 now has a testsuite.

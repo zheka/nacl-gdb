@@ -1,6 +1,6 @@
 /* This testcase is part of GDB, the GNU debugger.
 
-   Copyright 2008 Free Software Foundation, Inc.
+   Copyright 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -16,10 +16,20 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
    */
 
+namespace B{
+  int x;
+}
+
 class base
 {
  public:
   base (int _x);
   int x;
   virtual int meth ();
+};
+
+class derived : public base
+{
+ public:
+  derived (int _x);
 };

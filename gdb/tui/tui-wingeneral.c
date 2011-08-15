@@ -1,7 +1,7 @@
 /* General window behavior.
 
-   Copyright (C) 1998, 1999, 2000, 2001, 2002, 2003, 2007, 2008
-   Free Software Foundation, Inc.
+   Copyright (C) 1998, 1999, 2000, 2001, 2002, 2003, 2007, 2008, 2009, 2010,
+   2011 Free Software Foundation, Inc.
 
    Contributed by Hewlett-Packard Company.
 
@@ -77,7 +77,7 @@ tui_delete_win (WINDOW *window)
 
 
 /* Draw a border arround the window.  */
-void
+static void
 box_win (struct tui_gen_win_info *win_info, 
 	 int highlight_flag)
 {

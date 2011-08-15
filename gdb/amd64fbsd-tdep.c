@@ -1,6 +1,7 @@
 /* Target-dependent code for FreeBSD/amd64.
 
-   Copyright (C) 2003, 2004, 2005, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2004, 2005, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -33,18 +34,18 @@
 
 /* Support for signal handlers.  */
 
-/* Assuming NEXT_FRAME is for a frame following a BSD sigtramp
-   routine, return the address of the associated sigcontext structure.  */
+/* Assuming THIS_FRAME is for a BSD sigtramp routine, return the
+   address of the associated sigcontext structure.  */
 
 static CORE_ADDR
-amd64fbsd_sigcontext_addr (struct frame_info *next_frame)
+amd64fbsd_sigcontext_addr (struct frame_info *this_frame)
 {
   CORE_ADDR sp;
 
   /* The `struct sigcontext' (which really is an `ucontext_t' on
      FreeBSD/amd64) lives at a fixed offset in the signal frame.  See
      <machine/sigframe.h>.  */
-  sp = frame_unwind_register_unsigned (next_frame, AMD64_RSP_REGNUM);
+  sp = frame_unwind_register_unsigned (this_frame, AMD64_RSP_REGNUM);
   return sp + 16;
 }
 
@@ -67,7 +68,7 @@ static int amd64fbsd_r_reg_offset[] =
   8 * 8,			/* %rdi */
   10 * 8,			/* %rbp */
   20 * 8,			/* %rsp */
-  7 * 8,			/* %r8 ... */
+  7 * 8,			/* %r8 ...  */
   6 * 8,
   5 * 8,
   4 * 8,
@@ -100,7 +101,7 @@ int amd64fbsd_sc_reg_offset[] =
   24 + 0 * 8,			/* %rdi */
   24 + 8 * 8,			/* %rbp */
   24 + 22 * 8,			/* %rsp */
-  24 + 4 * 8,			/* %r8 ... */
+  24 + 4 * 8,			/* %r8 ...  */
   24 + 5 * 8,
   24 + 9 * 8,
   24 + 10 * 8,
@@ -129,11 +130,11 @@ static int amd64fbsd_jmp_buf_reg_offset[] =
   -1,				/* %rdi */
   3 * 8,			/* %rbp */
   2 * 8,			/* %rsp */
-  -1,				/* %r8 ... */
+  -1,				/* %r8 ...  */
   -1,
   -1,
   -1,				/* ... %r11 */
-  4 * 8,			/* %r12 ... */
+  4 * 8,			/* %r12 ...  */
   5 * 8,
   6 * 8,
   7 * 8,			/* ... %r15 */
@@ -180,7 +181,7 @@ amd64fbsd_collect_uthread (const struct regcache *regcache,
     }
 }
 
-void
+static void
 amd64fbsd_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
 {
   struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);

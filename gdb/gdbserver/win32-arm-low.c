@@ -1,4 +1,4 @@
-/* Copyright (C) 2007, 2008 Free Software Foundation, Inc.
+/* Copyright (C) 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -21,6 +21,10 @@
 #ifndef CONTEXT_FLOATING_POINT
 #define CONTEXT_FLOATING_POINT 0
 #endif
+
+/* Defined in auto-generated file reg-arm.c.  */
+void init_registers_arm (void);
+
 
 static void
 arm_get_thread_context (win32_thread_info *th, DEBUG_EVENT* current_event)
@@ -89,17 +93,19 @@ regptr (CONTEXT* c, int r)
 
 /* Fetch register from gdbserver regcache data.  */
 static void
-arm_fetch_inferior_register (win32_thread_info *th, int r)
+arm_fetch_inferior_register (struct regcache *regcache,
+			     win32_thread_info *th, int r)
 {
   char *context_offset = regptr (&th->context, r);
-  supply_register (r, context_offset);
+  supply_register (regcache, r, context_offset);
 }
 
 /* Store a new register value into the thread context of TH.  */
 static void
-arm_store_inferior_register (win32_thread_info *th, int r)
+arm_store_inferior_register (struct regcache *regcache,
+			     win32_thread_info *th, int r)
 {
-  collect_register (r, regptr (&th->context, r));
+  collect_register (regcache, r, regptr (&th->context, r));
 }
 
 /* Correct in either endianness.  We do not support Thumb yet.  */
@@ -107,6 +113,7 @@ static const unsigned long arm_wince_breakpoint = 0xe6000010;
 #define arm_wince_breakpoint_len 4
 
 struct win32_target_ops the_low_target = {
+  init_registers_arm,
   sizeof (mappings) / sizeof (mappings[0]),
   NULL, /* initial_stuff */
   arm_get_thread_context,
@@ -117,5 +124,9 @@ struct win32_target_ops the_low_target = {
   NULL, /* single_step */
   (const unsigned char *) &arm_wince_breakpoint,
   arm_wince_breakpoint_len,
-  "arm" /* arch_string */
+  /* Watchpoint related functions.  See target.h for comments.  */
+  NULL, /* insert_point */
+  NULL, /* remove_point */
+  NULL, /* stopped_by_watchpoint */
+  NULL  /* stopped_data_address */
 };

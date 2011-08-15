@@ -1,6 +1,7 @@
 /* This testcase is part of GDB, the GNU debugger.
 
-   Copyright 2002, 2003, 2004, 2007, 2008 Free Software Foundation, Inc.
+   Copyright 2002, 2003, 2004, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -22,34 +23,49 @@
 #include <stdlib.h>
 #include <pthread.h>
 
-void *thread_function(void *arg); /* Pointer to function executed by each thread */
+void *thread_function (void *arg); /* Function executed by each thread.  */
 
 #define NUM 5
 
 unsigned int args[NUM+1];
 
-int main() {
+int
+main ()
+{
     int res;
     pthread_t threads[NUM];
     void *thread_result;
     long i;
 
+    /* To keep the test determinative, initialize args first,
+       then start all the threads.  Otherwise, the way watchthreads.exp
+       is written, we have to worry about things like threads[0] getting
+       to 29 hits of args[0] before args[1] gets changed.  */
+
     for (i = 0; i < NUM; i++)
       {
-	args[i] = 1; /* Init value.  */
-	res = pthread_create(&threads[i],
-		             NULL,
-			     thread_function,
-			     (void *) i);
+	/* The call to usleep is so that when the watchpoint triggers,
+	   the pc is still on the same line.  */
+	args[i] = 1; usleep (1); /* Init value.  */
+      }
+
+    for (i = 0; i < NUM; i++)
+      {
+	res = pthread_create (&threads[i],
+			      NULL,
+			      thread_function,
+			      (void *) i);
       }
 
     args[i] = 1;
     thread_function ((void *) i);
 
-    exit(EXIT_SUCCESS);
+    exit (EXIT_SUCCESS);
 }
 
-void *thread_function(void *arg) {
+void *
+thread_function (void *arg)
+{
     int my_number =  (long) arg;
     int *myp = (int *) &args[my_number];
 
@@ -59,6 +75,6 @@ void *thread_function(void *arg) {
 	(*myp) ++; usleep (1);  /* Loop increment.  */
       }
 
-    pthread_exit(NULL);
+    pthread_exit (NULL);
 }
 

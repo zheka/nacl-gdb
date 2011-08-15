@@ -1,8 +1,8 @@
 /* Floating point definitions for GDB.
 
    Copyright (C) 1986, 1988, 1989, 1990, 1991, 1992, 1993, 1994, 1995, 1996,
-   1997, 1998, 1999, 2000, 2001, 2003, 2005, 2006, 2007, 2008
-   Free Software Foundation, Inc.
+   1997, 1998, 1999, 2000, 2001, 2003, 2005, 2006, 2007, 2008, 2009, 2010,
+   2011 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -84,17 +84,6 @@ extern enum float_kind floatformat_classify (const struct floatformat *,
 					     const bfd_byte *);
 extern const char *floatformat_mantissa (const struct floatformat *,
 					 const bfd_byte *);
-
-/* These functions have been replaced by extract_typed_floating and
-   store_typed_floating.
-
-   Most calls are passing in TYPE_LENGTH (TYPE) so can be changed to
-   just pass the TYPE.  The remainder pass in the length of a
-   register, those calls should instead pass in the floating point
-   type that corresponds to that length.  */
-
-extern DOUBLEST deprecated_extract_floating (const void *addr, int len);
-extern void deprecated_store_floating (void *addr, int len, DOUBLEST val);
 
 /* Given TYPE, return its floatformat.  TYPE_FLOATFORMAT() may return
    NULL.  type_floatformat() detects that and returns a floatformat

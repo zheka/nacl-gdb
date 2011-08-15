@@ -1,6 +1,6 @@
 /* GNU/Linux/CRIS specific low level interface, for the remote server for GDB.
    Copyright (C) 1995, 1996, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005,
-   2007, 2008 Free Software Foundation, Inc.
+   2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -21,6 +21,9 @@
 #include "linux-low.h"
 #include <sys/ptrace.h>
 
+/* Defined in auto-generated file reg-cris.c.  */
+void init_registers_cris (void);
+
 /* CRISv10 */
 #define cris_num_regs 32
 
@@ -35,7 +38,7 @@ static int cris_regmap[] = {
   -1, 17*4, -1, 16*4,
   -1, -1, -1, 18*4,
   -1, 17*4, -1, -1
-  
+
 };
 
 static int
@@ -43,7 +46,7 @@ cris_cannot_store_register (int regno)
 {
   if (cris_regmap[regno] == -1)
     return 1;
-  
+
   return (regno >= cris_num_regs);
 }
 
@@ -59,20 +62,20 @@ cris_cannot_fetch_register (int regno)
 extern int debug_threads;
 
 static CORE_ADDR
-cris_get_pc (void)
+cris_get_pc (struct regcache *regcache, void)
 {
   unsigned long pc;
-  collect_register_by_name ("pc", &pc);
+  collect_register_by_name (regcache, "pc", &pc);
   if (debug_threads)
     fprintf (stderr, "stop pc is %08lx\n", pc);
   return pc;
 }
 
 static void
-cris_set_pc (CORE_ADDR pc)
+cris_set_pc (struct regcache *regcache, CORE_ADDR pc)
 {
   unsigned long newpc = pc;
-  supply_register_by_name ("pc", &newpc);
+  supply_register_by_name (regcache, "pc", &newpc);
 }
 
 static const unsigned short cris_breakpoint = 0xe938;
@@ -99,12 +102,14 @@ cris_breakpoint_at (CORE_ADDR where)
 static CORE_ADDR
 cris_reinsert_addr (void)
 {
+  struct regcache *regcache = get_thread_regcache (current_inferior, 1);
   unsigned long pc;
-  collect_register_by_name ("srp", &pc);
+  collect_register_by_name (regcache, "srp", &pc);
   return pc;
 }
 
 struct linux_target_ops the_low_target = {
+  init_registers_cris,
   cris_num_regs,
   cris_regmap,
   cris_cannot_fetch_register,

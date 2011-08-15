@@ -1,6 +1,6 @@
 /* Annotation routines for GDB.
    Copyright (C) 1986, 1989, 1990, 1991, 1992, 1994, 1995, 1996, 1998, 1999,
-   2000, 2007, 2008 Free Software Foundation, Inc.
+   2000, 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -23,21 +23,20 @@
 #include "target.h"
 #include "gdbtypes.h"
 #include "breakpoint.h"
+#include "observer.h"
 
 
-/* Prototypes for local functions. */
+/* Prototypes for local functions.  */
 
 extern void _initialize_annotate (void);
 
 static void print_value_flags (struct type *);
 
-static void breakpoint_changed (struct breakpoint *);
+static void breakpoint_changed (int);
 
-void (*deprecated_annotate_starting_hook) (void);
-void (*deprecated_annotate_stopped_hook) (void);
+
 void (*deprecated_annotate_signalled_hook) (void);
 void (*deprecated_annotate_signal_hook) (void);
-void (*deprecated_annotate_exited_hook) (void);
 
 static int ignore_count_changed = 0;
 
@@ -58,7 +57,7 @@ breakpoints_changed (void)
       target_terminal_ours ();
       printf_unfiltered (("\n\032\032breakpoints-invalid\n"));
       if (ignore_count_changed)
-	ignore_count_changed = 0;	/* Avoid multiple break annotations. */
+	ignore_count_changed = 0;   /* Avoid multiple break annotations.  */
     }
 }
 
@@ -66,7 +65,7 @@ breakpoints_changed (void)
    want to provide successive multiple breakpoints-invalid messages
    that are all caused by the fact that the ignore count is changing
    (which could keep the GUI very busy).  One is enough, after the
-   target actually "stops". */
+   target actually "stops".  */
 
 void
 annotate_ignore_count_change (void)
@@ -99,28 +98,15 @@ annotate_watchpoint (int num)
 void
 annotate_starting (void)
 {
-
-  if (deprecated_annotate_starting_hook)
-    deprecated_annotate_starting_hook ();
-  else
-    {
-      if (annotation_level > 1)
-	{
-	  printf_filtered (("\n\032\032starting\n"));
-	}
-    }
+  if (annotation_level > 1)
+    printf_filtered (("\n\032\032starting\n"));
 }
 
 void
 annotate_stopped (void)
 {
-  if (deprecated_annotate_stopped_hook)
-    deprecated_annotate_stopped_hook ();
-  else
-    {
-      if (annotation_level > 1)
-	printf_filtered (("\n\032\032stopped\n"));
-    }
+  if (annotation_level > 1)
+    printf_filtered (("\n\032\032stopped\n"));
   if (annotation_level > 1 && ignore_count_changed)
     {
       ignore_count_changed = 0;
@@ -131,13 +117,8 @@ annotate_stopped (void)
 void
 annotate_exited (int exitstatus)
 {
-  if (deprecated_annotate_exited_hook)
-    deprecated_annotate_exited_hook ();
-  else
-    {
-      if (annotation_level > 1)
-	printf_filtered (("\n\032\032exited %d\n"), exitstatus);
-    }
+  if (annotation_level > 1)
+    printf_filtered (("\n\032\032exited %d\n"), exitstatus);
 }
 
 void
@@ -230,6 +211,24 @@ annotate_frames_invalid (void)
     {
       target_terminal_ours ();
       printf_unfiltered (("\n\032\032frames-invalid\n"));
+    }
+}
+
+void
+annotate_new_thread (void)
+{
+  if (annotation_level > 1)
+    {
+      printf_unfiltered (("\n\032\032new-thread\n"));
+    }
+}
+
+void
+annotate_thread_changed (void)
+{
+  if (annotation_level > 1)
+    {
+      printf_unfiltered (("\n\032\032thread-changed\n"));
     }
 }
 
@@ -411,29 +410,24 @@ annotate_arg_end (void)
 }
 
 void
-annotate_source (char *filename, int line, int character, int mid, CORE_ADDR pc)
+annotate_source (char *filename, int line, int character, int mid,
+		 struct gdbarch *gdbarch, CORE_ADDR pc)
 {
   if (annotation_level > 1)
     printf_filtered (("\n\032\032source "));
   else
     printf_filtered (("\032\032"));
 
-  printf_filtered (("%s:%d:%d:%s:0x"), filename,
-		   line, character,
-		   mid ? "middle" : "beg");
-  deprecated_print_address_numeric (pc, 0, gdb_stdout);
-  printf_filtered (("\n"));
+  printf_filtered (("%s:%d:%d:%s:%s\n"), filename, line, character,
+		   mid ? "middle" : "beg", paddress (gdbarch, pc));
 }
 
 void
-annotate_frame_begin (int level, CORE_ADDR pc)
+annotate_frame_begin (int level, struct gdbarch *gdbarch, CORE_ADDR pc)
 {
   if (annotation_level > 1)
-    {
-      printf_filtered (("\n\032\032frame-begin %d 0x"), level);
-      deprecated_print_address_numeric (pc, 0, gdb_stdout);
-      printf_filtered (("\n"));
-    }
+    printf_filtered (("\n\032\032frame-begin %d %s\n"),
+		     level, paddress (gdbarch, pc));
 }
 
 void
@@ -567,7 +561,7 @@ annotate_array_section_end (void)
 }
 
 static void
-breakpoint_changed (struct breakpoint *b)
+breakpoint_changed (int bpno)
 {
   breakpoints_changed ();
 }
@@ -577,7 +571,7 @@ _initialize_annotate (void)
 {
   if (annotation_level == 2)
     {
-      deprecated_delete_breakpoint_hook = breakpoint_changed;
-      deprecated_modify_breakpoint_hook = breakpoint_changed;
+      observer_attach_breakpoint_deleted (breakpoint_changed);
+      observer_attach_breakpoint_modified (breakpoint_changed);
     }
 }

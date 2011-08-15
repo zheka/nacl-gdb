@@ -2494,7 +2494,7 @@ void::function::invalid_zero_divide_operation:cpu *processor, unsigned_word cia,
 	}
 	PPC_INSN_INT(0, (RA_BITMASK & ~1) | RB_BITMASK | RS_BITMASK, 1/*Rc*/);
 
-0.31,6./,11./,16./,21.598,31./:X::sync:Synchronize
+0.31,6./,9.L,11./,16./,21.598,31./:X::sync:Synchronize
 *601: PPC_UNIT_IU,    PPC_UNIT_IU,    1,  1,  0
 *603: PPC_UNIT_SRU,   PPC_UNIT_SRU,   1,  1,  0
 *603e:PPC_UNIT_SRU,   PPC_UNIT_SRU,   1,  1,  0
@@ -3402,6 +3402,14 @@ void::function::invalid_zero_divide_operation:cpu *processor, unsigned_word cia,
 	    case spr_dec:
 	      *rT = cpu_get_decrementer(processor);
 	      break;
+		case spr_tbrl:
+	  	  if (is_64bit_implementation) *rT = TB;
+	  	  else                         *rT = EXTRACTED64(TB, 32, 63);
+		break;
+		case spr_tbru:
+	  	  if (is_64bit_implementation) *rT = EXTRACTED64(TB, 0, 31);
+		  else                         *rT = EXTRACTED64(TB, 0, 31);
+		break;
 	    case spr_tbu:
 	    case spr_tbl:
 	      /* NOTE - these SPR's are not readable. Use mftb[ul] */
@@ -3965,12 +3973,14 @@ void::function::invalid_zero_divide_operation:cpu *processor, unsigned_word cia,
 	                         fpscr_vxsnan | fpscr_vximz,
 	                         0, /*single?*/
 	                         0) /*negate?*/) {
+	  union { double d; unsigned64 u; } tmp;
 	  invalid_arithemetic_operation(processor, cia,
-	                                (unsigned64*)&product, *frA, 0, *frC,
+	                                &tmp.u, *frA, 0, *frC,
 	                                0, /*instruction_is_frsp*/
 	                                0, /*instruction_is_convert_to_64bit*/
 	                                0, /*instruction_is_convert_to_32bit*/
 	                                0); /*single-precision*/
+	  product = tmp.d;
 	}
 	else {
 	  /*HACK!*/
@@ -4010,12 +4020,14 @@ void::function::invalid_zero_divide_operation:cpu *processor, unsigned_word cia,
 	                         fpscr_vxsnan | fpscr_vximz,
 	                         1, /*single?*/
 	                         0) /*negate?*/) {
+	  union { double d; unsigned64 u; } tmp;
 	  invalid_arithemetic_operation(processor, cia,
-	                                (unsigned64*)&product, *frA, 0, *frC,
+	                                &tmp.u, *frA, 0, *frC,
 	                                0, /*instruction_is_frsp*/
 	                                0, /*instruction_is_convert_to_64bit*/
 	                                0, /*instruction_is_convert_to_32bit*/
 	                                0); /*single-precision*/
+	  product = tmp.d;
 	}
 	else {
 	  /*HACK!*/
@@ -4055,12 +4067,14 @@ void::function::invalid_zero_divide_operation:cpu *processor, unsigned_word cia,
 	                         fpscr_vxsnan | fpscr_vximz,
 	                         0, /*single?*/
 	                         0) /*negate?*/) {
+	  union { double d; unsigned64 u; } tmp;
 	  invalid_arithemetic_operation(processor, cia,
-	                                (unsigned64*)&product, *frA, 0, *frC,
+	                                &tmp.u, *frA, 0, *frC,
 	                                0, /*instruction_is_frsp*/
 	                                0, /*instruction_is_convert_to_64bit*/
 	                                0, /*instruction_is_convert_to_32bit*/
 	                                0); /*single-precision*/
+	  product = tmp.d;
 	}
 	else {
 	  /*HACK!*/
@@ -4100,12 +4114,14 @@ void::function::invalid_zero_divide_operation:cpu *processor, unsigned_word cia,
 	                         fpscr_vxsnan | fpscr_vximz,
 	                         1, /*single?*/
 	                         0) /*negate?*/) {
+	  union { double d; unsigned64 u; } tmp;
 	  invalid_arithemetic_operation(processor, cia,
-	                                (unsigned64*)&product, *frA, 0, *frC,
+	                                &tmp.u, *frA, 0, *frC,
 	                                0, /*instruction_is_frsp*/
 	                                0, /*instruction_is_convert_to_64bit*/
 	                                0, /*instruction_is_convert_to_32bit*/
 	                                0); /*single-precision*/
+	  product = tmp.d;
 	}
 	else {
 	  /*HACK!*/
@@ -4145,12 +4161,14 @@ void::function::invalid_zero_divide_operation:cpu *processor, unsigned_word cia,
 	                         fpscr_vxsnan | fpscr_vximz,
 	                         0, /*single?*/
 	                         0) /*negate?*/) {
+	  union { double d; unsigned64 u; } tmp;
 	  invalid_arithemetic_operation(processor, cia,
-	                                (unsigned64*)&product, *frA, 0, *frC,
+	                                &tmp.u, *frA, 0, *frC,
 	                                0, /*instruction_is_frsp*/
 	                                0, /*instruction_is_convert_to_64bit*/
 	                                0, /*instruction_is_convert_to_32bit*/
 	                                0); /*single-precision*/
+	  product = tmp.d;
 	}
 	else {
 	  /*HACK!*/
@@ -4190,12 +4208,14 @@ void::function::invalid_zero_divide_operation:cpu *processor, unsigned_word cia,
 	                         fpscr_vxsnan | fpscr_vximz,
 	                         1, /*single?*/
 	                         0) /*negate?*/) {
+	  union { double d; unsigned64 u; } tmp;
 	  invalid_arithemetic_operation(processor, cia,
-	                                (unsigned64*)&product, *frA, 0, *frC,
+	                                &tmp.u, *frA, 0, *frC,
 	                                0, /*instruction_is_frsp*/
 	                                0, /*instruction_is_convert_to_64bit*/
 	                                0, /*instruction_is_convert_to_32bit*/
 	                                0); /*single-precision*/
+	  product = tmp.d;
 	}
 	else {
 	  /*HACK!*/
@@ -4235,12 +4255,14 @@ void::function::invalid_zero_divide_operation:cpu *processor, unsigned_word cia,
 	                         fpscr_vxsnan | fpscr_vximz,
 	                         0, /*single?*/
 	                         0) /*negate?*/) {
+	  union { double d; unsigned64 u; } tmp;
 	  invalid_arithemetic_operation(processor, cia,
-	                                (unsigned64*)&product, *frA, 0, *frC,
+	                                &tmp.u, *frA, 0, *frC,
 	                                0, /*instruction_is_frsp*/
 	                                0, /*instruction_is_convert_to_64bit*/
 	                                0, /*instruction_is_convert_to_32bit*/
 	                                0); /*single-precision*/
+	  product = tmp.d;
 	}
 	else {
 	  /*HACK!*/
@@ -4280,12 +4302,14 @@ void::function::invalid_zero_divide_operation:cpu *processor, unsigned_word cia,
 	                         fpscr_vxsnan | fpscr_vximz,
 	                         1, /*single?*/
 	                         0) /*negate?*/) {
+	  union { double d; unsigned64 u; } tmp;
 	  invalid_arithemetic_operation(processor, cia,
-	                                (unsigned64*)&product, *frA, 0, *frC,
+	                                &tmp.u, *frA, 0, *frC,
 	                                0, /*instruction_is_frsp*/
 	                                0, /*instruction_is_convert_to_64bit*/
 	                                0, /*instruction_is_convert_to_32bit*/
 	                                0); /*single-precision*/
+	  product = tmp.d;
 	}
 	else {
 	  /*HACK!*/

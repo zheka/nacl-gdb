@@ -20,7 +20,7 @@ $shell ${srccom}/gentvals.sh "" signal ${srcroot}/newlib/libc/include \
 	"signal.h sys/signal.h" 'SIG[A-Z0-9]*' "${cpp}"
 
 $shell ${srccom}/gentvals.sh "" open ${srcroot}/newlib/libc/include \
-	"fcntl.h sys/fcntl.h" 'O_[A-Z0-9]*' "${cpp}"
+	"fcntl.h sys/fcntl.h sys/_default_fcntl.h" 'O_[A-Z0-9]*' "${cpp}"
 
 # Unfortunately, each newlib/libgloss port has seen fit to define their own
 # syscall.h file.  This means that system call numbers can vary for each port.
@@ -29,6 +29,10 @@ $shell ${srccom}/gentvals.sh "" open ${srcroot}/newlib/libc/include \
 # Note that there is a standard syscall.h file (libgloss/syscall.h) now which
 # hopefully more targets can use.
 
+dir=libgloss target=bfin
+$shell ${srccom}/gentvals.sh $target sys ${srcroot}/$dir \
+	"syscall.h" 'SYS_[_A-Za-z0-9]*' "${cpp}"
+
 dir=newlib/libc/sys/d10v/sys target=d10v
 $shell ${srccom}/gentvals.sh $target sys ${srcroot}/$dir \
 	"syscall.h" 'SYS_[_A-Za-z0-9]*' "${cpp}"
@@ -36,6 +40,10 @@ $shell ${srccom}/gentvals.sh $target sys ${srcroot}/$dir \
 # OBSOLETE dir=libgloss target=d30v
 # OBSOLETE $shell ${srccom}/gentvals.sh $target sys ${srcroot}/$dir \
 # OBSOLETE 	"syscall.h" 'SYS_[_A-Za-z0-9]*' "${cpp}"
+
+dir=libgloss target=cr16
+$shell ${srccom}/gentvals.sh $target sys ${srcroot}/$dir \
+	"syscall.h" 'SYS_[_A-Za-z0-9]*' "${cpp}"
 
 dir=libgloss target=fr30
 $shell ${srccom}/gentvals.sh $target sys ${srcroot}/$dir \
@@ -69,3 +77,6 @@ dir=libgloss/v850/sys target=v850
 $shell ${srccom}/gentvals.sh $target sys ${srcroot}/$dir \
 	"syscall.h" 'SYS_[_A-Za-z0-9]*' "${cpp}"
 
+dir=libgloss target=lm32
+$shell ${srccom}/gentvals.sh $target sys ${srcroot}/$dir \
+        "syscall.h" 'SYS_[_A-Za-z0-9]*' "${cpp}"

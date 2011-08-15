@@ -1,7 +1,6 @@
 /* THIS FILE IS GENERATED.  Original: rs6000.xml */
 
 #include "defs.h"
-#include "gdbtypes.h"
 #include "target-descriptions.h"
 
 struct target_desc *tdesc_rs6000;
@@ -10,7 +9,7 @@ initialize_tdesc_rs6000 (void)
 {
   struct target_desc *result = allocate_target_description ();
   struct tdesc_feature *feature;
-  struct type *field_type, *type;
+  struct tdesc_type *field_type, *type;
 
   set_tdesc_architecture (result, bfd_scan_arch ("rs6000:6000"));
 
@@ -47,10 +46,10 @@ initialize_tdesc_rs6000 (void)
   tdesc_create_reg (feature, "r29", 29, 1, NULL, 32, "int");
   tdesc_create_reg (feature, "r30", 30, 1, NULL, 32, "int");
   tdesc_create_reg (feature, "r31", 31, 1, NULL, 32, "int");
-  tdesc_create_reg (feature, "pc", 64, 1, NULL, 32, "int");
+  tdesc_create_reg (feature, "pc", 64, 1, NULL, 32, "code_ptr");
   tdesc_create_reg (feature, "msr", 65, 1, NULL, 32, "int");
   tdesc_create_reg (feature, "cnd", 66, 1, NULL, 32, "int");
-  tdesc_create_reg (feature, "lr", 67, 1, NULL, 32, "int");
+  tdesc_create_reg (feature, "lr", 67, 1, NULL, 32, "code_ptr");
   tdesc_create_reg (feature, "cnt", 68, 1, NULL, 32, "int");
   tdesc_create_reg (feature, "xer", 69, 1, NULL, 32, "int");
   tdesc_create_reg (feature, "mq", 70, 1, NULL, 32, "int");

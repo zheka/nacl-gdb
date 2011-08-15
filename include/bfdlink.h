@@ -1,6 +1,6 @@
 /* bfdlink.h -- header file for BFD link routines
    Copyright 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2000, 2001, 2002,
-   2003, 2004, 2005, 2006, 2007, 2008 Free Software Foundation, Inc.
+   2003, 2004, 2005, 2006, 2007, 2008, 2009 Free Software Foundation, Inc.
    Written by Steve Chamberlain and Ian Lance Taylor, Cygnus Support.
 
    This file is part of BFD, the Binary File Descriptor library.
@@ -67,13 +67,19 @@ enum bfd_link_hash_type
   bfd_link_hash_warning		/* Like indirect, but warn if referenced.  */
 };
 
-enum bfd_link_common_skip_ar_aymbols
+enum bfd_link_common_skip_ar_symbols
 {
   bfd_link_common_skip_none,
   bfd_link_common_skip_text,
   bfd_link_common_skip_data,
   bfd_link_common_skip_all
 };
+
+struct bfd_link_hash_common_entry
+  {
+    unsigned int alignment_power;	/* Alignment.  */
+    asection *section;		/* Symbol section.  */
+  };
 
 /* The linking routines use a hash table which uses this structure for
    its elements.  */
@@ -143,11 +149,7 @@ struct bfd_link_hash_entry
 	     directly because we don't want to increase the size of
 	     the union; this structure is a major space user in the
 	     linker.  */
-	  struct bfd_link_hash_common_entry
-	    {
-	      unsigned int alignment_power;	/* Alignment.  */
-	      asection *section;		/* Symbol section.  */
-	    } *p;
+	  struct bfd_link_hash_common_entry *p;
 	  bfd_size_type size;	/* Common symbol size.  */
 	} c;
     } u;
@@ -197,6 +199,9 @@ extern void bfd_link_add_undef
 /* Remove symbols from the undefs list that don't belong there.  */
 extern void bfd_link_repair_undef_list
   (struct bfd_link_hash_table *table);
+
+/* Read symbols and cache symbol pointer array in outsymbols.  */
+extern bfd_boolean bfd_generic_link_read_symbols (bfd *);
 
 struct bfd_sym_chain
 {
@@ -319,6 +324,9 @@ struct bfd_link_info
   /* TRUE if we should warn when adding a DT_TEXTREL to a shared object.  */
   unsigned int warn_shared_textrel: 1;
 
+  /* TRUE if we should warn alternate ELF machine code.  */
+  unsigned int warn_alternate_em: 1;
+
   /* TRUE if unreferenced sections should be removed.  */
   unsigned int gc_sections: 1;
 
@@ -363,14 +371,17 @@ struct bfd_link_info
   /* Which local symbols to discard.  */
   enum bfd_link_discard discard;
 
-  /* Criteria for skipping symbols when detemining
+  /* Criteria for skipping symbols when determining
      whether to include an object from an archive. */
-  enum bfd_link_common_skip_ar_aymbols common_skip_ar_aymbols;
+  enum bfd_link_common_skip_ar_symbols common_skip_ar_symbols;
 
   /* Char that may appear as the first char of a symbol, but should be
      skipped (like symbol_leading_char) when looking up symbols in
      wrap_hash.  Used by PowerPC Linux for 'dot' symbols.  */
   char wrap_char;
+
+  /* Separator between archive and filename in linker script filespecs.  */
+  char path_separator;
 
   /* Function callbacks.  */
   const struct bfd_link_callbacks *callbacks;
@@ -470,9 +481,11 @@ struct bfd_link_callbacks
   /* A function which is called when an object is added from an
      archive.  ABFD is the archive element being added.  NAME is the
      name of the symbol which caused the archive element to be pulled
-     in.  */
+     in.  This function may set *SUBSBFD to point to an alternative
+     BFD from which symbols should in fact be added in place of the
+     original BFD's symbols.  */
   bfd_boolean (*add_archive_element)
-    (struct bfd_link_info *, bfd *abfd, const char *name);
+    (struct bfd_link_info *, bfd *abfd, const char *name, bfd **subsbfd);
   /* A function which is called when a symbol is found with multiple
      definitions.  NAME is the symbol which is defined multiple times.
      OBFD is the old BFD, OSEC is the old section, OVAL is the old
@@ -529,11 +542,11 @@ struct bfd_link_callbacks
   /* A function which is called when a relocation is attempted against
      an undefined symbol.  NAME is the symbol which is undefined.
      ABFD, SECTION and ADDRESS identify the location from which the
-     reference is made. FATAL indicates whether an undefined symbol is
+     reference is made. IS_FATAL indicates whether an undefined symbol is
      a fatal error or not. In some cases SECTION may be NULL.  */
   bfd_boolean (*undefined_symbol)
     (struct bfd_link_info *, const char *name, bfd *abfd,
-     asection *section, bfd_vma address, bfd_boolean fatal);
+     asection *section, bfd_vma address, bfd_boolean is_fatal);
   /* A function which is called when a reloc overflow occurs. ENTRY is
      the link hash table entry for the symbol the reloc is against.
      NAME is the name of the local symbol or section the reloc is
@@ -701,8 +714,8 @@ struct bfd_elf_version_expr
   struct bfd_elf_version_expr *next;
   /* Glob pattern.  */
   const char *pattern;
-  /* NULL for a glob pattern, otherwise a straight symbol.  */
-  const char *symbol;
+  /* Set if pattern is not a glob.  */
+  unsigned int literal : 1;
   /* Defined by ".symver".  */
   unsigned int symver : 1;
   /* Defined by version script.  */

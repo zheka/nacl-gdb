@@ -1,7 +1,8 @@
 # Host: Intel x86 running DJGPP
-MH_CFLAGS= 
 
-NAT_FILE= nm-go32.h
+# We include several header files from config/djgpp
+MH_CFLAGS= -I$(srcdir)/config/djgpp
+
 NATDEPFILES= go32-nat.o i386-nat.o
 
 HOST_IPC=

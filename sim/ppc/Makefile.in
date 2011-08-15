@@ -34,6 +34,7 @@ bindir = @bindir@
 libdir = @libdir@
 tooldir = $(libdir)/$(target_alias)
 
+datarootdir = @datarootdir@
 datadir = @datadir@
 mandir = @mandir@
 man1dir = $(mandir)/man1
@@ -120,6 +121,7 @@ NOWARN_CFLAGS	= $(CFLAGS) $(INLINE_CFLAGS) $(CONFIG_CFLAGS) $(SIM_CFLAGS) $(HDEF
 BUILD_CFLAGS	= $(CFLAGS_FOR_BUILD) $(INCLUDES) $(WARNING_CFLAGS)
 
 BUILD_LDFLAGS	=
+LIBS = @LIBS@
 
 CONFIG_FILE = @sim_config@
 IGEN_OPCODE_RULES = @sim_opcode@
@@ -534,6 +536,7 @@ LIB_OBJ = \
 	support.o \
 	@sim_fpu@ \
 	psim.o \
+	version.o \
 	$(PACKAGE_OBJ) \
 	$(HW_OBJ) \
 	options.o
@@ -559,6 +562,13 @@ $(TARGETLIB): tmp-igen tmp-dgen tmp-hw tmp-pk tmp-defines $(LIB_OBJ) $(GDB_OBJ)
 	rm -f $(TARGETLIB)
 	$(AR) $(AR_FLAGS) $(TARGETLIB) $(LIB_OBJ) $(GDB_OBJ)
 	$(RANLIB) $(TARGETLIB)
+
+version.c: Makefile ../../gdb/version.in
+	rm -f version.c-tmp version.c
+	echo '#include "version.h"' >> version.c-tmp
+	echo 'const char version[] = "'"`sed q ${srcdir}/../../gdb/version.in`"'";' >> version.c-tmp
+	mv version.c-tmp version.c
+version.o: version.c $(version_h)
 
 psim.o: psim.c $(CPU_H) $(IDECODE_H) $(OPTIONS_H) $(TREE_H) $(BFD_H)
 
@@ -834,6 +844,8 @@ hw_opic.o: hw_opic.c $(DEVICE_TABLE_H)
 hw_pal.o: hw_pal.c $(DEVICE_TABLE_H) $(CPU_H)
 hw_phb.o: hw_phb.c $(DEVICE_TABLE_H) $(HW_PHB_H) $(COREFILE_H)
 hw_register.o: hw_register.c $(DEVICE_TABLE_H) $(PSIM_H)
+hw_sem.o: hw_sem.c $(DEVICE_TABLE_H) $(PSIM_H)
+hw_shm.o: hw_shm.c $(DEVICE_TABLE_H) $(PSIM_H)
 hw_trace.o: hw_trace.c $(DEVICE_TABLE_H)
 hw_vm.o: hw_vm.c $(DEVICE_TABLE_H) $(CPU_H)
 # ignore this line, it stops make from getting confused

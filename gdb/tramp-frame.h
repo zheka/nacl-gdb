@@ -1,6 +1,7 @@
 /* Signal trampoline unwinder.
 
-   Copyright (C) 2004, 2005, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2005, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -34,7 +35,7 @@ struct trad_frame_cache;
    The only way to identify a trampoline is to perform a brute force
    examination of the instructions at and around the PC.
 
-   This module provides a convent interface for performing that
+   This module provides a convenient interface for performing that
    operation.  */
 
 /* A trampoline descriptor.  */
@@ -66,7 +67,7 @@ struct tramp_frame
   /* Initialize a trad-frame cache corresponding to the tramp-frame.
      FUNC is the address of the instruction TRAMP[0] in memory.  */
   void (*init) (const struct tramp_frame *self,
-		struct frame_info *next_frame,
+		struct frame_info *this_frame,
 		struct trad_frame_cache *this_cache,
 		CORE_ADDR func);
 };

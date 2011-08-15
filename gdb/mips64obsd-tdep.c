@@ -1,6 +1,7 @@
 /* Target-dependent code for OpenBSD/mips64.
 
-   Copyright (C) 2004, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2004, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -18,6 +19,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #include "defs.h"
+#include "gdbtypes.h"
 #include "osabi.h"
 #include "regcache.h"
 #include "regset.h"
@@ -29,6 +31,10 @@
 
 #include "mips-tdep.h"
 #include "solib-svr4.h"
+
+/* The MIPS64 Floating-Point Quad-Precision format is similar to
+   big-endian IA-64 Quad-Precision format.  */
+#define floatformats_mips64_quad floatformats_ia64_quad
 
 #define MIPS64OBSD_NUM_REGS 73
 
@@ -79,19 +85,18 @@ mips64obsd_regset_from_core_section (struct gdbarch *gdbarch,
 
 static void
 mips64obsd_sigframe_init (const struct tramp_frame *self,
-			  struct frame_info *next_frame,
+			  struct frame_info *this_frame,
 			  struct trad_frame_cache *cache,
 			  CORE_ADDR func)
 {
-  struct gdbarch *gdbarch = get_frame_arch (next_frame);
+  struct gdbarch *gdbarch = get_frame_arch (this_frame);
   CORE_ADDR sp, sigcontext_addr, addr;
   int regnum;
 
   /* We find the appropriate instance of `struct sigcontext' at a
      fixed offset in the signal frame.  */
-  sp = frame_unwind_register_signed (next_frame,
-				     MIPS_SP_REGNUM
-				     + gdbarch_num_regs (gdbarch));
+  sp = get_frame_register_signed (this_frame,
+				  MIPS_SP_REGNUM + gdbarch_num_regs (gdbarch));
   sigcontext_addr = sp + 32;
 
   /* PC.  */
@@ -147,6 +152,9 @@ mips64obsd_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
     (gdbarch, mips64obsd_regset_from_core_section);
 
   tramp_frame_prepend_unwinder (gdbarch, &mips64obsd_sigframe);
+
+  set_gdbarch_long_double_bit (gdbarch, 128);
+  set_gdbarch_long_double_format (gdbarch, floatformats_mips64_quad);
 
   /* OpenBSD/mips64 has SVR4-style shared libraries.  */
   set_solib_svr4_fetch_link_map_offsets

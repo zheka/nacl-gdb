@@ -18,7 +18,16 @@
 
 /* Thread-local storage.  */
 __thread int a_thread_local;
-__thread int another_thread_local;
+
+class K {
+ public:
+  static __thread int another_thread_local;
+};
+
+__thread int K::another_thread_local;
+
+/* psymtabs->symtabs resolving check.  */
+extern __thread int file2_thread_local;
 
 /* Global variable just for info addr in gdb.  */
 int a_global;
@@ -61,8 +70,7 @@ void print_error ()
 }
 
 /* Routine for each thread to run, does nothing.  */
-void *spin( vp )
-    void * vp;
+void *spin( void *vp )
 {
     int me = (long) vp;
     int i;
@@ -71,19 +79,19 @@ void *spin( vp )
     a_global++;
 
     a_thread_local = 0;
-    another_thread_local = me;
+    K::another_thread_local = me;
     for( i = 0; i <= me; i++ ) {
         a_thread_local += i;
     }
 
-    another_thread_local_val[me] = another_thread_local;
+    another_thread_local_val[me] = K::another_thread_local;
     thread_local_val[ me ] = a_thread_local; /* here we know tls value */
 
     if (sem_post (&tell_main) == -1)
      {
         fprintf (stderr, "th %d post on sem tell_main failed\n", me);
         print_error ();
-        return;
+        return NULL;
      }
 #ifdef START_DEBUG
     fprintf (stderr, "th %d post on tell main\n", me);
@@ -108,7 +116,7 @@ void *spin( vp )
           {  
             fprintf (stderr, "th %d wait on sem tell_thread failed\n", me);
             print_error ();
-            return;
+            return NULL;
          }
       }
 
@@ -116,6 +124,13 @@ void *spin( vp )
       fprintf (stderr, "th %d Wait on tell_thread\n", me);
 #endif
 
+      return NULL;
+}
+
+void
+function_referencing_file2_thread_local (void)
+{
+  file2_thread_local = file2_thread_local;
 }
 
 void

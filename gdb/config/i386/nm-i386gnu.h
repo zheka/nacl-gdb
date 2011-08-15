@@ -1,5 +1,6 @@
 /* Native-dependent definitions for Intel 386 running the GNU Hurd
-   Copyright 1994, 1995, 1996, 2002, 2007, 2008 Free Software Foundation, Inc.
+   Copyright 1994, 1995, 1996, 2002, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -25,9 +26,6 @@
 #include "regcache.h"
 
 extern char *gnu_target_pid_to_str (int pid);
-
-/* Don't do wait_for_inferior on attach.  */
-#define ATTACH_NO_WAIT
 
 /* Thread flavors used in re-setting the T bit.  */
 #define THREAD_STATE_FLAVOR		i386_REGS_SEGS_STATE

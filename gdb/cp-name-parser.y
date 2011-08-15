@@ -1,25 +1,24 @@
 /* YACC parser for C++ names, for GDB.
 
-   Copyright (C) 2003, 2004, 2005, 2007, 2008 Free Software Foundation, Inc.
+   Copyright (C) 2003, 2004, 2005, 2007, 2008, 2009, 2010, 2011
+   Free Software Foundation, Inc.
 
    Parts of the lexer are based on c-exp.y from GDB.
 
-This file is part of GDB.
+   This file is part of GDB.
 
-This program is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or
-(at your option) any later version.
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 3 of the License, or
+   (at your option) any later version.
 
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin Street, Fifth Floor,
-Boston, MA 02110-1301, USA.  */
+   You should have received a copy of the GNU General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 /* Note that malloc's and realloc's in this file are transformed to
    xmalloc and xrealloc respectively by the same sed command in the
@@ -31,6 +30,8 @@ Boston, MA 02110-1301, USA.  */
 
 %{
 
+#include "defs.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -39,6 +40,7 @@ Boston, MA 02110-1301, USA.  */
 #include "safe-ctype.h"
 #include "libiberty.h"
 #include "demangle.h"
+#include "cp-support.h"
 
 /* Bison does not make it easy to create a parser without global
    state, unfortunately.  Here are all the global variables used
@@ -253,10 +255,6 @@ make_name (const char *name, int len)
       int fold_flag;
     } abstract;
     int lval;
-    struct {
-      int val;
-      struct demangle_component *type;
-    } typed_val_int;
     const char *opname;
   }
 
@@ -311,14 +309,6 @@ make_name (const char *name, int len)
 /* Non-C++ things we get from the demangler.  */
 %token <lval> DEMANGLER_SPECIAL
 %token CONSTRUCTION_VTABLE CONSTRUCTION_IN
-%token <typed_val_int> GLOBAL
-
-%{
-enum {
-  GLOBAL_CONSTRUCTORS = DEMANGLE_COMPONENT_LITERAL + 20,
-  GLOBAL_DESTRUCTORS = DEMANGLE_COMPONENT_LITERAL + 21
-};
-%}
 
 /* Precedence declarations.  */
 
@@ -428,10 +418,6 @@ demangler_special
 			  d_right ($$) = NULL; }
 		|	CONSTRUCTION_VTABLE start CONSTRUCTION_IN start
 			{ $$ = fill_comp (DEMANGLE_COMPONENT_CONSTRUCTION_VTABLE, $2, $4); }
-		|	GLOBAL
-			{ $$ = make_empty ($1.val);
-			  d_left ($$) = $1.type;
-			  d_right ($$) = NULL; }
 		;
 
 operator	:	OPERATOR NEW
@@ -497,7 +483,7 @@ operator	:	OPERATOR NEW
 		|	OPERATOR ARROW
 			{ $$ = make_operator ("->", 2); }
 		|	OPERATOR '(' ')'
-			{ $$ = make_operator ("()", 0); }
+			{ $$ = make_operator ("()", 2); }
 		|	OPERATOR '[' ']'
 			{ $$ = make_operator ("[]", 2); }
 		;
@@ -1460,7 +1446,7 @@ c_parse_backslash (int host_char, int *target_char)
    after the zeros.  A value of 0 does not mean end of string.  */
 
 static int
-parse_escape (const char **string_ptr)
+cp_parse_escape (const char **string_ptr)
 {
   int target_char;
   int c = *(*string_ptr)++;
@@ -1481,7 +1467,7 @@ parse_escape (const char **string_ptr)
 	  if (c == '?')
 	    return 0177;
 	  else if (c == '\\')
-	    target_char = parse_escape (string_ptr);
+	    target_char = cp_parse_escape (string_ptr);
 	  else
 	    target_char = c;
 
@@ -1555,7 +1541,7 @@ yylex (void)
 {
   int c;
   int namelen;
-  const char *tokstart, *tokptr;
+  const char *tokstart;
 
  retry:
   prev_lexptr = lexptr;
@@ -1579,17 +1565,17 @@ yylex (void)
       lexptr++;
       c = *lexptr++;
       if (c == '\\')
-	c = parse_escape (&lexptr);
+	c = cp_parse_escape (&lexptr);
       else if (c == '\'')
 	{
-	  yyerror ("empty character constant");
+	  yyerror (_("empty character constant"));
 	  return ERROR;
 	}
 
       c = *lexptr++;
       if (c != '\'')
 	{
-	  yyerror ("invalid character constant");
+	  yyerror (_("invalid character constant"));
 	  return ERROR;
 	}
 
@@ -1713,7 +1699,7 @@ yylex (void)
 
 	    memcpy (err_copy, tokstart, p - tokstart);
 	    err_copy[p - tokstart] = 0;
-	    yyerror ("invalid number");
+	    yyerror (_("invalid number"));
 	    return ERROR;
 	  }
 	lexptr = p;
@@ -1789,14 +1775,14 @@ yylex (void)
 
     case '"':
       /* These can't occur in C++ names.  */
-      yyerror ("unexpected string literal");
+      yyerror (_("unexpected string literal"));
       return ERROR;
     }
 
   if (!(c == '_' || c == '$' || ISALPHA (c)))
     {
       /* We must have come across a bad character (e.g. ';').  */
-      yyerror ("invalid character");
+      yyerror (_("invalid character"));
       return ERROR;
     }
 
@@ -1859,23 +1845,23 @@ yylex (void)
 	{
 	  const char *p;
 	  lexptr = tokstart + 29;
-	  yylval.typed_val_int.val = GLOBAL_CONSTRUCTORS;
+	  yylval.lval = DEMANGLE_COMPONENT_GLOBAL_CONSTRUCTORS;
 	  /* Find the end of the symbol.  */
 	  p = symbol_end (lexptr);
-	  yylval.typed_val_int.type = make_name (lexptr, p - lexptr);
+	  yylval.comp = make_name (lexptr, p - lexptr);
 	  lexptr = p;
-	  return GLOBAL;
+	  return DEMANGLER_SPECIAL;
 	}
       if (strncmp (tokstart, "global destructors keyed to ", 28) == 0)
 	{
 	  const char *p;
 	  lexptr = tokstart + 28;
-	  yylval.typed_val_int.val = GLOBAL_DESTRUCTORS;
+	  yylval.lval = DEMANGLE_COMPONENT_GLOBAL_DESTRUCTORS;
 	  /* Find the end of the symbol.  */
 	  p = symbol_end (lexptr);
-	  yylval.typed_val_int.type = make_name (lexptr, p - lexptr);
+	  yylval.comp = make_name (lexptr, p - lexptr);
 	  lexptr = p;
-	  return GLOBAL;
+	  return DEMANGLER_SPECIAL;
 	}
 
       HANDLE_SPECIAL ("vtable for ", DEMANGLE_COMPONENT_VTABLE);
@@ -1974,32 +1960,10 @@ allocate_info (void)
 char *
 cp_comp_to_string (struct demangle_component *result, int estimated_len)
 {
-  char *str, *prefix = NULL, *buf;
-  size_t err = 0;
+  size_t err;
 
-  if (result->type == GLOBAL_DESTRUCTORS)
-    {
-      result = d_left (result);
-      prefix = "global destructors keyed to ";
-    }
-  else if (result->type == GLOBAL_CONSTRUCTORS)
-    {
-      result = d_left (result);
-      prefix = "global constructors keyed to ";
-    }
-
-  str = cplus_demangle_print (DMGL_PARAMS | DMGL_ANSI, result, estimated_len, &err);
-  if (str == NULL)
-    return NULL;
-
-  if (prefix == NULL)
-    return str;
-
-  buf = malloc (strlen (str) + strlen (prefix) + 1);
-  strcpy (buf, prefix);
-  strcat (buf, str);
-  free (str);
-  return (buf);
+  return cplus_demangle_print (DMGL_PARAMS | DMGL_ANSI, result, estimated_len,
+			       &err);
 }
 
 /* Convert a demangled name to a demangle_component tree.  On success,
@@ -2046,17 +2010,6 @@ cp_print (struct demangle_component *result)
   char *str;
   size_t err = 0;
 
-  if (result->type == GLOBAL_DESTRUCTORS)
-    {
-      result = d_left (result);
-      fputs ("global destructors keyed to ", stdout);
-    }
-  else if (result->type == GLOBAL_CONSTRUCTORS)
-    {
-      result = d_left (result);
-      fputs ("global constructors keyed to ", stdout);
-    }
-
   str = cplus_demangle_print (DMGL_PARAMS | DMGL_ANSI, result, 64, &err);
   if (str == NULL)
     return;
@@ -2080,6 +2033,16 @@ trim_chars (char *lexptr, char **extra_chars)
     }
 
   return c;
+}
+
+/* When this file is built as a standalone program, xmalloc comes from
+   libiberty --- in which case we have to provide xfree ourselves.  */
+
+void
+xfree (void *ptr)
+{
+  if (ptr != NULL)
+    free (ptr);
 }
 
 int

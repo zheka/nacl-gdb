@@ -2,8 +2,8 @@
 
 @c This file is part of the GDB manual.
 @c
-@c Copyright (C) 2003, 2004, 2005, 2006
-@c               Free Software Foundation, Inc.
+@c Copyright (C) 2003, 2004, 2005, 2006, 2008, 2009, 2010, 2011
+@c Free Software Foundation, Inc.
 @c
 @c See the file gdbint.texinfo for copying conditions.
 @c
@@ -11,7 +11,7 @@
 @c header file during the GDB build process.  Permission is granted
 @c to redistribute and/or modify those lines under the terms of the
 @c GNU General Public License as published by the Free Software
-@c Foundation; either version 2 of the License, or (at your option)
+@c Foundation; either version 3 of the License, or (at your option)
 @c any later version.
 
 @node GDB Observers
@@ -88,17 +88,18 @@ Send a notification to all @var{event} observers.
 
 The following observable events are defined:
 
-@c note: all events must take at least one parameter.
-
-@deftypefun void normal_stop (struct bpstats *@var{bs})
-The inferior has stopped for real.
+@deftypefun void normal_stop (struct bpstats *@var{bs}, int @var{print_frame})
+The inferior has stopped for real.  The  @var{bs} argument describes
+the breakpoints were are stopped at, if any.  Second argument
+@var{print_frame} non-zero means display the location where the
+inferior has stopped.
 @end deftypefun
 
 @deftypefun void target_changed (struct target_ops *@var{target})
 The target's register contents have changed.
 @end deftypefun
 
-@deftypefun void executable_changed (void *@var{unused_args})
+@deftypefun void executable_changed (void)
 The executable being debugged by GDB has changed: The user decided
 to debug a different program, or the program he was debugging has
 been modified since being loaded by the debugger (by being recompiled,
@@ -121,11 +122,109 @@ haven't been loaded yet.
 
 @deftypefun void solib_unloaded (struct so_list *@var{solib})
 The shared library specified by @var{solib} has been unloaded.
+Note that when @value{GDBN} calls this observer, the library's
+symbols have not been unloaded yet, and thus are still available.
 @end deftypefun
 
 @deftypefun void new_objfile (struct objfile *@var{objfile})
 The symbol file specified by @var{objfile} has been loaded.
 Called with @var{objfile} equal to @code{NULL} to indicate
 previously loaded symbol table data has now been invalidated.
+@end deftypefun
+
+@deftypefun void new_thread (struct thread_info *@var{t})
+The thread specified by @var{t} has been created.
+@end deftypefun
+
+@deftypefun void thread_exit (struct thread_info *@var{t}, int @var{silent})
+The thread specified by @var{t} has exited.  The @var{silent} argument
+indicates that @value{GDBN} is removing the thread from its tables
+without wanting to notify the user about it.
+@end deftypefun
+
+@deftypefun void thread_stop_requested (ptid_t @var{ptid})
+An explicit stop request was issued to @var{ptid}.  If @var{ptid}
+equals @var{minus_one_ptid}, the request applied to all threads.  If
+@code{ptid_is_pid(ptid)} returns true, the request applied to all
+threads of the process pointed at by @var{ptid}.  Otherwise, the
+request applied to the single thread pointed at by @var{ptid}.
+@end deftypefun
+
+@deftypefun void target_resumed (ptid_t @var{ptid})
+The target was resumed.  The @var{ptid} parameter specifies which
+thread was resume, and may be RESUME_ALL if all threads are resumed.
+@end deftypefun
+
+@deftypefun void about_to_proceed (void)
+The target is about to be proceeded.
+@end deftypefun
+
+@deftypefun void breakpoint_created (int @var{bpnum})
+A new breakpoint has been created.  The argument @var{bpnum} is the
+number of the newly-created breakpoint.
+@end deftypefun
+
+@deftypefun void breakpoint_deleted (int @var{bpnum})
+A breakpoint has been destroyed.  The argument @var{bpnum} is the
+number of the newly-destroyed breakpoint.
+@end deftypefun
+
+@deftypefun void breakpoint_modified (int @var{bpnum})
+A breakpoint has been modified in some way.  The argument @var{bpnum}
+is the number of the modified breakpoint.
+@end deftypefun
+
+@deftypefun void tracepoint_created (int @var{tpnum})
+A new tracepoint has been created.  The argument @var{tpnum} is the
+number of the newly-created tracepoint.
+@end deftypefun
+
+@deftypefun void tracepoint_deleted (int @var{tpnum})
+A tracepoint has been destroyed.  The argument @var{tpnum} is the
+number of the newly-destroyed tracepoint.
+@end deftypefun
+
+@deftypefun void tracepoint_modified (int @var{tpnum})
+A tracepoint has been modified in some way.  The argument @var{tpnum}
+is the number of the modified tracepoint.
+@end deftypefun
+
+@deftypefun void architecture_changed (struct gdbarch *@var{newarch})
+The current architecture has changed.  The argument @var{newarch} is
+a pointer to the new architecture.
+@end deftypefun
+
+@deftypefun void thread_ptid_changed (ptid_t @var{old_ptid}, ptid_t @var{new_ptid})
+The thread's ptid has changed.  The @var{old_ptid} parameter specifies
+the old value, and @var{new_ptid} specifies the new value.
+@end deftypefun
+
+@deftypefun void inferior_added (struct inferior *@var{inf})
+The inferior @var{inf} has been added to the list of inferiors.  At
+this point, it might not be associated with any process.
+@end deftypefun
+
+@deftypefun void inferior_appeared (struct inferior *@var{inf})
+The inferior identified by @var{inf} has been attached to a process.
+@end deftypefun
+
+@deftypefun void inferior_exit (struct inferior *@var{inf})
+Either the inferior associated with @var{inf} has been detached from the
+process, or the process has exited.
+@end deftypefun
+
+@deftypefun void inferior_removed (struct inferior *@var{inf})
+The inferior @var{inf} has been removed from the list of inferiors.
+This method is called immediately before freeing @var{inf}.
+@end deftypefun
+
+@deftypefun void memory_changed (CORE_ADDR @var{addr}, int @var{len}, const bfd_byte *@var{data})
+Bytes from @var{data} to @var{data} + @var{len} have been written
+to the current inferior at @var{addr}.
+@end deftypefun
+
+@deftypefun void test_notification (int @var{somearg})
+This observer is used for internal testing.  Do not use.  
+See testsuite/gdb.gdb/observer.exp.
 @end deftypefun
 

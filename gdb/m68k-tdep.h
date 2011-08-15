@@ -1,7 +1,7 @@
 /* Target-dependent code for the Motorola 68000 series.
 
    Copyright (C) 1990, 1991, 1992, 1993, 1994, 1995, 1996, 1999, 2000, 2001,
-   2003, 2004, 2007, 2008 Free Software Foundation, Inc.
+   2003, 2004, 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -92,6 +92,10 @@ struct gdbarch_tdep
   /* Flag set if the floating point registers are present, or assumed
      to be present.  */
   int fpregs_present;
+
+   /* ISA-specific data types.  */
+  struct type *m68k_ps_type;
+  struct type *m68881_ext_type;
 };
 
 /* Initialize a SVR4 architecture variant.  */
@@ -100,6 +104,6 @@ extern void m68k_svr4_init_abi (struct gdbarch_info, struct gdbarch *);
 
 /* Functions exported from m68kbsd-tdep.c.  */
 
-extern int m68kbsd_fpreg_offset (int regnum);
+extern int m68kbsd_fpreg_offset (struct gdbarch *gdbarch, int regnum);
 
 #endif /* m68k-tdep.h */

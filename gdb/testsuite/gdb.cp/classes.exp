@@ -1,5 +1,5 @@
 # Copyright 1992, 1994, 1995, 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003,
-# 2004, 2006, 2007, 2008 Free Software Foundation, Inc.
+# 2004, 2006, 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -394,31 +394,34 @@ proc test_enums {} {
 
     # print the object
 
+    # We match the enum values with and without qualifiers.  As of
+    # 2008-08-21 we can output the qualifiers for DWARF-2.
+
     gdb_test "print obj_with_enum" \
-	"\\$\[0-9\]+ = \{priv_enum = red, x = 0\}" \
+	"\\$\[0-9\]+ = \{priv_enum = (ClassWithEnum::)?red, x = 0\}" \
 	"print obj_with_enum (1)"
 
     # advance one line
 
-    gdb_test "next" ""
+    gdb_test "next" ".*"
 
     # print the object again
 
     gdb_test "print obj_with_enum" \
-	"\\$\[0-9\]+ = \{priv_enum = green, x = 0\}" \
+	"\\$\[0-9\]+ = \{priv_enum = (ClassWithEnum::)?green, x = 0\}" \
 	"print obj_with_enum (2)"
 
     # print the enum member
 
-    gdb_test "print obj_with_enum.priv_enum" "\\$\[0-9\]+ = green"
+    gdb_test "print obj_with_enum.priv_enum" "\\$\[0-9\]+ = (ClassWithEnum::)?green"
 
     # ptype on the enum member
 
     gdb_test_multiple "ptype obj_with_enum.priv_enum" "ptype obj_with_enum.priv_enum" {
-        -re "type = enum ClassWithEnum::PrivEnum \{ ?red, green, blue, yellow = 42 ?\}$nl$gdb_prompt $" {
+        -re "type = enum ClassWithEnum::PrivEnum \{ ?(ClassWithEnum::)?red, (ClassWithEnum::)?green, (ClassWithEnum::)?blue, (ClassWithEnum::)?yellow = 42 ?\}$nl$gdb_prompt $" {
 	    pass "ptype obj_with_enum.priv_enum"
         }
-	-re "type = enum PrivEnum \{ ?red, green, blue, yellow = 42 ?\}$nl$gdb_prompt $" {
+	-re "type = enum PrivEnum \{ ?(ClassWithEnum::)?red, (ClassWithEnum::)?green, (ClassWithEnum::)?blue, (ClassWithEnum::)?yellow = 42 ?\}$nl$gdb_prompt $" {
 	    # gcc 2.95.3 -gdwarf-2
 	    # gcc 3.3.2 -gdwarf-2
 	    pass "ptype obj_with_enum.priv_enum"
@@ -468,7 +471,7 @@ proc test_enums {} {
     # See PR gdb/1588.
 
     gdb_test_multiple "print (ClassWithEnum::PrivEnum) 42" "print (ClassWithEnum::PrivEnum) 42" {
-	-re "\\$\[0-9\]+ = yellow$nl$gdb_prompt $" {
+	-re "\\$\[0-9\]+ = (ClassWithEnum::)?yellow$nl$gdb_prompt $" {
 	    pass "print (ClassWithEnum::PrivEnum) 42"
 	}
 	-re "A (parse|syntax) error in expression, near `42'.$nl$gdb_prompt $" {
@@ -479,7 +482,7 @@ proc test_enums {} {
     }
 
     gdb_test_multiple "print ('ClassWithEnum::PrivEnum') 42" "print ('ClassWithEnum::PrivEnum') 42" {
-	-re "\\$\[0-9\]+ = yellow$nl$gdb_prompt $" {
+	-re "\\$\[0-9\]+ = (ClassWithEnum::)?yellow$nl$gdb_prompt $" {
 	    # gcc 3.3.2 -gstabs+
 	    # gcc HEAD 2003-12-28 21:08:30 UTC -gstabs+
 	    pass "print ('ClassWithEnum::PrivEnum') 42"
@@ -519,13 +522,13 @@ proc test_static_members {} {
     global hex
 
     gdb_test "print Foo::st" "\\$\[0-9\]+ = 100"
-    gdb_test "set foo.st = 200" "" ""
+    gdb_test_no_output "set foo.st = 200" ""
     gdb_test "print bar.st" "\\$\[0-9\]+ = 200"
     gdb_test "print &foo.st" "\\$\[0-9\]+ = \\(int ?\\*\\) $hex"
     gdb_test "print &Bar::st" "\\$\[0-9\]+ = \\(int ?\\*\\) $hex"
     gdb_test "print *\$" "\\$\[0-9\]+ = 200"
 
-    gdb_test "set print static-members off" ""
+    gdb_test_no_output "set print static-members off"
     gdb_test "print csi" \
 	"{x = 10, y = 20}" \
 	"print csi without static members"
@@ -533,7 +536,7 @@ proc test_static_members {} {
 	"{x = 30, y = 40}" \
 	"print cnsi without static members"
 
-    gdb_test "set print static-members on" ""
+    gdb_test_no_output "set print static-members on"
     gdb_test "print csi" \
 	"{x = 10, y = 20, static null = {x = 0, y = 0, static null = <same as static member of an already seen type>}}" \
 	"print csi with static members"
@@ -543,8 +546,6 @@ proc test_static_members {} {
 }
 
 proc do_tests {} {
-    global prms_id
-    global bug_id
     global subdir
     global objdir
     global srcdir
@@ -552,8 +553,6 @@ proc do_tests {} {
     global gdb_prompt
     global nl
 
-    set prms_id 0
-    set bug_id 0
 
     # Start with a fresh gdb.
 
@@ -562,8 +561,8 @@ proc do_tests {} {
     gdb_reinitialize_dir $srcdir/$subdir
     gdb_load $binfile
 
-    gdb_test "set language c++" "" ""
-    gdb_test "set width 0" "" ""
+    gdb_test_no_output "set language c++" ""
+    gdb_test_no_output "set width 0" ""
 
     if ![runto_main ] then {
 	perror "couldn't run to breakpoint"
@@ -585,13 +584,13 @@ proc do_tests {} {
     # are any more instructions to finish the function call.
     gdb_test_multiple "finish" "" {
 	-re "enums2 \\(\\);.*$gdb_prompt $" {
-	    gdb_test "next" "" ""
+	    gdb_test "next" ".*" ""
 	}
 	-re "$gdb_prompt $" { }
     }
     test_enums
 
-    gdb_test "finish" "" ""
+    gdb_test "finish" ".*" ""
     test_pointers_to_class_members
     test_static_members
 
@@ -629,6 +628,12 @@ proc do_tests {} {
 	    fail "calling method for small class"
 	}
     }
+
+    gdb_test "print base1::Base1" "<.*Base1.*>" "print ctor of typedef class"
+    gdb_test "print base1::~Base1" "<.*~Base1(\\(\\))?>" \
+	"print dtor of typedef class"
+
+    gdb_test "list ByAnyOtherName::times" ".*int Foo::times.*"
 }
 
 do_tests
