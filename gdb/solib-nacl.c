@@ -60,7 +60,7 @@ static char* nacl_filename;
 
 /* Start address of Native Client sandbox.  */
 
-static CORE_ADDR nacl_sandbox_addr;
+CORE_ADDR nacl_sandbox_addr;
 
 
 static void

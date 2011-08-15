@@ -33,6 +33,7 @@
 #include "i386-linux-tdep.h"
 #include "linux-tdep.h"
 #include "nacl-tdep.h"
+#include "inferior.h"
 #include "i386-xstate.h"
 
 #include "gdb_string.h"
@@ -1537,10 +1538,26 @@ amd64_linux_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
   set_nacl_solib_ops (gdbarch);
 }
 
+static CORE_ADDR
+nacl_pointer_to_address (struct gdbarch *gdbarch,
+                         struct type *type,
+                         const gdb_byte *buf)
+{
+  CORE_ADDR addr = unsigned_pointer_to_address (gdbarch, type, buf);
+
+  /* Do not change NULL pointers!  */
+  if (addr)
+    addr = nacl_sandbox_addr + (unsigned) addr;
+
+  return addr;
+}
+
 static void
 amd64_nacl_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
 {
   amd64_linux_init_abi (info, gdbarch);
+
+  set_gdbarch_pointer_to_address (gdbarch, nacl_pointer_to_address);
 }
 
 static enum gdb_osabi
