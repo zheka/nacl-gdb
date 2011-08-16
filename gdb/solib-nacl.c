@@ -97,6 +97,24 @@ nacl_update_sandbox_addr (void)
 
 
 static struct so_list *
+nacl_alloc_so (CORE_ADDR addr, const char *name)
+{
+  struct so_list *so;
+
+  so = XZALLOC (struct so_list);
+
+  strcpy (so->so_name, name);
+  strcpy (so->so_original_name, so->so_name);
+
+  so->lm_info = XZALLOC (struct lm_info);
+
+  so->lm_info->l_addr = addr;
+
+  return so;
+}
+
+
+static struct so_list *
 nacl_current_sos (void)
 {
   struct so_list *head;
@@ -113,14 +131,7 @@ nacl_current_sos (void)
     {
       struct so_list *so;
 
-      so = XZALLOC (struct so_list);
-
-      strcpy (so->so_name, nacl_filename);
-      strcpy (so->so_original_name, so->so_name);
-
-      so->lm_info = XZALLOC (struct lm_info);
-
-      so->lm_info->l_addr = nacl_sandbox_addr;
+      so = nacl_alloc_so (nacl_sandbox_addr, nacl_filename);
 
       *link_ptr = so;
       link_ptr = &so->next;
