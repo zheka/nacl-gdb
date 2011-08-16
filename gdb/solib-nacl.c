@@ -70,6 +70,9 @@ nacl_file_command (char *args, int from_tty)
     {
       xfree (nacl_filename);
       nacl_filename = tilde_expand (args);
+
+      /* Now reload shared libraries, including Native Client stuff.  */
+      solib_add (NULL, 0, NULL, 1);
     }
 }
 
