@@ -99,6 +99,24 @@ nacl_update_sandbox_addr (void)
 }
 
 
+struct ldso_interface
+  {
+  };
+
+
+static int
+nacl_discover_ldso_interface (struct ldso_interface *ldso)
+{
+  return 0;
+}
+
+
+static void
+nacl_append_sos (struct so_list **link_ptr, const struct ldso_interface *ldso)
+{
+}
+
+
 static struct so_list *
 nacl_alloc_so (CORE_ADDR addr, const char *name)
 {
@@ -126,18 +144,35 @@ nacl_current_sos (void)
   /* First, retrieve the SVR4 shared library list.  */
   head = svr4_so_ops.current_sos ();
 
-  /* Append our libraries to the end of the list.  */
-  for (link_ptr = &head; *link_ptr; link_ptr = &(*link_ptr)->next)
-    ;
-
-  if (nacl_filename && nacl_update_sandbox_addr ())
+  if (nacl_filename)
     {
-      struct so_list *so;
+      CORE_ADDR prev_sandbox_addr = nacl_sandbox_addr;
 
-      so = nacl_alloc_so (nacl_sandbox_addr, nacl_filename);
+      if (nacl_update_sandbox_addr ())
+        {
+          struct ldso_interface ldso;
 
-      *link_ptr = so;
-      link_ptr = &so->next;
+          /* Append our libraries to the end of the list.  */
+          for (link_ptr = &head; *link_ptr; link_ptr = &(*link_ptr)->next)
+            ;
+
+          if (nacl_discover_ldso_interface (&ldso))
+            {
+              /* Dynamic case - walk ld.so solib list.  */
+              nacl_append_sos (link_ptr, &ldso);
+
+              if (!prev_sandbox_addr)
+              {
+                /* This is the first time we are here with loaded NaCl.
+                   Set NaCl solib event breakpoint here.  */
+              }
+            }
+          else
+            {
+              /* Static case - just add the main executable.  */
+              *link_ptr = nacl_alloc_so (nacl_sandbox_addr, nacl_filename);
+            }
+        }
     }
 
   return head;
@@ -183,6 +218,8 @@ nacl_lookup_lib_symbol (const struct objfile *objfile,
 static void
 nacl_solib_create_inferior_hook (int from_tty)
 {
+  nacl_sandbox_addr = 0;
+
   /* Call SVR4 hook -- this will re-insert the SVR4 solib breakpoints.  */
   svr4_so_ops.solib_create_inferior_hook (from_tty);
 
