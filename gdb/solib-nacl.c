@@ -101,13 +101,75 @@ nacl_update_sandbox_addr (void)
 
 struct ldso_interface
   {
+    /* Function that gets called on solib events (_dl_debug_state).  */
+    CORE_ADDR solib_event_addr;
+
+    /* Structure that holds solib list head (_r_debug).  */
+    CORE_ADDR debug_struct_addr;
+
+    /* ld.so command line argv (_dl_argv).  */
+    CORE_ADDR argv_addr;
   };
 
 
 static int
 nacl_discover_ldso_interface (struct ldso_interface *ldso)
 {
-  return 0;
+  bfd* abfd;
+
+  gdb_assert (nacl_filename);
+
+  memset (ldso, 0, sizeof (*ldso));
+
+  /* TODO: try faster pass first: walk master so_list and find native client
+     executable's objfile, then lookup_minimal_symbol in that objfile.  */
+
+  /* Slow and crappy: open native client executable's bfd and walk its dynamic
+     symbol table.  */
+
+  abfd = solib_bfd_open (nacl_filename);
+  if (abfd)
+    {
+      long storage_needed;
+
+      storage_needed = bfd_get_dynamic_symtab_upper_bound (abfd);
+      if (storage_needed > 0)
+        {
+          void *storage;
+          asymbol **symbol_table;
+          unsigned int number_of_symbols;
+          int i;
+
+          storage = xmalloc (storage_needed);
+          symbol_table = (asymbol **) storage;
+          number_of_symbols = bfd_canonicalize_dynamic_symtab (abfd, symbol_table);
+
+          for (i = 0; i < number_of_symbols; i++)
+            {
+              asymbol *sym;
+
+              sym = *symbol_table++;
+              if (strcmp (sym->name, "_dl_debug_state") == 0)
+                {
+                  ldso->solib_event_addr = sym->value + sym->section->vma;
+                }
+              else if (strcmp (sym->name, "_r_debug") == 0)
+                {
+                  ldso->debug_struct_addr = sym->value + sym->section->vma;
+                }
+              else if (strcmp (sym->name, "_dl_argv") == 0)
+                {
+                  ldso->argv_addr = sym->value + sym->section->vma;
+                }
+            }
+
+          xfree (storage);
+        }
+
+      bfd_close (abfd);
+    }
+
+  return ldso->debug_struct_addr;
 }
 
 
