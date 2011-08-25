@@ -173,12 +173,6 @@ nacl_discover_ldso_interface (struct ldso_interface *ldso)
 }
 
 
-static void
-nacl_append_sos (struct so_list **link_ptr, const struct ldso_interface *ldso)
-{
-}
-
-
 static struct so_list *
 nacl_alloc_so (CORE_ADDR addr, const char *name)
 {
@@ -194,6 +188,59 @@ nacl_alloc_so (CORE_ADDR addr, const char *name)
   so->lm_info->l_addr = addr;
 
   return so;
+}
+
+
+static void
+nacl_append_sos (struct so_list **link_ptr, const struct ldso_interface *ldso)
+{
+  CORE_ADDR lm_addr;
+
+  /* for (lm_addr = _r_debug.r_map; lm_addr; lm_addr = lm_addr->l_next)  */
+  for (lm_addr = read_memory_unsigned_integer (nacl_sandbox_addr + ldso->debug_struct_addr + 4, 4, BFD_ENDIAN_LITTLE);
+       lm_addr;
+       lm_addr = read_memory_unsigned_integer (nacl_sandbox_addr + lm_addr + 16, 4, BFD_ENDIAN_LITTLE))
+    {
+      CORE_ADDR l_addr;
+      CORE_ADDR l_name;
+      char* so_name;
+      int err;
+      struct so_list *so;
+
+      so = nacl_alloc_so (nacl_sandbox_addr, nacl_filename);
+      /* link_map::l_addr.  */
+      l_addr = read_memory_unsigned_integer (nacl_sandbox_addr + lm_addr, 4, BFD_ENDIAN_LITTLE);
+
+      /* link_map::l_name. */
+      l_name = read_memory_unsigned_integer (nacl_sandbox_addr + lm_addr + 8, 4, BFD_ENDIAN_LITTLE);
+      target_read_string (nacl_sandbox_addr + l_name, &so_name, SO_NAME_MAX_PATH_SIZE - 1, &err);
+
+      if (strcmp (so_name, "") == 0)
+        {
+          /* Native client dynamic executable. */
+          xfree (so_name);
+
+          l_name = read_memory_unsigned_integer (nacl_sandbox_addr + ldso->argv_addr, 4, BFD_ENDIAN_LITTLE);
+          l_name = read_memory_unsigned_integer (nacl_sandbox_addr + l_name, 4, BFD_ENDIAN_LITTLE);
+          target_read_string (nacl_sandbox_addr + l_name, &so_name, SO_NAME_MAX_PATH_SIZE - 1, &err);
+
+          so = nacl_alloc_so (nacl_sandbox_addr + l_addr, so_name);
+        }
+      else if (strcmp (so_name, "NaClMain") == 0)
+        {
+          /* Native client ld.so. */
+          so = nacl_alloc_so (nacl_sandbox_addr + l_addr, nacl_filename);
+        }
+      else
+        {
+          /* Solib. */
+          so = nacl_alloc_so (nacl_sandbox_addr + l_addr, so_name);
+        }
+      xfree (so_name);
+
+      *link_ptr = so;
+      link_ptr = &so->next;
+    }
 }
 
 
@@ -227,6 +274,7 @@ nacl_current_sos (void)
               {
                 /* This is the first time we are here with loaded NaCl.
                    Set NaCl solib event breakpoint here.  */
+                create_solib_event_breakpoint (target_gdbarch, nacl_sandbox_addr + ldso.solib_event_addr);
               }
             }
           else
