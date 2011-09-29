@@ -180,6 +180,20 @@ nacl_alloc_so (CORE_ADDR addr, const char *name)
 
   so = XZALLOC (struct so_list);
 
+  /* Actual objfiles pathnames are usually different from pathnames seen by NaCl
+     program, the mapping between them is defined by manifest file. Pathnames
+     coming here are extracted from NaCl ld.so runtime structures, while GDB
+     needs their mapped values.
+
+     TODO: implement support for manifest files. When manifest is available,
+           no nacl-file and friends are needed.  */
+
+  /* HACK: NaCl ld.so uses "/lib" library path to inform service runtime that
+           the file should be opened as solib vs. ordinary file. Split that
+           prefix here so that GDB can find these files.  */
+  if (strncmp(name, "/lib/", 5) == 0)
+    name += 5;
+
   strcpy (so->so_name, name);
   strcpy (so->so_original_name, so->so_name);
 
@@ -207,7 +221,6 @@ nacl_append_sos (struct so_list **link_ptr, const struct ldso_interface *ldso)
       int err;
       struct so_list *so;
 
-      so = nacl_alloc_so (nacl_sandbox_addr, nacl_filename);
       /* link_map::l_addr.  */
       l_addr = read_memory_unsigned_integer (nacl_sandbox_addr + lm_addr, 4, BFD_ENDIAN_LITTLE);
 
