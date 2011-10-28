@@ -56,6 +56,7 @@ struct lm_info
    Intentional memory leak, freed at exit.  */
 
 static char* nacl_filename;
+static char* nacl_irt_filename;
 
 
 /* Start address of Native Client sandbox.  */
@@ -70,6 +71,20 @@ nacl_file_command (char *args, int from_tty)
     {
       xfree (nacl_filename);
       nacl_filename = tilde_expand (args);
+
+      /* Now reload shared libraries, including Native Client stuff.  */
+      solib_add (NULL, 0, NULL, 1);
+    }
+}
+
+
+static void
+nacl_irt_command (char *args, int from_tty)
+{
+  if (args)
+    {
+      xfree (nacl_irt_filename);
+      nacl_irt_filename = tilde_expand (args);
 
       /* Now reload shared libraries, including Native Client stuff.  */
       solib_add (NULL, 0, NULL, 1);
@@ -278,17 +293,24 @@ nacl_current_sos (void)
           for (link_ptr = &head; *link_ptr; link_ptr = &(*link_ptr)->next)
             ;
 
+          /* Append IRT.  */
+          if (nacl_irt_filename)
+            {
+              *link_ptr = nacl_alloc_so (nacl_sandbox_addr, nacl_irt_filename);
+              link_ptr = &(*link_ptr)->next;
+            }
+
           if (nacl_discover_ldso_interface (&ldso))
             {
               /* Dynamic case - walk ld.so solib list.  */
               nacl_append_sos (link_ptr, &ldso);
 
               if (!prev_sandbox_addr)
-              {
-                /* This is the first time we are here with loaded NaCl.
-                   Set NaCl solib event breakpoint here.  */
-                create_solib_event_breakpoint (target_gdbarch, nacl_sandbox_addr + ldso.solib_event_addr);
-              }
+                {
+                  /* This is the first time we are here with loaded NaCl.
+                     Set NaCl solib event breakpoint here.  */
+                  create_solib_event_breakpoint (target_gdbarch, nacl_sandbox_addr + ldso.solib_event_addr);
+                }
             }
           else
             {
@@ -374,4 +396,6 @@ _initialize_nacl_solib (void)
 {
   add_com ("nacl-file", class_files, nacl_file_command,
 	   _("Use FILE as Native Client program to be debugged."));
+  add_com ("nacl-irt", class_files, nacl_irt_command,
+	   _("Use FILE as Native Client IRT to be debugged."));
 }
