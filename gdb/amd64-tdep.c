@@ -2317,6 +2317,44 @@ static const struct frame_unwind amd64_epilogue_frame_unwind =
   amd64_epilogue_frame_sniffer
 };
 
+static int
+nacl_syscall_seg_frame_sniffer (const struct frame_unwind *self,
+				struct frame_info *this_frame,
+				void **this_prologue_cache)
+{
+  CORE_ADDR pc;
+  struct minimal_symbol *addr_sym;
+
+  /* If this is the innermost frame, we are executing a switch.
+     Do not mess until fully switched.  */
+  if (frame_relative_level (this_frame) == 0)
+    return 0;
+
+  if (!get_frame_pc_if_available (this_frame, &pc))
+    return 0;
+
+  /* HACK: probably we should examine disas at pc...
+     But being lazy we just check for the function name and pc position.  */
+  addr_sym = lookup_minimal_symbol ("NaClSyscallSeg", NULL, NULL);
+  if (addr_sym)
+    {
+      if (pc == SYMBOL_VALUE_ADDRESS (addr_sym) + 121)
+        return 1;
+    }
+
+  return 0;
+}
+
+static const struct frame_unwind nacl_syscall_seg_frame_unwind =
+{
+  NORMAL_FRAME,
+  amd64_frame_unwind_stop_reason,
+  amd64_frame_this_id,
+  amd64_frame_prev_register,
+  NULL, 
+  nacl_syscall_seg_frame_sniffer
+};
+
 static struct frame_id
 amd64_dummy_id (struct gdbarch *gdbarch, struct frame_info *this_frame)
 {
@@ -2550,6 +2588,8 @@ amd64_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
   tdep->record_regmap = amd64_record_regmap;
 
   set_gdbarch_dummy_id (gdbarch, amd64_dummy_id);
+
+  frame_unwind_prepend_unwinder (gdbarch, &nacl_syscall_seg_frame_unwind);
 
   /* Hook the function epilogue frame unwinder.  This unwinder is
      appended to the list first, so that it supercedes the other
