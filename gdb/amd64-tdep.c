@@ -2418,12 +2418,29 @@ nacl_syscall_seg_frame_sniffer (const struct frame_unwind *self,
   if (!get_frame_pc_if_available (this_frame, &pc))
     return 0;
 
-  /* HACK: probably we should examine disas at pc...
-     But being lazy we just check for the function name and pc position.  */
-  addr_sym = lookup_minimal_symbol ("NaClSyscallSeg", NULL, NULL);
+  /* pc should be inside NaClSyscallSeg, pointing after the call of
+     NaClSyscallCSegHook:
+
+       e8 ?? ?? ?? ??       	callq  ???????? <NaClSyscallCSegHook>
+     =>f4                   	hlt
+
+     Tried to check the fixed offset from the beginning of NaClSyscallSeg, but
+     seems it may vary...
+
+     Instead, hope there is just one NaClSyscallCSegHook call and try checking
+     the actual instruction sequence.  */
+  addr_sym = lookup_minimal_symbol ("NaClSyscallCSegHook", NULL, NULL);
   if (addr_sym)
     {
-      if (pc == SYMBOL_VALUE_ADDRESS (addr_sym) + 121)
+      gdb_byte buf[6];
+
+      if (!safe_frame_unwind_memory (this_frame, pc - 5, buf, 6))
+        return 0;
+
+      if (buf[0] == 0xe8 &&
+          extract_unsigned_integer (buf + 1, 4, BFD_ENDIAN_LITTLE) ==
+              SYMBOL_VALUE_ADDRESS(addr_sym) - pc &&
+          buf[5] == 0xf4)
         return 1;
     }
 
