@@ -2317,6 +2317,28 @@ static const struct frame_unwind amd64_epilogue_frame_unwind =
   amd64_epilogue_frame_sniffer
 };
 
+static enum unwind_stop_reason
+nacl_syscall_seg_frame_unwind_stop_reason (struct frame_info *this_frame,
+					   void **this_cache)
+{
+  return UNWIND_NO_REASON;
+}
+
+static void
+nacl_syscall_seg_frame_this_id (struct frame_info *this_frame,
+				void **this_cache,
+				struct frame_id *this_id)
+{
+  return;
+}
+
+static struct value *
+nacl_syscall_seg_frame_prev_register (struct frame_info *this_frame,
+				      void **this_cache, int regnum)
+{
+  return frame_unwind_got_optimized (this_frame, regnum);
+}
+
 static int
 nacl_syscall_seg_frame_sniffer (const struct frame_unwind *self,
 				struct frame_info *this_frame,
@@ -2347,10 +2369,11 @@ nacl_syscall_seg_frame_sniffer (const struct frame_unwind *self,
 
 static const struct frame_unwind nacl_syscall_seg_frame_unwind =
 {
-  NORMAL_FRAME,
-  amd64_frame_unwind_stop_reason,
-  amd64_frame_this_id,
-  amd64_frame_prev_register,
+  /* Not a NORMAL_FRAME! Stack switch does not pass frame_id_inner!  */
+  SIGTRAMP_FRAME,
+  nacl_syscall_seg_frame_unwind_stop_reason,
+  nacl_syscall_seg_frame_this_id,
+  nacl_syscall_seg_frame_prev_register,
   NULL, 
   nacl_syscall_seg_frame_sniffer
 };
