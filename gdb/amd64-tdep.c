@@ -2329,13 +2329,76 @@ nacl_syscall_seg_frame_this_id (struct frame_info *this_frame,
 				void **this_cache,
 				struct frame_id *this_id)
 {
-  return;
+  CORE_ADDR pc;
+  CORE_ADDR rbx;
+
+  /* We checked pc is available in the sniffer.  */
+  pc = get_frame_pc (this_frame);
+
+  /* rbx is callee-saved thus unwindable.
+     In NaClSyscallSeg, final rbx value is initial rsp value.  */
+  rbx = get_frame_register_unsigned (this_frame, AMD64_RBX_REGNUM);
+
+  (*this_id) = frame_id_build (rbx, pc);
 }
 
 static struct value *
 nacl_syscall_seg_frame_prev_register (struct frame_info *this_frame,
 				      void **this_cache, int regnum)
 {
+  CORE_ADDR rbx;
+
+  /* Seems NaClSyscallSeg does not change rbp, r12-r15.  */
+  if (regnum == AMD64_RBP_REGNUM ||
+      regnum == AMD64_R12_REGNUM ||
+      regnum == AMD64_R13_REGNUM ||
+      regnum == AMD64_R14_REGNUM ||
+      regnum == AMD64_R15_REGNUM)
+    return frame_unwind_got_register (this_frame, regnum, regnum);
+
+  /* rbx is callee-saved thus unwindable.
+     In NaClSyscallSeg, final rbx value is initial rsp value.  */
+  rbx = get_frame_register_unsigned (this_frame, AMD64_RBX_REGNUM);
+
+  /* Previous pc is at the top of stack.  */
+  if (regnum == AMD64_RIP_REGNUM)
+    return frame_unwind_got_constant (
+	this_frame, regnum,
+	read_memory_unsigned_integer (rbx, 8, BFD_ENDIAN_LITTLE));
+
+  /* Initial rsp is previous rsp adjusted by call instruction.  */
+  if (regnum == AMD64_RSP_REGNUM)
+    return frame_unwind_got_constant (this_frame, regnum, rbx + 8);
+
+  /* Several registers are saved in stack.  */
+  if (regnum == AMD64_RDI_REGNUM)
+    return frame_unwind_got_constant (
+        this_frame, regnum,
+        read_memory_unsigned_integer (rbx - 0x18 + 0x0, 4, BFD_ENDIAN_LITTLE));
+  if (regnum == AMD64_RSI_REGNUM)
+    return frame_unwind_got_constant (
+        this_frame, regnum,
+        read_memory_unsigned_integer (rbx - 0x18 + 0x4, 4, BFD_ENDIAN_LITTLE));
+  if (regnum == AMD64_RDX_REGNUM)
+    return frame_unwind_got_constant (
+        this_frame, regnum,
+        read_memory_unsigned_integer (rbx - 0x18 + 0x8, 4, BFD_ENDIAN_LITTLE));
+  if (regnum == AMD64_RCX_REGNUM)
+    return frame_unwind_got_constant (
+        this_frame, regnum,
+        read_memory_unsigned_integer (rbx - 0x18 + 0xc, 4, BFD_ENDIAN_LITTLE));
+  if (regnum == AMD64_R8_REGNUM)
+    return frame_unwind_got_constant (
+        this_frame, regnum,
+        read_memory_unsigned_integer (rbx - 0x18 + 0x10, 4, BFD_ENDIAN_LITTLE));
+  if (regnum == AMD64_R9_REGNUM)
+    return frame_unwind_got_constant (
+        this_frame, regnum,
+        read_memory_unsigned_integer (rbx - 0x18 + 0x14, 4, BFD_ENDIAN_LITTLE));
+
+  /* Give up for now...
+     TODO: any good ideas to restore previous rbx?
+     TODO: fp, xmm, and more registers are unchanged!  */
   return frame_unwind_got_optimized (this_frame, regnum);
 }
 
