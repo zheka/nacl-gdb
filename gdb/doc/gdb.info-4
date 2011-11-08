@@ -22,8 +22,8 @@ developing GNU and promoting software freedom."
 
    This file documents the GNU debugger GDB.
 
-   This is the Ninth Edition, of `Debugging with GDB: the GNU
-Source-Level Debugger' for GDB (GDB) Version 7.3.
+   This is the Tenth Edition, of `Debugging with GDB: the GNU
+Source-Level Debugger' for GDB (GDB) Version 7.3.1.
 
    Copyright (C) 1988, 1989, 1990, 1991, 1992, 1993, 1994, 1995, 1996,
 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009,
@@ -5376,7 +5376,7 @@ and TeX (or `texi2roff') to typeset the printed version.
 
    GDB includes an already formatted copy of the on-line Info version
 of this manual in the `gdb' subdirectory.  The main Info file is
-`gdb-7.3/gdb/gdb.info', and it refers to subordinate files matching
+`gdb-7.3.1/gdb/gdb.info', and it refers to subordinate files matching
 `gdb.info*' in the same directory.  If necessary, you can print out
 these files, or read them with any editor; but they are easier to read
 using the `info' subsystem in GNU Emacs or the standalone `info'
@@ -5386,8 +5386,8 @@ program, available as part of the GNU Texinfo distribution.
 Info formatting programs, such as `texinfo-format-buffer' or `makeinfo'.
 
    If you have `makeinfo' installed, and are in the top level GDB
-source directory (`gdb-7.3', in the case of version 7.3), you can make
-the Info file by typing:
+source directory (`gdb-7.3.1', in the case of version 7.3.1), you can
+make the Info file by typing:
 
      cd gdb
      make gdb.info
@@ -5412,7 +5412,7 @@ format.  On its own, TeX cannot either read or typeset a Texinfo file.
 
    If you have TeX and a DVI printer program installed, you can typeset
 and print this manual.  First switch to the `gdb' subdirectory of the
-main source directory (for example, to `gdb-7.3/gdb') and type:
+main source directory (for example, to `gdb-7.3.1/gdb') and type:
 
      make gdb.dvi
 
@@ -5420,7 +5420,7 @@ main source directory (for example, to `gdb-7.3/gdb') and type:
 
    ---------- Footnotes ----------
 
-   (1) In `gdb-7.3/gdb/refcard.ps' of the version 7.3 release.
+   (1) In `gdb-7.3.1/gdb/refcard.ps' of the version 7.3.1 release.
 
 
 File: gdb.info,  Node: Installing GDB,  Next: Maintenance Commands,  Prev: Formatting Documentation,  Up: Top
@@ -5521,39 +5521,39 @@ preparing GDB for installation; you can then use `make' to build the
 in a single directory, whose name is usually composed by appending the
 version number to `gdb'.
 
-   For example, the GDB version 7.3 distribution is in the `gdb-7.3'
-directory.  That directory contains:
+   For example, the GDB version 7.3.1 distribution is in the
+`gdb-7.3.1' directory.  That directory contains:
 
-`gdb-7.3/configure (and supporting files)'
+`gdb-7.3.1/configure (and supporting files)'
      script for configuring GDB and all its supporting libraries
 
-`gdb-7.3/gdb'
+`gdb-7.3.1/gdb'
      the source specific to GDB itself
 
-`gdb-7.3/bfd'
+`gdb-7.3.1/bfd'
      source for the Binary File Descriptor library
 
-`gdb-7.3/include'
+`gdb-7.3.1/include'
      GNU include files
 
-`gdb-7.3/libiberty'
+`gdb-7.3.1/libiberty'
      source for the `-liberty' free software library
 
-`gdb-7.3/opcodes'
+`gdb-7.3.1/opcodes'
      source for the library of opcode tables and disassemblers
 
-`gdb-7.3/readline'
+`gdb-7.3.1/readline'
      source for the GNU command-line interface
 
-`gdb-7.3/glob'
+`gdb-7.3.1/glob'
      source for the GNU filename pattern-matching subroutine
 
-`gdb-7.3/mmalloc'
+`gdb-7.3.1/mmalloc'
      source for the GNU memory-mapped malloc package
 
    The simplest way to configure and build GDB is to run `configure'
 from the `gdb-VERSION-NUMBER' source directory, which in this example
-is the `gdb-7.3' directory.
+is the `gdb-7.3.1' directory.
 
    First switch to the `gdb-VERSION-NUMBER' source directory if you are
 not already in it; then run `configure'.  Pass the identifier for the
@@ -5561,7 +5561,7 @@ platform on which GDB will run as an argument.
 
    For example:
 
-     cd gdb-7.3
+     cd gdb-7.3.1
      ./configure HOST
      make
 
@@ -5582,8 +5582,8 @@ you may need to run `sh' on it explicitly:
      sh configure HOST
 
    If you run `configure' from a directory that contains source
-directories for multiple libraries or programs, such as the `gdb-7.3'
-source directory for version 7.3, `configure' creates configuration
+directories for multiple libraries or programs, such as the `gdb-7.3.1'
+source directory for version 7.3.1, `configure' creates configuration
 files for every directory level underneath (unless you tell it not to,
 with the `--norecursion' option).
 
@@ -5624,13 +5624,13 @@ directory.  If the path to `configure' would be the same as the
 argument to `--srcdir', you can leave out the `--srcdir' option; it is
 assumed.)
 
-   For example, with version 7.3, you can build GDB in a separate
+   For example, with version 7.3.1, you can build GDB in a separate
 directory for a Sun 4 like this:
 
-     cd gdb-7.3
+     cd gdb-7.3.1
      mkdir ../gdb-sun4
      cd ../gdb-sun4
-     ../gdb-7.3/configure sun4
+     ../gdb-7.3.1/configure sun4
      make
 
    When `configure' builds a configuration using a remote source
@@ -5641,7 +5641,7 @@ directory `gdb-sun4/libiberty', and GDB itself in `gdb-sun4/gdb'.
 
    Make sure that your path to the `configure' script has just one
 instance of `gdb' in it.  If your path to `configure' looks like
-`../gdb-7.3/gdb/configure', you are configuring only one subdirectory
+`../gdb-7.3.1/gdb/configure', you are configuring only one subdirectory
 of GDB, not the whole package.  This leads to build errors about
 missing include files such as `bfd/bfd.h'.
 
@@ -5657,9 +5657,9 @@ called `configure' (or one of its subdirectories).
 
    The `Makefile' that `configure' generates in each source directory
 also runs recursively.  If you type `make' in a source directory such
-as `gdb-7.3' (or in a separate configured directory configured with
-`--srcdir=DIRNAME/gdb-7.3'), you will build all the required libraries,
-and then build GDB.
+as `gdb-7.3.1' (or in a separate configured directory configured with
+`--srcdir=DIRNAME/gdb-7.3.1'), you will build all the required
+libraries, and then build GDB.
 
    When you have multiple hosts or targets configured in separate
 directories, you can run `make' on them in parallel (for example, if
@@ -5703,7 +5703,7 @@ you can use it to test your guesses on abbreviations--for example:
      Invalid configuration `i986v': machine `i986v' not recognized
 
 `config.sub' is also distributed in the GDB source directory
-(`gdb-7.3', for version 7.3).
+(`gdb-7.3.1', for version 7.3.1).
 
 
 File: gdb.info,  Node: Configure Options,  Next: System-wide configuration,  Prev: Config Names,  Up: Installing GDB
