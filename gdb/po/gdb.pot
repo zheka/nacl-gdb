@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2011-07-26 17:28+0000\n"
+"POT-Creation-Date: 2011-09-04 17:56+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -22848,47 +22848,47 @@ msgid ""
 "%s"
 msgstr ""
 
-#: tui/tui-regs.c:616
+#: tui/tui-regs.c:625
 msgid "\"tui reg\" must be followed by the name of a tui reg command.\n"
 msgstr ""
 
-#: tui/tui-regs.c:632
+#: tui/tui-regs.c:641
 msgid "TUI commands to control the register window."
 msgstr ""
 
-#: tui/tui-regs.c:637
+#: tui/tui-regs.c:646
 msgid "Display only floating point registers."
 msgstr ""
 
-#: tui/tui-regs.c:640
+#: tui/tui-regs.c:649
 msgid "Display only general registers."
 msgstr ""
 
-#: tui/tui-regs.c:643
+#: tui/tui-regs.c:652
 msgid "Display only system registers."
 msgstr ""
 
-#: tui/tui-regs.c:646
+#: tui/tui-regs.c:655
 msgid "Display next register group."
 msgstr ""
 
-#: tui/tui-regs.c:652
+#: tui/tui-regs.c:661
 msgid "Display only floating point registers\n"
 msgstr ""
 
-#: tui/tui-regs.c:654
+#: tui/tui-regs.c:663
 msgid "Display only general registers\n"
 msgstr ""
 
-#: tui/tui-regs.c:656
+#: tui/tui-regs.c:665
 msgid "Display only special registers\n"
 msgstr ""
 
-#: tui/tui-regs.c:658
+#: tui/tui-regs.c:667
 msgid "Scroll the registers window forward\n"
 msgstr ""
 
-#: tui/tui-regs.c:660
+#: tui/tui-regs.c:669
 msgid "Scroll the register window backward\n"
 msgstr ""
 
@@ -24345,15 +24345,15 @@ msgstr ""
 msgid "Assertion failed: Could not find varobj \"%s\" in root list"
 msgstr ""
 
-#: varobj.c:3616
+#: varobj.c:3622
 msgid "Set varobj debugging."
 msgstr ""
 
-#: varobj.c:3617
+#: varobj.c:3623
 msgid "Show varobj debugging."
 msgstr ""
 
-#: varobj.c:3618
+#: varobj.c:3624
 msgid "When non-zero, varobj debugging is enabled."
 msgstr ""
 
