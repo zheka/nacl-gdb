@@ -1498,7 +1498,7 @@ ALLDEPFILES = \
 	mips-tdep.c \
 	mipsnbsd-nat.c mipsnbsd-tdep.c \
 	mips64obsd-nat.c mips64obsd-tdep.c \
-	nacl-tdep.c solib-nacl.c \
+	nacl-tdep.c nacl-manifest.c solib-nacl.c \
 	nbsd-nat.c nbsd-tdep.c obsd-tdep.c \
 	solib-osf.c \
 	somread.c solib-som.c \
