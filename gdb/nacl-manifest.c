@@ -27,10 +27,37 @@
 #include <string.h>
 
 
-static char* nacl_filename;
+static char *nacl_program_filename;
 
 
-static char* nacl_irt_filename;
+static char *nacl_irt_filename;
+
+
+const char *
+nacl_manifest_program (void)
+{
+  return nacl_program_filename;
+}
+
+
+const char *
+nacl_manifest_irt (void)
+{
+  return nacl_irt_filename;
+}
+
+
+const char *
+nacl_manifest_find (const char *original_name)
+{
+  /* HACK: NaCl ld.so uses "/lib" library path to inform service runtime that
+           the file should be opened as solib vs. ordinary file. Split that
+           prefix here so that GDB can find these files.  */
+  if (strncmp (original_name, "/lib/", 5) == 0)
+    original_name += 5;
+
+  return original_name;
+}
 
 
 static void
@@ -38,8 +65,8 @@ nacl_file_command (char *args, int from_tty)
 {
   if (args)
     {
-      xfree (nacl_filename);
-      nacl_filename = tilde_expand (args);
+      xfree (nacl_program_filename);
+      nacl_program_filename = tilde_expand (args);
 
       solib_add (NULL, from_tty, NULL, 1);
     }
@@ -56,33 +83,6 @@ nacl_irt_command (char *args, int from_tty)
 
       solib_add (NULL, from_tty, NULL, 1);
     }
-}
-
-
-const char*
-nacl_manifest_program (void)
-{
-  return nacl_filename;
-}
-
-
-const char*
-nacl_manifest_irt (void)
-{
-  return nacl_irt_filename;
-}
-
-
-const char*
-nacl_manifest_find (const char* original_name)
-{
-  /* HACK: NaCl ld.so uses "/lib" library path to inform service runtime that
-           the file should be opened as solib vs. ordinary file. Split that
-           prefix here so that GDB can find these files.  */
-  if (strncmp(original_name, "/lib/", 5) == 0)
-    original_name += 5;
-
-  return original_name;
 }
 
 

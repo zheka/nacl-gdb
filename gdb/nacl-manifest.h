@@ -21,12 +21,12 @@
 #define NACL_MANIFEST_H
 
 /* Real filename for Native Client program.  */
-const char* nacl_manifest_program (void);
+const char *nacl_manifest_program (void);
 
 /* Real filename for Native Client IRT.  */
-const char* nacl_manifest_irt (void);
+const char *nacl_manifest_irt (void);
 
-/* Real filename for Native Client original_filename.  */
-const char* nacl_manifest_find (const char* original_name);
+/* Real filename for Native Client original_name.  */
+const char *nacl_manifest_find (const char *original_name);
 
 #endif
