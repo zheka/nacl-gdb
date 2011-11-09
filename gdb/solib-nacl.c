@@ -20,6 +20,7 @@
 #include "defs.h"
 #include "breakpoint.h"
 #include "gdbcore.h"
+#include "nacl-manifest.h"
 #include "nacl-tdep.h"
 #include "objfiles.h"
 #include "solib.h"
@@ -195,20 +196,6 @@ nacl_alloc_so (CORE_ADDR addr, const char *name)
 
   so = XZALLOC (struct so_list);
 
-  /* Actual objfiles pathnames are usually different from pathnames seen by NaCl
-     program, the mapping between them is defined by manifest file. Pathnames
-     coming here are extracted from NaCl ld.so runtime structures, while GDB
-     needs their mapped values.
-
-     TODO: implement support for manifest files. When manifest is available,
-           no nacl-file and friends are needed.  */
-
-  /* HACK: NaCl ld.so uses "/lib" library path to inform service runtime that
-           the file should be opened as solib vs. ordinary file. Split that
-           prefix here so that GDB can find these files.  */
-  if (strncmp(name, "/lib/", 5) == 0)
-    name += 5;
-
   strcpy (so->so_name, name);
   strcpy (so->so_original_name, so->so_name);
 
@@ -217,6 +204,17 @@ nacl_alloc_so (CORE_ADDR addr, const char *name)
   so->lm_info->l_addr = addr;
 
   return so;
+}
+
+
+static struct so_list *
+nacl_find_and_alloc_so (CORE_ADDR addr, const char *original_name)
+{
+  /* Actual objfiles pathnames are usually different from pathnames seen by NaCl
+     program, the mapping between them is defined by manifest file. Pathnames
+     coming here are extracted from NaCl ld.so runtime structures, while GDB
+     needs their mapped values.  */
+  return nacl_alloc_so (addr, nacl_manifest_find (original_name));
 }
 
 
@@ -252,7 +250,7 @@ nacl_append_sos (struct so_list **link_ptr, const struct ldso_interface *ldso)
           l_name = read_memory_unsigned_integer (nacl_sandbox_addr + l_name, 4, BFD_ENDIAN_LITTLE);
           target_read_string (nacl_sandbox_addr + l_name, &so_name, SO_NAME_MAX_PATH_SIZE - 1, &err);
 
-          so = nacl_alloc_so (nacl_sandbox_addr + l_addr, so_name);
+          so = nacl_find_and_alloc_so (nacl_sandbox_addr + l_addr, so_name);
         }
       else if (strcmp (so_name, "NaClMain") == 0)
         {
@@ -262,7 +260,7 @@ nacl_append_sos (struct so_list **link_ptr, const struct ldso_interface *ldso)
       else
         {
           /* Solib. */
-          so = nacl_alloc_so (nacl_sandbox_addr + l_addr, so_name);
+          so = nacl_find_and_alloc_so (nacl_sandbox_addr + l_addr, so_name);
         }
       xfree (so_name);
 

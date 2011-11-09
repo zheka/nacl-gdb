@@ -26,5 +26,11 @@
 const char*
 nacl_manifest_find (const char* original_name)
 {
-  return NULL;
+  /* HACK: NaCl ld.so uses "/lib" library path to inform service runtime that
+           the file should be opened as solib vs. ordinary file. Split that
+           prefix here so that GDB can find these files.  */
+  if (strncmp(original_name, "/lib/", 5) == 0)
+    original_name += 5;
+
+  return original_name;
 }
