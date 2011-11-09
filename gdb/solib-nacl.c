@@ -27,9 +27,6 @@
 #include "solib-svr4.h"
 #include "solist.h"
 
-#include "command.h"
-#include "readline/readline.h"
-
 
 /* Link map info to include in an allocated so_list entry.
    ATTENTION: copy-paste from solib-svr4.c!  */
@@ -53,44 +50,9 @@ struct lm_info
   };
 
 
-/* Native Client executable file name.
-   Intentional memory leak, freed at exit.  */
-
-static char* nacl_filename;
-static char* nacl_irt_filename;
-
-
 /* Start address of Native Client sandbox.  */
 
 CORE_ADDR nacl_sandbox_addr;
-
-
-static void
-nacl_file_command (char *args, int from_tty)
-{
-  if (args)
-    {
-      xfree (nacl_filename);
-      nacl_filename = tilde_expand (args);
-
-      /* Now reload shared libraries, including Native Client stuff.  */
-      solib_add (NULL, 0, NULL, 1);
-    }
-}
-
-
-static void
-nacl_irt_command (char *args, int from_tty)
-{
-  if (args)
-    {
-      xfree (nacl_irt_filename);
-      nacl_irt_filename = tilde_expand (args);
-
-      /* Now reload shared libraries, including Native Client stuff.  */
-      solib_add (NULL, 0, NULL, 1);
-    }
-}
 
 
 static CORE_ADDR
@@ -133,7 +95,7 @@ nacl_discover_ldso_interface (struct ldso_interface *ldso)
 {
   bfd* abfd;
 
-  gdb_assert (nacl_filename);
+  gdb_assert (nacl_manifest_program ());
 
   memset (ldso, 0, sizeof (*ldso));
 
@@ -143,7 +105,7 @@ nacl_discover_ldso_interface (struct ldso_interface *ldso)
   /* Slow and crappy: open native client executable's bfd and walk its dynamic
      symbol table.  */
 
-  abfd = solib_bfd_open (nacl_filename);
+  abfd = solib_bfd_open ((char *) nacl_manifest_program ());
   if (abfd)
     {
       long storage_needed;
@@ -255,7 +217,7 @@ nacl_append_sos (struct so_list **link_ptr, const struct ldso_interface *ldso)
       else if (strcmp (so_name, "NaClMain") == 0)
         {
           /* Native client ld.so. */
-          so = nacl_alloc_so (nacl_sandbox_addr + l_addr, nacl_filename);
+          so = nacl_alloc_so (nacl_sandbox_addr + l_addr, nacl_manifest_program ());
         }
       else
         {
@@ -279,7 +241,7 @@ nacl_current_sos (void)
   /* First, retrieve the SVR4 shared library list.  */
   head = svr4_so_ops.current_sos ();
 
-  if (nacl_filename)
+  if (nacl_manifest_program ())
     {
       CORE_ADDR prev_sandbox_addr = nacl_sandbox_addr;
 
@@ -292,9 +254,9 @@ nacl_current_sos (void)
             ;
 
           /* Append IRT.  */
-          if (nacl_irt_filename)
+          if (nacl_manifest_irt ())
             {
-              *link_ptr = nacl_alloc_so (nacl_sandbox_addr, nacl_irt_filename);
+              *link_ptr = nacl_alloc_so (nacl_sandbox_addr, nacl_manifest_irt ());
               link_ptr = &(*link_ptr)->next;
             }
 
@@ -313,7 +275,7 @@ nacl_current_sos (void)
           else
             {
               /* Static case - just add the main executable.  */
-              *link_ptr = nacl_alloc_so (nacl_sandbox_addr, nacl_filename);
+              *link_ptr = nacl_alloc_so (nacl_sandbox_addr, nacl_manifest_program ());
             }
         }
     }
@@ -386,14 +348,4 @@ set_nacl_solib_ops (struct gdbarch *gdbarch)
     }
 
   set_solib_ops (gdbarch, &nacl_so_ops);
-}
-
-
-void
-_initialize_nacl_solib (void)
-{
-  add_com ("nacl-file", class_files, nacl_file_command,
-	   _("Use FILE as Native Client program to be debugged."));
-  add_com ("nacl-irt", class_files, nacl_irt_command,
-	   _("Use FILE as Native Client IRT to be debugged."));
 }

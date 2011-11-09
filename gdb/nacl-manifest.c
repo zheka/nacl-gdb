@@ -19,8 +19,58 @@
 
 #include "defs.h"
 #include "nacl-manifest.h"
+#include "solib.h"
+
+#include "command.h"
+#include "readline/readline.h"
 
 #include <string.h>
+
+
+static char* nacl_filename;
+
+
+static char* nacl_irt_filename;
+
+
+static void
+nacl_file_command (char *args, int from_tty)
+{
+  if (args)
+    {
+      xfree (nacl_filename);
+      nacl_filename = tilde_expand (args);
+
+      solib_add (NULL, from_tty, NULL, 1);
+    }
+}
+
+
+static void
+nacl_irt_command (char *args, int from_tty)
+{
+  if (args)
+    {
+      xfree (nacl_irt_filename);
+      nacl_irt_filename = tilde_expand (args);
+
+      solib_add (NULL, from_tty, NULL, 1);
+    }
+}
+
+
+const char*
+nacl_manifest_program (void)
+{
+  return nacl_filename;
+}
+
+
+const char*
+nacl_manifest_irt (void)
+{
+  return nacl_irt_filename;
+}
 
 
 const char*
@@ -33,4 +83,14 @@ nacl_manifest_find (const char* original_name)
     original_name += 5;
 
   return original_name;
+}
+
+
+void
+_initialize_nacl_manifest (void)
+{
+  add_com ("nacl-file", class_files, nacl_file_command,
+	   _("Use FILE as Native Client program to be debugged."));
+  add_com ("nacl-irt", class_files, nacl_irt_command,
+	   _("Use FILE as Native Client IRT to be debugged."));
 }
