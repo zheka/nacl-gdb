@@ -24,6 +24,7 @@
 #include "command.h"
 #include "readline/readline.h"
 
+#include <stdio.h>
 #include <string.h>
 
 
@@ -86,6 +87,32 @@ nacl_irt_command (char *args, int from_tty)
 }
 
 
+static void
+nacl_manifest_command (char *args, int from_tty)
+{
+  if (args)
+    {
+      char* manifest_filename;
+      FILE* manifest_file;
+
+      manifest_filename = tilde_expand (args);
+      make_cleanup (xfree, manifest_filename);
+
+      manifest_file = fopen (manifest_filename, "r");
+      if (!manifest_file)
+        perror_with_name (manifest_filename);
+      make_cleanup_fclose (manifest_file);
+
+      /* TODO: do something useful with the manifest file...  */
+      error (_("Manifest files not implemented."));
+
+      solib_add (NULL, from_tty, NULL, 1);
+
+      /* Caller will cleanup for us... hopefully.  */
+    }
+}
+
+
 void
 _initialize_nacl_manifest (void)
 {
@@ -93,4 +120,6 @@ _initialize_nacl_manifest (void)
 	   _("Use FILE as Native Client program to be debugged."));
   add_com ("nacl-irt", class_files, nacl_irt_command,
 	   _("Use FILE as Native Client IRT to be debugged."));
+  add_com ("nacl-manifest", class_files, nacl_manifest_command,
+	   _("Use FILE as Native Client manifest for the program to be debugged."));
 }
