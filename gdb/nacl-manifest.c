@@ -27,6 +27,10 @@
 #include <stdio.h>
 #include <string.h>
 
+#define MANIFEST_MAX_NESTING 4
+
+#define MANIFEST_MAX_STRING_SIZE 256
+
 
 static char *nacl_program_filename;
 
@@ -69,27 +73,50 @@ nacl_manifest_find (const char *original_name)
 struct json_manifest_reader
   {
     FILE* file;
+
+    /* Stack of members being parsed.  */
+    const char *members[MANIFEST_MAX_NESTING];
+
+    /* Members stack size.  */
+    int nesting;
   };
 
 
 static void
 json_on_member (struct json_manifest_reader *r, const char *member)
 {
-  printf_unfiltered (_("-> member: '%s' {\n"), member);
+  if (r->nesting == MANIFEST_MAX_NESTING)
+    error (_("Invalid manifest file."));
+
+  r->members[r->nesting] = member;
+  ++r->nesting;
 }
 
 
 static void
 json_on_end_member (struct json_manifest_reader *r, const char *member)
 {
-  printf_unfiltered (_("-> }  // member: '%s'\n"), member);
+  --r->nesting;
 }
 
 
 static void
 json_on_string_value (struct json_manifest_reader *r, const char *value)
 {
-  printf_unfiltered (_("-> string: '%s'\n"), value);
+  if (r->nesting == 3 &&
+      strcmp (r->members[0], "program") == 0 &&
+      strcmp (r->members[1], "x86-64") == 0 &&
+      strcmp (r->members[2], "url") == 0)
+    {
+      printf_unfiltered (_("-> program: '%s'\n"), value);
+    }
+  else if (r->nesting == 4 &&
+           strcmp (r->members[0], "files") == 0 &&
+           strcmp (r->members[2], "x86-64") == 0 &&
+           strcmp (r->members[3], "url") == 0)
+    {
+      printf_unfiltered (_("-> '%s': '%s'\n"), r->members[1], value);
+    }
 }
 
 
@@ -155,14 +182,14 @@ static void
 json_finish_parse_object (struct json_manifest_reader *r)
 {
   int c;
-  char buf[512];
+  char buf[MANIFEST_MAX_STRING_SIZE];
 
   do
     {
       if (json_getc_nonspace (r) != '\"')
         error (_("Invalid manifest file."));
 
-      json_finish_parse_string (r, buf, sizeof (buf));
+      json_finish_parse_string (r, buf, MANIFEST_MAX_STRING_SIZE);
       json_on_member (r, buf);
 
       if (json_getc_nonspace (r) != ':')
@@ -191,9 +218,9 @@ json_parse_value (struct json_manifest_reader *r)
     }
   else if (c == '\"')
     {
-      char buf[512];
+      char buf[MANIFEST_MAX_STRING_SIZE];
 
-      json_finish_parse_string (r, buf, sizeof (buf));
+      json_finish_parse_string (r, buf, MANIFEST_MAX_STRING_SIZE);
       json_on_string_value (r, buf);
     }
   else
@@ -238,7 +265,7 @@ nacl_manifest_command (char *args, int from_tty)
   if (args)
     {
       char* manifest_filename;
-      struct json_manifest_reader r;
+      struct json_manifest_reader r = { 0 };
 
       manifest_filename = tilde_expand (args);
       make_cleanup (xfree, manifest_filename);
