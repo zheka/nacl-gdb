@@ -32,6 +32,19 @@
 #define MANIFEST_MAX_STRING_SIZE 256
 
 
+struct file_list
+  {
+    struct file_list *next;
+
+    char original_name[MANIFEST_MAX_STRING_SIZE];
+
+    char name[MANIFEST_MAX_STRING_SIZE];
+  };
+
+
+static struct file_list *nacl_file_list;
+
+
 static char *nacl_program_filename;
 
 
@@ -55,13 +68,40 @@ nacl_manifest_irt (void)
 const char *
 nacl_manifest_find (const char *original_name)
 {
-  /* HACK: NaCl ld.so uses "/lib" library path to inform service runtime that
-           the file should be opened as solib vs. ordinary file. Split that
-           prefix here so that GDB can find these files.  */
+  struct file_list *curr;
+
+  /* HACK: NaCl uses "/lib/" library path to inform service runtime that the
+           file should be opened as solib vs. ordinary file. Split that prefix
+           here so that GDB can find these files via manifest or as is.  */
   if (strncmp (original_name, "/lib/", 5) == 0)
     original_name += 5;
 
+  for (curr = nacl_file_list; curr; curr = curr->next)
+    {
+      if (strcmp (original_name, curr->original_name) == 0)
+        return curr->name;
+    }
+
+  /* TODO: Should we complain if we have a manifest but failed to find
+     /lib/filename there? */
+
   return original_name;
+}
+
+
+static void
+nacl_manifest_free (void)
+{
+  while (nacl_file_list)
+    {
+      struct file_list *next = nacl_file_list->next;
+
+      xfree (nacl_file_list);
+      nacl_file_list = next;
+    }
+
+  xfree (nacl_program_filename);
+  nacl_program_filename = NULL;
 }
 
 
@@ -72,6 +112,7 @@ nacl_manifest_find (const char *original_name)
 
 struct json_manifest_reader
   {
+    /* Manifest file.  */
     FILE* file;
 
     /* Stack of members being parsed.  */
@@ -79,6 +120,12 @@ struct json_manifest_reader
 
     /* Members stack size.  */
     int nesting;
+
+    /* Manifest file dirname, with slash at the end if non-empty. */
+    char* dirname;
+
+    /* Where to append new file_list.  */
+    struct file_list **link_ptr;
   };
 
 
@@ -100,6 +147,30 @@ json_on_end_member (struct json_manifest_reader *r, const char *member)
 }
 
 
+static struct file_list *
+json_append_file_list (struct json_manifest_reader *r,
+                       const char *original_name,
+                       const char *name)
+{
+  struct file_list *curr = XZALLOC (struct file_list);
+
+  strcpy (curr->original_name, original_name);
+
+  /* TODO: Check if the result fits!  */
+  if (r->dirname)
+    {
+      strcpy (curr->name, r->dirname);
+      strcat (curr->name, SLASH_STRING);
+    }
+  strcat (curr->name, name);
+
+  *r->link_ptr = curr;
+  r->link_ptr = &curr->next;
+
+  return curr;
+}
+
+
 static void
 json_on_string_value (struct json_manifest_reader *r, const char *value)
 {
@@ -108,14 +179,22 @@ json_on_string_value (struct json_manifest_reader *r, const char *value)
       strcmp (r->members[1], "x86-64") == 0 &&
       strcmp (r->members[2], "url") == 0)
     {
-      printf_unfiltered (_("-> program: '%s'\n"), value);
+      /* HACK: NaCl ld.so refers to itself in the link_map.
+               It used to always name itself NaClMain, we support this by
+               substituting nacl_manifest_program () in solib-nacl.c.
+               New style is to name itself with its own basename, we support
+               this by adding a fake file_list entry.  */
+      struct file_list *p = json_append_file_list (r, lbasename (value), value);
+
+      /* We'll xfree nacl_program_filename.  */
+      nacl_program_filename = xstrdup (p->name);
     }
   else if (r->nesting == 4 &&
            strcmp (r->members[0], "files") == 0 &&
            strcmp (r->members[2], "x86-64") == 0 &&
            strcmp (r->members[3], "url") == 0)
     {
-      printf_unfiltered (_("-> '%s': '%s'\n"), r->members[1], value);
+      json_append_file_list (r, r->members[1], value);
     }
 }
 
@@ -238,7 +317,7 @@ nacl_file_command (char *args, int from_tty)
 {
   if (args)
     {
-      xfree (nacl_program_filename);
+      nacl_manifest_free ();
       nacl_program_filename = tilde_expand (args);
 
       solib_add (NULL, from_tty, NULL, 1);
@@ -275,6 +354,13 @@ nacl_manifest_command (char *args, int from_tty)
         perror_with_name (manifest_filename);
       make_cleanup_fclose (r.file);
 
+      r.dirname = ldirname (manifest_filename);
+      make_cleanup (xfree, r.dirname);
+
+      r.link_ptr = &nacl_file_list;
+
+      /* TODO: Kill existing manifest only if new one parsed OK!  */
+      nacl_manifest_free ();
       json_parse_value (&r);
 
       solib_add (NULL, from_tty, NULL, 1);
