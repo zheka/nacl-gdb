@@ -61,6 +61,151 @@ nacl_manifest_find (const char *original_name)
 }
 
 
+/* Very dumb parser for JSON subset used in Native Client manifest files.
+
+   This is a SAX-style parser that runs callbacks on JSON events.  */
+
+
+struct json_manifest_reader
+  {
+    FILE* file;
+  };
+
+
+static void
+json_on_member (struct json_manifest_reader *r, const char *member)
+{
+  printf_unfiltered (_("-> member: '%s' {\n"), member);
+}
+
+
+static void
+json_on_end_member (struct json_manifest_reader *r, const char *member)
+{
+  printf_unfiltered (_("-> }  // member: '%s'\n"), member);
+}
+
+
+static void
+json_on_string_value (struct json_manifest_reader *r, const char *value)
+{
+  printf_unfiltered (_("-> string: '%s'\n"), value);
+}
+
+
+/* Basic parsing utilities.  */
+
+
+static int
+json_getc (struct json_manifest_reader *r)
+{
+  return fgetc (r->file);
+}
+
+
+static int
+json_getc_nonspace (struct json_manifest_reader *r)
+{
+  int c;
+
+  while (isspace (c = json_getc (r)));
+  return c;
+}
+
+
+/* Parsing routines.
+
+   json_parse_something assumes we are just going to read first character of
+   something, probably skipping preceeding whitespaces.
+
+   json_finish_parse_something assumes we already read first character of
+   something, and checked it was correct.  */
+
+
+static void json_parse_value (struct json_manifest_reader *r);
+
+
+static void
+json_finish_parse_string (struct json_manifest_reader *r, char *buf, int len)
+{
+  int c;
+
+  for (; len; --len)
+    {
+      c = json_getc (r);
+      if (c == '"')
+        {
+          *buf = '\0';
+          return;
+        }
+
+      if (c == '\n' || c == EOF)
+        break;
+
+      *buf++ = (char)c;
+    }
+
+  error (_("Invalid manifest file."));
+}
+
+
+/* We only accept non-empty objects.  */
+
+static void
+json_finish_parse_object (struct json_manifest_reader *r)
+{
+  int c;
+  char buf[512];
+
+  do
+    {
+      if (json_getc_nonspace (r) != '\"')
+        error (_("Invalid manifest file."));
+
+      json_finish_parse_string (r, buf, sizeof (buf));
+      json_on_member (r, buf);
+
+      if (json_getc_nonspace (r) != ':')
+        error (_("Invalid manifest file."));
+
+      json_parse_value (r);
+      json_on_end_member (r, buf);
+    }
+  while ((c = json_getc_nonspace (r)) == ',');
+
+  if (c != '}')
+    error (_("Invalid manifest file."));
+}
+
+
+/* We only accept objects or strings.  */
+
+static void
+json_parse_value (struct json_manifest_reader *r)
+{
+  int c = json_getc_nonspace (r);
+
+  if (c == '{')
+    {
+      json_finish_parse_object (r);
+    }
+  else if (c == '\"')
+    {
+      char buf[512];
+
+      json_finish_parse_string (r, buf, sizeof (buf));
+      json_on_string_value (r, buf);
+    }
+  else
+    {
+      error (_("Invalid manifest file."));
+    }
+}
+
+
+/* GDB commands for specifying Native Client files.  */
+
+
 static void
 nacl_file_command (char *args, int from_tty)
 {
@@ -93,18 +238,17 @@ nacl_manifest_command (char *args, int from_tty)
   if (args)
     {
       char* manifest_filename;
-      FILE* manifest_file;
+      struct json_manifest_reader r;
 
       manifest_filename = tilde_expand (args);
       make_cleanup (xfree, manifest_filename);
 
-      manifest_file = fopen (manifest_filename, "r");
-      if (!manifest_file)
+      r.file = fopen (manifest_filename, "r");
+      if (!r.file)
         perror_with_name (manifest_filename);
-      make_cleanup_fclose (manifest_file);
+      make_cleanup_fclose (r.file);
 
-      /* TODO: do something useful with the manifest file...  */
-      error (_("Manifest files not implemented."));
+      json_parse_value (&r);
 
       solib_add (NULL, from_tty, NULL, 1);
 
