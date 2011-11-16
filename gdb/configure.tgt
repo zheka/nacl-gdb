@@ -596,7 +596,7 @@ x86_64-*-linux*)
 	gdb_target_obs="amd64-tdep.o amd64-linux-tdep.o i386-tdep.o \
 			i387-tdep.o i386-linux-tdep.o glibc-tdep.o \
 			solib.o solib-svr4.o corelow.o symfile-mem.o linux-tdep.o \
-			linux-record.o nacl-tdep.o nacl-manifest.o solib-nacl.o"
+			linux-record.o nacl-tdep.o nacl-manifest.o solib-nacl.o nacl-multiarch.o"
 	build_gdbserver=yes
 	;;
 x86_64-*-freebsd* | x86_64-*-kfreebsd*-gnu)
