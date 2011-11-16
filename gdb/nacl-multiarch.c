@@ -19,6 +19,8 @@
 
 #include "defs.h"
 #include "inferior.h"
+#include "observer.h"
+#include "regcache.h"
 
 
 static struct target_ops nacl_ops;
@@ -32,6 +34,9 @@ nacl_mourn_inferior (struct target_ops *ops)
     ops_beneath = find_target_beneath (ops_beneath);
   gdb_assert (ops_beneath);
   ops_beneath->to_mourn_inferior (ops_beneath);
+
+  unpush_target (&nacl_ops);
+  registers_changed ();
 }
 
 
@@ -98,11 +103,18 @@ nacl_region_ok_for_hw_watchpoint (CORE_ADDR addr, int len)
 static struct gdbarch *
 nacl_thread_architecture (struct target_ops *ops, ptid_t ptid)
 {
-  struct target_ops *ops_beneath = find_target_beneath (ops);
-  while (ops_beneath && !ops_beneath->to_thread_architecture)
-    ops_beneath = find_target_beneath (ops_beneath);
-  gdb_assert (ops_beneath);
-  return ops_beneath->to_thread_architecture (ops_beneath, ptid);
+  printf_unfiltered (_("-> nacl_thread_architecture (LWP %ld)\n"), ptid_get_lwp (ptid));
+
+  printf_unfiltered (_("->   osabi:'%s'\n"), gdbarch_osabi_name (gdbarch_osabi (target_gdbarch)));
+  return target_gdbarch;
+}
+
+
+static void
+nacl_multiarch_inferior_created (struct target_ops *ops, int from_tty)
+{
+  push_target (&nacl_ops);
+  registers_changed ();
 }
 
 
@@ -129,4 +141,6 @@ _initialize_nacl_multiarch (void)
 {
   init_nacl_ops ();
   add_target (&nacl_ops);
+
+  observer_attach_inferior_created (nacl_multiarch_inferior_created);
 }
