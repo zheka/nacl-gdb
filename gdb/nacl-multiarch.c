@@ -18,9 +18,12 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #include "defs.h"
+#include "arch-utils.h"
 #include "inferior.h"
 #include "observer.h"
 #include "regcache.h"
+
+#include "solib-nacl.h"
 
 
 static struct target_ops nacl_ops;
@@ -103,9 +106,32 @@ nacl_region_ok_for_hw_watchpoint (CORE_ADDR addr, int len)
 static struct gdbarch *
 nacl_thread_architecture (struct target_ops *ops, ptid_t ptid)
 {
-  printf_unfiltered (_("-> nacl_thread_architecture (LWP %ld)\n"), ptid_get_lwp (ptid));
+  if (nacl_sandbox_addr)
+    {
+      struct regcache *regcache;
+      CORE_ADDR pc;
 
-  printf_unfiltered (_("->   osabi:'%s'\n"), gdbarch_osabi_name (gdbarch_osabi (target_gdbarch)));
+      /* Get runtime-side pc.  */
+      regcache = get_thread_arch_regcache (ptid, target_gdbarch);
+      pc = regcache_read_pc (regcache);
+
+      /* TODO: fix this hacky check that only works for 4gb x86_64 sandbox!  */
+      if (pc >= nacl_sandbox_addr && pc < nacl_sandbox_addr + 4UL * 1024UL * 1024UL * 1024UL)
+        {
+          struct gdbarch_info info;
+          struct gdbarch *gdbarch;
+
+          /* NaCl and runtime architectures differ by OS ABI only.  */
+          gdbarch_info_init (&info);
+          info.bfd_arch_info = gdbarch_bfd_arch_info (target_gdbarch);
+          info.osabi = GDB_OSABI_NACL;
+
+          gdbarch = gdbarch_find_by_info (info);
+          if (gdbarch)
+            return gdbarch;
+        }
+    }
+
   return target_gdbarch;
 }
 
