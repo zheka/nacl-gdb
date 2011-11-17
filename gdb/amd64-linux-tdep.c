@@ -1539,17 +1539,13 @@ amd64_linux_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
 }
 
 static CORE_ADDR
-nacl_pointer_to_address (struct gdbarch *gdbarch,
-                         struct type *type,
-                         const gdb_byte *buf)
+amd64_nacl_pointer_to_address (struct gdbarch *gdbarch,
+                               struct type *type,
+                               const gdb_byte *buf)
 {
   CORE_ADDR addr = unsigned_pointer_to_address (gdbarch, type, buf);
 
-  /* Do not change NULL pointers!  */
-  if (addr)
-    addr = nacl_sandbox_addr + (unsigned) addr;
-
-  return addr;
+  return nacl_address_to_address (addr);
 }
 
 static void
@@ -1557,7 +1553,7 @@ amd64_nacl_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
 {
   amd64_linux_init_abi (info, gdbarch);
 
-  set_gdbarch_pointer_to_address (gdbarch, nacl_pointer_to_address);
+  set_gdbarch_pointer_to_address (gdbarch, amd64_nacl_pointer_to_address);
 }
 
 static enum gdb_osabi

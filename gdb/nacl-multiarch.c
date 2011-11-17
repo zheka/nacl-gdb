@@ -106,30 +106,27 @@ nacl_region_ok_for_hw_watchpoint (CORE_ADDR addr, int len)
 static struct gdbarch *
 nacl_thread_architecture (struct target_ops *ops, ptid_t ptid)
 {
-  if (nacl_sandbox_addr)
+  struct regcache *regcache;
+  CORE_ADDR pc;
+
+  /* Get runtime-side pc.  */
+  regcache = get_thread_arch_regcache (ptid, target_gdbarch);
+  pc = regcache_read_pc (regcache);
+
+  /* TODO: fix this hacky check that only works for 4gb x86_64 sandbox!  */
+  if (nacl_sandbox_address_p (pc))
     {
-      struct regcache *regcache;
-      CORE_ADDR pc;
+      struct gdbarch_info info;
+      struct gdbarch *gdbarch;
 
-      /* Get runtime-side pc.  */
-      regcache = get_thread_arch_regcache (ptid, target_gdbarch);
-      pc = regcache_read_pc (regcache);
+      /* NaCl and runtime architectures differ by OS ABI only.  */
+      gdbarch_info_init (&info);
+      info.bfd_arch_info = gdbarch_bfd_arch_info (target_gdbarch);
+      info.osabi = GDB_OSABI_NACL;
 
-      /* TODO: fix this hacky check that only works for 4gb x86_64 sandbox!  */
-      if (pc >= nacl_sandbox_addr && pc < nacl_sandbox_addr + 4UL * 1024UL * 1024UL * 1024UL)
-        {
-          struct gdbarch_info info;
-          struct gdbarch *gdbarch;
-
-          /* NaCl and runtime architectures differ by OS ABI only.  */
-          gdbarch_info_init (&info);
-          info.bfd_arch_info = gdbarch_bfd_arch_info (target_gdbarch);
-          info.osabi = GDB_OSABI_NACL;
-
-          gdbarch = gdbarch_find_by_info (info);
-          if (gdbarch)
-            return gdbarch;
-        }
+      gdbarch = gdbarch_find_by_info (info);
+      if (gdbarch)
+        return gdbarch;
     }
 
   return target_gdbarch;

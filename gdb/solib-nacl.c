@@ -52,28 +52,50 @@ struct lm_info
 
 /* Start address of Native Client sandbox.  */
 
-CORE_ADDR nacl_sandbox_addr;
+static CORE_ADDR nacl_sandbox_base;
 
 
 static CORE_ADDR
-nacl_update_sandbox_addr (void)
+nacl_update_sandbox_base (void)
 {
   struct minimal_symbol *addr_sym;
 
   addr_sym = lookup_minimal_symbol ("nacl_global_xlate_base", NULL, NULL);
   if (addr_sym)
     {
-      nacl_sandbox_addr
+      nacl_sandbox_base
         = read_memory_unsigned_integer (SYMBOL_VALUE_ADDRESS (addr_sym),
                                         8,
                                         BFD_ENDIAN_LITTLE);
     }
   else
     {
-      nacl_sandbox_addr = 0;
+      nacl_sandbox_base = 0;
     }
 
-  return nacl_sandbox_addr;
+  return nacl_sandbox_base;
+}
+
+
+int
+nacl_sandbox_address_p (CORE_ADDR addr)
+{
+  if (nacl_sandbox_base &&
+      addr >= nacl_sandbox_base &&
+      addr < nacl_sandbox_base + 4ULL * 1024ULL * 1024ULL * 1024ULL)
+    return 1;
+
+  return 0;
+}
+
+
+CORE_ADDR
+nacl_address_to_address (CORE_ADDR addr)
+{
+  if (addr)
+    addr = nacl_sandbox_base + (unsigned) addr;
+
+  return addr;
 }
 
 
@@ -186,9 +208,9 @@ nacl_append_sos (struct so_list **link_ptr, const struct ldso_interface *ldso)
   CORE_ADDR lm_addr;
 
   /* for (lm_addr = _r_debug.r_map; lm_addr; lm_addr = lm_addr->l_next)  */
-  for (lm_addr = read_memory_unsigned_integer (nacl_sandbox_addr + ldso->debug_struct_addr + 4, 4, BFD_ENDIAN_LITTLE);
+  for (lm_addr = read_memory_unsigned_integer (nacl_sandbox_base + ldso->debug_struct_addr + 4, 4, BFD_ENDIAN_LITTLE);
        lm_addr;
-       lm_addr = read_memory_unsigned_integer (nacl_sandbox_addr + lm_addr + 16, 4, BFD_ENDIAN_LITTLE))
+       lm_addr = read_memory_unsigned_integer (nacl_sandbox_base + lm_addr + 16, 4, BFD_ENDIAN_LITTLE))
     {
       CORE_ADDR l_addr;
       CORE_ADDR l_name;
@@ -197,32 +219,32 @@ nacl_append_sos (struct so_list **link_ptr, const struct ldso_interface *ldso)
       struct so_list *so;
 
       /* link_map::l_addr.  */
-      l_addr = read_memory_unsigned_integer (nacl_sandbox_addr + lm_addr, 4, BFD_ENDIAN_LITTLE);
+      l_addr = read_memory_unsigned_integer (nacl_sandbox_base + lm_addr, 4, BFD_ENDIAN_LITTLE);
 
       /* link_map::l_name. */
-      l_name = read_memory_unsigned_integer (nacl_sandbox_addr + lm_addr + 8, 4, BFD_ENDIAN_LITTLE);
-      target_read_string (nacl_sandbox_addr + l_name, &so_name, SO_NAME_MAX_PATH_SIZE - 1, &err);
+      l_name = read_memory_unsigned_integer (nacl_sandbox_base + lm_addr + 8, 4, BFD_ENDIAN_LITTLE);
+      target_read_string (nacl_sandbox_base + l_name, &so_name, SO_NAME_MAX_PATH_SIZE - 1, &err);
 
       if (strcmp (so_name, "") == 0)
         {
           /* Native client dynamic executable. */
           xfree (so_name);
 
-          l_name = read_memory_unsigned_integer (nacl_sandbox_addr + ldso->argv_addr, 4, BFD_ENDIAN_LITTLE);
-          l_name = read_memory_unsigned_integer (nacl_sandbox_addr + l_name, 4, BFD_ENDIAN_LITTLE);
-          target_read_string (nacl_sandbox_addr + l_name, &so_name, SO_NAME_MAX_PATH_SIZE - 1, &err);
+          l_name = read_memory_unsigned_integer (nacl_sandbox_base + ldso->argv_addr, 4, BFD_ENDIAN_LITTLE);
+          l_name = read_memory_unsigned_integer (nacl_sandbox_base + l_name, 4, BFD_ENDIAN_LITTLE);
+          target_read_string (nacl_sandbox_base + l_name, &so_name, SO_NAME_MAX_PATH_SIZE - 1, &err);
 
-          so = nacl_find_and_alloc_so (nacl_sandbox_addr + l_addr, so_name);
+          so = nacl_find_and_alloc_so (nacl_sandbox_base + l_addr, so_name);
         }
       else if (strcmp (so_name, "NaClMain") == 0)
         {
           /* Native client ld.so. */
-          so = nacl_alloc_so (nacl_sandbox_addr + l_addr, nacl_manifest_program ());
+          so = nacl_alloc_so (nacl_sandbox_base + l_addr, nacl_manifest_program ());
         }
       else
         {
           /* Solib. */
-          so = nacl_find_and_alloc_so (nacl_sandbox_addr + l_addr, so_name);
+          so = nacl_find_and_alloc_so (nacl_sandbox_base + l_addr, so_name);
         }
       xfree (so_name);
 
@@ -243,9 +265,9 @@ nacl_current_sos (void)
 
   if (nacl_manifest_program ())
     {
-      CORE_ADDR prev_sandbox_addr = nacl_sandbox_addr;
+      CORE_ADDR prev_sandbox_base = nacl_sandbox_base;
 
-      if (nacl_update_sandbox_addr ())
+      if (nacl_update_sandbox_base ())
         {
           struct ldso_interface ldso;
 
@@ -256,7 +278,7 @@ nacl_current_sos (void)
           /* Append IRT.  */
           if (nacl_manifest_irt ())
             {
-              *link_ptr = nacl_alloc_so (nacl_sandbox_addr, nacl_manifest_irt ());
+              *link_ptr = nacl_alloc_so (nacl_sandbox_base, nacl_manifest_irt ());
               link_ptr = &(*link_ptr)->next;
             }
 
@@ -265,17 +287,17 @@ nacl_current_sos (void)
               /* Dynamic case - walk ld.so solib list.  */
               nacl_append_sos (link_ptr, &ldso);
 
-              if (!prev_sandbox_addr)
+              if (!prev_sandbox_base)
                 {
                   /* This is the first time we are here with loaded NaCl.
                      Set NaCl solib event breakpoint here.  */
-                  create_solib_event_breakpoint (target_gdbarch, nacl_sandbox_addr + ldso.solib_event_addr);
+                  create_solib_event_breakpoint (target_gdbarch, nacl_sandbox_base + ldso.solib_event_addr);
                 }
             }
           else
             {
               /* Static case - just add the main executable.  */
-              *link_ptr = nacl_alloc_so (nacl_sandbox_addr, nacl_manifest_program ());
+              *link_ptr = nacl_alloc_so (nacl_sandbox_base, nacl_manifest_program ());
             }
         }
     }
@@ -323,7 +345,7 @@ nacl_lookup_lib_symbol (const struct objfile *objfile,
 static void
 nacl_solib_create_inferior_hook (int from_tty)
 {
-  nacl_sandbox_addr = 0;
+  nacl_sandbox_base = 0;
 
   /* Call SVR4 hook -- this will re-insert the SVR4 solib breakpoints.  */
   svr4_so_ops.solib_create_inferior_hook (from_tty);
