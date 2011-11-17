@@ -636,6 +636,14 @@ call_function_by_hand (struct value *function, int nargs, struct value **args)
 
 	real_pc = funaddr;
 	dummy_addr = entry_point_address ();
+	/* HACK! clear win for the most ugly hack ever!
+	   Because of return address sandboxing, NaCl function can only return
+	   into NaCl, while entry_point_address gives runtime entry point.
+	   We probably want NaCl entry point here (BTW, which one - from
+	   executable or from IRT?), but being too laze we just use a preceeding
+	   bundle and hope for the best...  */
+	if (gdbarch_osabi (gdbarch) == GDB_OSABI_NACL)
+	  dummy_addr = funaddr - 32;
 	/* A call dummy always consists of just a single breakpoint, so
 	   its address is the same as the address of the dummy.  */
 	bp_addr = dummy_addr;
