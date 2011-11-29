@@ -41,7 +41,7 @@ static const char *const jit_descriptor_name = "__jit_debug_descriptor";
 static const struct inferior_data *jit_inferior_data = NULL;
 
 static void
-jit_inferior_init (struct gdbarch *gdbarch);
+jit_inferior_init (void);
 
 /* Non-zero if we want to see trace of jit level stuff.  */
 
@@ -135,6 +135,7 @@ bfd_open_from_target_memory (CORE_ADDR addr, ULONGEST size, char *target)
 
 struct jit_inferior_data
 {
+  struct gdbarch *gdbarch;
   CORE_ADDR breakpoint_addr;  /* &__jit_debug_register_code()  */
   CORE_ADDR descriptor_addr;  /* &__jit_debug_descriptor  */
 };
@@ -339,8 +340,7 @@ jit_find_objf_with_entry_addr (CORE_ADDR entry_addr)
    Return 0 on success.  */
 
 static int
-jit_breakpoint_re_set_internal (struct gdbarch *gdbarch,
-				struct jit_inferior_data *inf_data)
+jit_breakpoint_re_set_internal (struct jit_inferior_data *inf_data)
 {
   if (inf_data->breakpoint_addr == 0)
     {
@@ -358,7 +358,7 @@ jit_breakpoint_re_set_internal (struct gdbarch *gdbarch,
       /* If we have not read the jit descriptor yet (e.g. because the JITer
 	 itself is in a shared library which just got loaded), do so now.  */
       if (inf_data->descriptor_addr == 0)
-	jit_inferior_init (gdbarch);
+	jit_inferior_init ();
     }
   else
     return 0;
@@ -367,10 +367,10 @@ jit_breakpoint_re_set_internal (struct gdbarch *gdbarch,
     fprintf_unfiltered (gdb_stdlog,
 			"jit_breakpoint_re_set_internal, "
 			"breakpoint_addr = %s\n",
-			paddress (gdbarch, inf_data->breakpoint_addr));
+			paddress (inf_data->gdbarch, inf_data->breakpoint_addr));
 
   /* Put a breakpoint in the registration symbol.  */
-  create_jit_event_breakpoint (gdbarch, inf_data->breakpoint_addr);
+  create_jit_event_breakpoint (inf_data->gdbarch, inf_data->breakpoint_addr);
 
   return 0;
 }
@@ -378,7 +378,7 @@ jit_breakpoint_re_set_internal (struct gdbarch *gdbarch,
 /* Register any already created translations.  */
 
 static void
-jit_inferior_init (struct gdbarch *gdbarch)
+jit_inferior_init (void)
 {
   struct jit_descriptor descriptor;
   struct jit_code_entry cur_entry;
@@ -389,7 +389,7 @@ jit_inferior_init (struct gdbarch *gdbarch)
     fprintf_unfiltered (gdb_stdlog, "jit_inferior_init\n");
 
   inf_data = get_jit_inferior_data ();
-  if (jit_breakpoint_re_set_internal (gdbarch, inf_data) != 0)
+  if (jit_breakpoint_re_set_internal (inf_data) != 0)
     return;
 
   if (inf_data->descriptor_addr == 0)
@@ -405,16 +405,21 @@ jit_inferior_init (struct gdbarch *gdbarch)
       inf_data->descriptor_addr = SYMBOL_VALUE_ADDRESS (desc_symbol);
       if (inf_data->descriptor_addr == 0)
 	return;
+
+      gdb_assert (desc_symbol->ginfo.obj_section
+		  && desc_symbol->ginfo.obj_section->objfile
+		  && desc_symbol->ginfo.obj_section->objfile->gdbarch);
+      inf_data->gdbarch = desc_symbol->ginfo.obj_section->objfile->gdbarch;
     }
 
   if (jit_debug)
     fprintf_unfiltered (gdb_stdlog,
 			"jit_inferior_init, descriptor_addr = %s\n",
-			paddress (gdbarch, inf_data->descriptor_addr));
+			paddress (inf_data->gdbarch, inf_data->descriptor_addr));
 
   /* Read the descriptor so we can check the version number and load
      any already JITed functions.  */
-  jit_read_descriptor (gdbarch, &descriptor, inf_data->descriptor_addr);
+  jit_read_descriptor (inf_data->gdbarch, &descriptor, inf_data->descriptor_addr);
 
   /* Check that the version number agrees with that we support.  */
   if (descriptor.version != 1)
@@ -426,14 +431,14 @@ jit_inferior_init (struct gdbarch *gdbarch)
        cur_entry_addr != 0;
        cur_entry_addr = cur_entry.next_entry)
     {
-      jit_read_code_entry (gdbarch, cur_entry_addr, &cur_entry);
+      jit_read_code_entry (inf_data->gdbarch, cur_entry_addr, &cur_entry);
 
       /* This hook may be called many times during setup, so make sure we don't
          add the same symbol file twice.  */
       if (jit_find_objf_with_entry_addr (cur_entry_addr) != NULL)
         continue;
 
-      jit_register_code (gdbarch, cur_entry_addr, &cur_entry);
+      jit_register_code (inf_data->gdbarch, cur_entry_addr, &cur_entry);
     }
 }
 
@@ -442,7 +447,7 @@ jit_inferior_init (struct gdbarch *gdbarch)
 void
 jit_inferior_created_hook (void)
 {
-  jit_inferior_init (target_gdbarch);
+  jit_inferior_init ();
 }
 
 /* Exported routine to call to re-set the jit breakpoints,
@@ -451,8 +456,7 @@ jit_inferior_created_hook (void)
 void
 jit_breakpoint_re_set (void)
 {
-  jit_breakpoint_re_set_internal (target_gdbarch,
-				  get_jit_inferior_data ());
+  jit_breakpoint_re_set_internal (get_jit_inferior_data ());
 }
 
 /* Reset inferior_data, so sybols will be looked up again, and jit_breakpoint
@@ -465,13 +469,14 @@ jit_reset_inferior_data_and_breakpoints (void)
 
   /* Force jit_inferior_init to re-lookup of jit symbol addresses.  */
   inf_data = get_jit_inferior_data ();
+  inf_data->gdbarch = 0;
   inf_data->breakpoint_addr = 0;
   inf_data->descriptor_addr = 0;
 
   /* Remove any existing JIT breakpoint(s).  */
   remove_jit_event_breakpoints ();
 
-  jit_inferior_init (target_gdbarch);
+  jit_inferior_init ();
 }
 
 /* Wrapper to match the observer function pointer prototype.  */
