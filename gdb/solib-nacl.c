@@ -23,6 +23,7 @@
 #include "nacl-manifest.h"
 #include "nacl-tdep.h"
 #include "objfiles.h"
+#include "observer.h"
 #include "solib.h"
 #include "solib-svr4.h"
 #include "solist.h"
@@ -53,6 +54,9 @@ struct lm_info
 /* Start address of Native Client sandbox.  */
 
 static CORE_ADDR nacl_sandbox_base;
+
+
+static CORE_ADDR nacl_entry_point;
 
 
 static CORE_ADDR
@@ -96,6 +100,15 @@ nacl_address_to_address (CORE_ADDR addr)
     addr = nacl_sandbox_base + (unsigned) addr;
 
   return addr;
+}
+
+
+CORE_ADDR
+nacl_entry_point_address (void)
+{
+  gdb_assert (nacl_entry_point);
+
+  return nacl_entry_point;
 }
 
 
@@ -346,6 +359,7 @@ static void
 nacl_solib_create_inferior_hook (int from_tty)
 {
   nacl_sandbox_base = 0;
+  nacl_entry_point = 0;
 
   /* Call SVR4 hook -- this will re-insert the SVR4 solib breakpoints.  */
   svr4_so_ops.solib_create_inferior_hook (from_tty);
@@ -370,4 +384,32 @@ set_nacl_solib_ops (struct gdbarch *gdbarch)
     }
 
   set_solib_ops (gdbarch, &nacl_so_ops);
+}
+
+
+static void
+nacl_solib_loaded (struct so_list *so)
+{
+  if (so->abfd
+      && nacl_bfd_p (so->abfd)
+      && bfd_get_file_flags (so->abfd) & EXEC_P)
+    {
+      CORE_ADDR addr = nacl_sandbox_base + bfd_get_start_address (so->abfd);
+
+      /* There are entry points at least in irt, runnable-ld.so and nexe...
+         At the moment it is only used for dummy_addr, which does not care, so
+         pick the highest one.  */
+      if (nacl_entry_point < addr)
+        nacl_entry_point = addr;
+    }
+}
+
+
+/* Provide a prototype to silence -Wmissing-prototypes.  */
+extern initialize_file_ftype _initialize_nacl_solib;
+
+void
+_initialize_nacl_solib (void)
+{
+  observer_attach_solib_loaded (nacl_solib_loaded);
 }
