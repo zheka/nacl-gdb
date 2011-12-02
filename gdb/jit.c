@@ -293,7 +293,8 @@ JITed symbol file is not an object file, ignoring it.\n"));
       {
         /* We assume that these virtual addresses are absolute, and do not
            treat them as offsets.  */
-        sai->other[i].addr = bfd_get_section_vma (nbfd, sec);
+        extern CORE_ADDR nacl_address_to_address (CORE_ADDR addr);
+        sai->other[i].addr = nacl_address_to_address (bfd_get_section_vma (nbfd, sec));
         sai->other[i].name = xstrdup (bfd_get_section_name (nbfd, sec));
         sai->other[i].sectindex = sec->index;
         ++i;

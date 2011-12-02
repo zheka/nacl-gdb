@@ -361,6 +361,12 @@ dwarf2_restore_rule (struct gdbarch *gdbarch, ULONGEST reg_num,
 {
   ULONGEST reg;
 
+  /* HACK! looks like mono dwarf instructions have bad tail bytes, interpreted
+     as the following instruction:
+       DW_CFA_restore: r52
+     To see if everything else works, just suppress this for now...  */
+  if (reg_num == 52) return;
+
   gdb_assert (fs->initial.reg);
   reg = dwarf2_frame_adjust_regnum (gdbarch, reg_num, eh_frame_p);
   dwarf2_frame_state_alloc_regs (&fs->regs, reg + 1);
