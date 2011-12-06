@@ -303,6 +303,10 @@ JITed symbol file is not an object file, ignoring it.\n"));
   /* This call takes ownership of sai.  */
   objfile = symbol_file_add_from_bfd (nbfd, 0, sai, OBJF_SHARED);
 
+  /* HACK! GDB does not identify architecture of mono-delivered bfd as NaCl.
+     Force it here, just to see if everything else works...  */
+  objfile->gdbarch = gdbarch;
+
   /* Remember a mapping from entry_addr to objfile.  */
   entry_addr_ptr = xmalloc (sizeof (CORE_ADDR));
   *entry_addr_ptr = entry_addr;

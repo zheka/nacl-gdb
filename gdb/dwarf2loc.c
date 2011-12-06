@@ -1097,6 +1097,13 @@ dwarf2_evaluate_loc_desc_full (struct type *type, struct frame_info *frame,
 
   ctx->gdbarch = get_objfile_arch (objfile);
   ctx->addr_size = dwarf2_per_cu_addr_size (per_cu);
+  /* HACK! dwarf2 delivered by mono has address size 4 in compilation unit
+     headers. This forces all address expressions to return 32-bit results,
+     which is unfortunate. Supress this, hopefully other stuff works...  */
+  if (gdbarch_osabi(ctx->gdbarch) == GDB_OSABI_NACL)
+  {
+    ctx->addr_size = 8;
+  }
   ctx->offset = dwarf2_per_cu_text_offset (per_cu);
   ctx->baton = &baton;
   ctx->read_reg = dwarf_expr_read_reg;
