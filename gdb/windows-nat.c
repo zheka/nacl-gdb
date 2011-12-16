@@ -1406,6 +1406,20 @@ ctrl_c_handler (DWORD event_type)
   return TRUE;
 }
 
+BOOL CALLBACK EnumSymProc64(
+  PCTSTR SymbolName,
+  DWORD64 SymbolAddress,
+  ULONG SymbolSize,
+  PVOID UserContext)
+{
+    if (strcmp(SymbolName, "hello_world") == 0 ||
+        strcmp(SymbolName, "buy_world") == 0)
+    {
+      printf("= 0x%llx %4lu '%s'\n", SymbolAddress, SymbolSize, SymbolName);
+    }
+    return TRUE;
+}
+
 /* Get the next event from the child.  Return 1 if the event requires
    handling by WFI (or whatever).  */
 static int
@@ -1481,6 +1495,51 @@ get_windows_debug_event (struct target_ops *ops,
 		     (unsigned) current_event.dwProcessId,
 		     (unsigned) current_event.dwThreadId,
 		     "CREATE_PROCESS_DEBUG_EVENT"));
+{
+  DWORD dwOpts;
+  DWORD64 base;
+
+  dwOpts = SymGetOptions();
+  dwOpts |= SYMOPT_LOAD_LINES /*| SYMOPT_DEFERRED_LOADS*/ | SYMOPT_DEBUG;
+  SymSetOptions(dwOpts);
+
+  if (!SymInitialize(current_event.u.CreateProcessInfo.hProcess, NULL, FALSE))  /* FALSE is critical - TRUE does not work!  */
+  {
+    printf("---> SymInitialize failed: 0x%x\n", GetLastError());
+  }
+  else
+  {
+    printf("---> SymInitialize OK\n");
+  }
+
+  base = SymLoadModule64(current_event.u.CreateProcessInfo.hProcess,
+                         current_event.u.CreateProcessInfo.hFile,
+                         current_event.u.CreateProcessInfo.lpImageName,
+                         NULL,
+                         current_event.u.CreateProcessInfo.lpBaseOfImage,
+                         0);
+  if (!base)
+  {
+    printf("---> SymLoadModule64 '%s' failed: 0x%x\n", current_event.u.CreateProcessInfo.lpImageName, GetLastError());
+  }
+  else
+  {
+    printf("---> SymLoadModule64 OK, base=0x%llx\n", base);
+  }
+  /* gdb_assert (base == current_event.u.CreateProcessInfo.lpBaseOfImage);  */
+
+  if (!SymEnumerateSymbols64(current_event.u.CreateProcessInfo.hProcess,
+                             current_event.u.CreateProcessInfo.lpBaseOfImage,
+                             EnumSymProc64,
+                             NULL))
+  {
+    printf("---> SymEnumerateSymbols64 failed: 0x%x\n", GetLastError());
+  }
+  else
+  {
+    printf("---> SymEnumerateSymbols64 OK\n");
+  }
+}
       CloseHandle (current_event.u.CreateProcessInfo.hFile);
       if (++saw_create != 1)
 	break;
@@ -2169,6 +2228,8 @@ windows_create_inferior (struct target_ops *ops, char *exec_file,
   strcpy (args, toexec);
   strcat (args, " ");
   strcat (args, allargs);
+
+  printf("---> before CreateProcess (%s)\n", args);
 
   flags |= DEBUG_ONLY_THIS_PROCESS;
 
