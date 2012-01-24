@@ -68,6 +68,8 @@
 #include "i386-nat.h"
 #include "complaints.h"
 
+#include "elf-bfd.h"
+
 #define AdjustTokenPrivileges		dyn_AdjustTokenPrivileges
 #define DebugActiveProcessStop		dyn_DebugActiveProcessStop
 #define DebugBreakProcess		dyn_DebugBreakProcess
@@ -1406,14 +1408,40 @@ ctrl_c_handler (DWORD event_type)
   return TRUE;
 }
 
+
+bfd *fake_obfd;
+asymbol *fake_syms[3];
+
 BOOL CALLBACK EnumSymProc64(
   PCTSTR SymbolName,
   DWORD64 SymbolAddress,
   ULONG SymbolSize,
   PVOID UserContext)
 {
-    if (strcmp(SymbolName, "hello_world") == 0 ||
-        strcmp(SymbolName, "buy_world") == 0)
+    if (strcmp(SymbolName, "NaClSandboxMemoryStartForValgrind") == 0)
+    {
+      asymbol *s;
+      s = bfd_make_empty_symbol (fake_obfd);
+      s->name = "_ovly_debug_event";
+      s->section = &bfd_abs_section;
+      s->flags = BSF_GLOBAL;
+      s->value = SymbolAddress;
+      fake_syms[0] = s;
+    }
+    else if (strcmp(SymbolName, "nacl_global_xlate_base") == 0)
+    {
+      asymbol *s;
+      s = bfd_make_empty_symbol (fake_obfd);
+      s->name = "nacl_global_xlate_base";
+      s->section = &bfd_abs_section;
+      s->flags = BSF_GLOBAL;
+      s->value = SymbolAddress;
+      fake_syms[1] = s;
+    }
+
+    if (strcmp(SymbolName, "_ovly_debug_event") == 0 ||
+        strcmp(SymbolName, "NaClSandboxMemoryStartForValgrind") == 0 ||
+        strcmp(SymbolName, "nacl_global_xlate_base") == 0)
     {
       printf("= 0x%llx %4lu '%s'\n", SymbolAddress, SymbolSize, SymbolName);
     }
@@ -1528,6 +1556,31 @@ get_windows_debug_event (struct target_ops *ops,
   }
   /* gdb_assert (base == current_event.u.CreateProcessInfo.lpBaseOfImage);  */
 
+{
+  fake_obfd = bfd_openw ("xxx.o", "elf64-x86-64");
+  if (!fake_obfd)
+    {
+      printf ("Error: bfd_openw\n");
+      goto end_win_hack;
+    }
+
+  if (!bfd_set_format (fake_obfd, bfd_object))
+    {
+      printf ("Error: bfd_set_format\n");
+      goto end_win_hack;
+    }
+
+  if (!bfd_set_arch_mach (fake_obfd, bfd_arch_i386, bfd_mach_x86_64))
+    {
+      printf ("Error: bfd_set_arch_mach\n");
+      goto end_win_hack;
+    }
+
+  fake_syms[0] = NULL;
+  fake_syms[1] = NULL;
+  fake_syms[2] = NULL;
+}
+
   if (!SymEnumerateSymbols64(current_event.u.CreateProcessInfo.hProcess,
                              current_event.u.CreateProcessInfo.lpBaseOfImage,
                              EnumSymProc64,
@@ -1539,7 +1592,30 @@ get_windows_debug_event (struct target_ops *ops,
   {
     printf("---> SymEnumerateSymbols64 OK\n");
   }
+
+{
+  bfd_set_symtab (fake_obfd, fake_syms, 2);
+
+  if (!bfd_close (fake_obfd))
+    {
+      printf ("Error: bfd_close\n");
+      goto end_win_hack;
+    }
 }
+
+{
+  struct section_addr_info *section_addrs;
+
+  section_addrs = alloc_section_addr_info (1);
+  section_addrs->other[0].name = ".text";
+  section_addrs->other[0].addr = 0x0;
+
+  symbol_file_add ("xxx.o", SYMFILE_VERBOSE, section_addrs, OBJF_USERLOADED|OBJF_READNOW);
+  reinit_frame_cache ();
+}
+}
+end_win_hack:
+
       CloseHandle (current_event.u.CreateProcessInfo.hFile);
       if (++saw_create != 1)
 	break;
