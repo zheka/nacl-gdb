@@ -29,15 +29,26 @@
 
 struct windows_dbghelp_info
 {
-  int i;
+  bfd *obfd;
+  asymbol *symtab[3];
 };
 
 
+/* ATTENTION! 'name' should remain valid until bfd is closed?  */
 
+static asymbol *
+add_symbol (bfd *obfd, const char *name, CORE_ADDR addr)
+{
+  asymbol *s = bfd_make_empty_symbol (obfd);
 
+  s->name = name;
+  s->section = &bfd_abs_section;
+  s->flags = BSF_GLOBAL;
+  s->value = addr;
 
-bfd *fake_obfd;
-asymbol *fake_syms[3];
+  return s;
+}
+
 
 BOOL CALLBACK EnumSymProc64(
   PCTSTR SymbolName,
@@ -45,39 +56,22 @@ BOOL CALLBACK EnumSymProc64(
   ULONG SymbolSize,
   PVOID UserContext)
 {
-    if (strcmp(SymbolName, "NaClSandboxMemoryStartForValgrind") == 0)
+  struct windows_dbghelp_info *dbghelp_info = UserContext;
+
+  if (strcmp(SymbolName, "NaClSandboxMemoryStartForValgrind") == 0)
     {
-      asymbol *s;
-      s = bfd_make_empty_symbol (fake_obfd);
-      s->name = "_ovly_debug_event";
-      s->section = &bfd_abs_section;
-      s->flags = BSF_GLOBAL;
-      s->value = SymbolAddress;
-      fake_syms[0] = s;
+      /* Real '_ovly_debug_event' is not compiled under Windows, but we can use
+         'NaClSandboxMemoryStartForValgrind' instead.  */
+      dbghelp_info->symtab[0] = add_symbol (dbghelp_info->obfd, "_ovly_debug_event", SymbolAddress);
     }
-    else if (strcmp(SymbolName, "nacl_global_xlate_base") == 0)
+  else if (strcmp(SymbolName, "nacl_global_xlate_base") == 0)
     {
-      asymbol *s;
-      s = bfd_make_empty_symbol (fake_obfd);
-      s->name = "nacl_global_xlate_base";
-      s->section = &bfd_abs_section;
-      s->flags = BSF_GLOBAL;
-      s->value = SymbolAddress;
-      fake_syms[1] = s;
+      /* Pass symbol name as constant string so it remains valid forever :)  */
+      dbghelp_info->symtab[1] = add_symbol (dbghelp_info->obfd, "nacl_global_xlate_base", SymbolAddress);
     }
 
-    if (strcmp(SymbolName, "_ovly_debug_event") == 0 ||
-        strcmp(SymbolName, "NaClSandboxMemoryStartForValgrind") == 0 ||
-        strcmp(SymbolName, "nacl_global_xlate_base") == 0)
-    {
-      printf("= 0x%llx %4lu '%s'\n", SymbolAddress, SymbolSize, SymbolName);
-    }
-    return TRUE;
+  return TRUE;
 }
-
-
-
-
 
 
 struct windows_dbghelp_info *
@@ -87,106 +81,101 @@ retrieve_windows_dbghelp_info (
     LPVOID image_name,
     LPVOID image_base)
 {
-  DWORD dwOpts;
-  DWORD64 base;
+  DWORD sym_options;
+  struct windows_dbghelp_info *dbghelp_info;
 
-  dwOpts = SymGetOptions();
-  dwOpts |= SYMOPT_LOAD_LINES /*| SYMOPT_DEFERRED_LOADS*/ | SYMOPT_DEBUG;
-  SymSetOptions(dwOpts);
+  /* Fix symbol handling options.  */
 
-  if (!SymInitialize(process_handle, NULL, FALSE))  /* FALSE is critical - TRUE does not work!  */
-  {
-    printf("---> SymInitialize failed: 0x%x\n", GetLastError());
-  }
-  else
-  {
-    printf("---> SymInitialize OK\n");
-  }
+  sym_options = SymGetOptions ();
+  sym_options |= SYMOPT_LOAD_LINES | SYMOPT_DEBUG;
+  SymSetOptions (sym_options);
 
-  base = SymLoadModule64(process_handle,
-                         file_handle,
-                         image_name,
-                         NULL,
-                         image_base,
-                         0);
-  if (!base)
-  {
-    printf("---> SymLoadModule64 '%s' failed: 0x%x\n", image_name, GetLastError());
-  }
-  else
-  {
-    printf("---> SymLoadModule64 OK, base=0x%llx\n", base);
-  }
-  /* gdb_assert (base == image_base);  */
+  /* Initialize symbol handler for a process.  */
 
-{
-  fake_obfd = bfd_openw ("xxx.o", "elf64-x86-64");
-  if (!fake_obfd)
+  /* FALSE is critical - TRUE does not work!  */
+  if (!SymInitialize (process_handle, NULL, FALSE))  
     {
-      printf ("Error: bfd_openw\n");
+      printf("---> SymInitialize failed: 0x%x\n", GetLastError());
       return NULL;
     }
 
-  if (!bfd_set_format (fake_obfd, bfd_object))
+  /* Load symbol table for a module. SymLoadModule64 has been superseded by
+     SymLoadModuleEx, but mingw toolchain we use does not have the latter. */
+
+  /* We already have valid image base, so we don't need the returned value.  */
+  if (!SymLoadModule64 (process_handle,
+                        file_handle,
+                        image_name,
+                        NULL,
+                        image_base,
+                        0))
     {
-      printf ("Error: bfd_set_format\n");
+      printf("---> SymLoadModule64 '%s' failed: 0x%x\n", image_name, GetLastError());
       return NULL;
     }
 
-  if (!bfd_set_arch_mach (fake_obfd, bfd_arch_i386, bfd_mach_x86_64))
+  /* Create bfd for accepting symbols.  */
+
+  dbghelp_info = XZALLOC (struct windows_dbghelp_info);
+
+  dbghelp_info->obfd = bfd_openw ("xxx.o", "elf64-x86-64");
+  if (!dbghelp_info->obfd)
     {
-      printf ("Error: bfd_set_arch_mach\n");
+      printf("---> bfd_openw failed: %s\n", bfd_errmsg (bfd_get_error ()));
       return NULL;
     }
 
-  fake_syms[0] = NULL;
-  fake_syms[1] = NULL;
-  fake_syms[2] = NULL;
-}
-
-  if (!SymEnumerateSymbols64(process_handle,
-                             image_base,
-                             EnumSymProc64,
-                             NULL))
-  {
-    printf("---> SymEnumerateSymbols64 failed: 0x%x\n", GetLastError());
-  }
-  else
-  {
-    printf("---> SymEnumerateSymbols64 OK\n");
-  }
-
-{
-  bfd_set_symtab (fake_obfd, fake_syms, 2);
-
-  if (!bfd_close (fake_obfd))
+  if (!bfd_set_format (dbghelp_info->obfd, bfd_object))
     {
-      printf ("Error: bfd_close\n");
+      printf("---> bfd_set_format failed: %s\n", bfd_errmsg (bfd_get_error ()));
       return NULL;
     }
-}
 
-{
-  static struct windows_dbghelp_info dbghelp_info;
-  return &dbghelp_info;
-}
+  if (!bfd_set_arch_mach (dbghelp_info->obfd, bfd_arch_i386, bfd_mach_x86_64))
+    {
+      printf("---> bfd_set_arch_mach failed: %s\n", bfd_errmsg (bfd_get_error ()));
+      return NULL;
+    }
+
+  /* Feed symbols into bfd.  */
+
+  if (!SymEnumerateSymbols64 (process_handle,
+                              image_base,
+                              EnumSymProc64,
+                              dbghelp_info))
+    {
+      printf("---> SymEnumerateSymbols64 failed: 0x%x\n", GetLastError());
+      return NULL;
+    }
+
+  /* Finalize the bfd.  */
+
+  bfd_set_symtab (dbghelp_info->obfd, dbghelp_info->symtab, 2);
+
+  if (!bfd_close (dbghelp_info->obfd))
+    {
+      printf("---> bfd_close failed: %s\n", bfd_errmsg (bfd_get_error ()));
+      return NULL;
+    }
+
+  return dbghelp_info;
 }
 
 
 void
-add_windows_dbghelp_info (struct windows_dbghelp_info *info)
+add_windows_dbghelp_info (struct windows_dbghelp_info *dbghelp_info)
 {
+  if (dbghelp_info)
+    {
+      struct section_addr_info *section_addrs;
 
-if (info)
-{
-  struct section_addr_info *section_addrs;
+      section_addrs = alloc_section_addr_info (1);
+      section_addrs->other[0].name = ".text";
+      section_addrs->other[0].addr = 0x0;
 
-  section_addrs = alloc_section_addr_info (1);
-  section_addrs->other[0].name = ".text";
-  section_addrs->other[0].addr = 0x0;
+      symbol_file_add ("xxx.o", SYMFILE_VERBOSE, section_addrs, OBJF_USERLOADED | OBJF_READNOW);
+      reinit_frame_cache ();
 
-  symbol_file_add ("xxx.o", SYMFILE_VERBOSE, section_addrs, OBJF_USERLOADED|OBJF_READNOW);
-  reinit_frame_cache ();
-}
-
+      xfree (dbghelp_info);
+  }
 }
