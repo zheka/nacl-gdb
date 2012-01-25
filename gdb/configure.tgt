@@ -620,7 +620,7 @@ x86_64-*-mingw*)
         # Target: MingW/amd64
 	gdb_target_obs="amd64-tdep.o amd64-windows-tdep.o \
                         i386-tdep.o i386-cygwin-tdep.o i387-tdep.o \
-                        solib-target.o windows-tdep.o solib-svr4.o nacl-tdep.o nacl-manifest.o solib-nacl.o nacl-multiarch.o"
+                        solib-target.o windows-tdep.o windows-dbghelp.o solib-svr4.o nacl-tdep.o nacl-manifest.o solib-nacl.o nacl-multiarch.o"
 	build_gdbserver=yes
         ;;
 x86_64-*-netbsd* | x86_64-*-knetbsd*-gnu)

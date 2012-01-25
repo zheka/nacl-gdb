@@ -1557,6 +1557,7 @@ ALLDEPFILES = \
 	v850-tdep.c \
 	vax-nat.c vax-tdep.c vaxbsd-nat.c vaxnbsd-tdep.c \
 	windows-nat.c windows-tdep.c \
+	windows-dbghelp.c \
 	xcoffread.c xcoffsolib.c \
 	xstormy16-tdep.c \
 	xtensa-tdep.c xtensa-config.c \
