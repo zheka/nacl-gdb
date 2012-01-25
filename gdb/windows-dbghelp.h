@@ -20,4 +20,19 @@
 #ifndef WINDOWS_DBGHELP_H
 #define WINDOWS_DBGHELP_H
 
+/* Information obtained using DbgHelp library. We retrieve it at the process
+   creation point when Windows-specific process info is still available, but
+   consume a while after that when everything needed to add a symbol file is
+   initialized. */
+
+struct windows_dbghelp_info;
+
+extern struct windows_dbghelp_info *retrieve_windows_dbghelp_info (
+    HANDLE process_handle,
+    HANDLE file_handle,
+    LPVOID image_name,
+    LPVOID image_base);
+
+extern void add_windows_dbghelp_info (struct windows_dbghelp_info *info);
+
 #endif
