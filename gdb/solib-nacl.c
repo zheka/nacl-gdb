@@ -34,20 +34,21 @@
 
 struct lm_info
   {
-    /* Pointer to copy of link map from inferior.  The type is char *
-       rather than void *, so that we may use byte offsets to find the
-       various fields without the need for a cast.  */
-    gdb_byte *lm;
-
     /* Amount by which addresses in the binary should be relocated to
-       match the inferior.  This could most often be taken directly
-       from lm, but when prelinking is involved and the prelink base
-       address changes, we may need a different offset, we want to
-       warn about the difference and compute it only once.  */
-    CORE_ADDR l_addr;
+       match the inferior.  The direct inferior value is L_ADDR_INFERIOR.
+       When prelinking is involved and the prelink base address changes,
+       we may need a different offset - the recomputed offset is in L_ADDR.
+       It is commonly the same value.  It is cached as we want to warn about
+       the difference and compute it only once.  L_ADDR is valid
+       iff L_ADDR_P.  */
+    CORE_ADDR l_addr, l_addr_inferior;
+    unsigned int l_addr_p : 1;
 
     /* The target location of lm.  */
     CORE_ADDR lm_addr;
+
+    /* Values read in from inferior's fields of the same name.  */
+    CORE_ADDR l_ld, l_next, l_prev, l_name;
   };
 
 
@@ -199,6 +200,7 @@ nacl_alloc_so (CORE_ADDR addr, const char *name)
   so->lm_info = XZALLOC (struct lm_info);
 
   so->lm_info->l_addr = addr;
+  so->lm_info->l_addr_p = 1;
 
   return so;
 }
