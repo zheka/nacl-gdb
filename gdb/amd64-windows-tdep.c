@@ -24,6 +24,7 @@
 #include "gdbcore.h"
 #include "regcache.h"
 #include "nacl-tdep.h"
+#include "solib-svr4.h"
 #include "solib-nacl.h"
 
 /* The registers used to pass integer arguments during a function call.  */
@@ -177,10 +178,9 @@ amd64_windows_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
   set_gdbarch_skip_main_prologue (gdbarch, amd64_skip_main_prologue);
 
   //set_solib_ops (gdbarch, &solib_target_so_ops);
-  {
-    extern void set_nacl_solib_ops (struct gdbarch *gdbarch);
-    set_nacl_solib_ops (gdbarch);
-  }
+  set_solib_svr4_fetch_link_map_offsets
+    (gdbarch, svr4_lp64_fetch_link_map_offsets);
+  set_nacl_solib_ops (gdbarch);
 }
 
 static CORE_ADDR
