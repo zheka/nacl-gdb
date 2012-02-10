@@ -65,17 +65,17 @@ nacl_update_sandbox_base (void)
 {
   struct minimal_symbol *addr_sym;
 
+  nacl_sandbox_base = 0;
+
   addr_sym = lookup_minimal_symbol ("nacl_global_xlate_base", NULL, NULL);
   if (addr_sym)
     {
-      nacl_sandbox_base
-        = read_memory_unsigned_integer (SYMBOL_VALUE_ADDRESS (addr_sym),
-                                        8,
-                                        BFD_ENDIAN_LITTLE);
-    }
-  else
-    {
-      nacl_sandbox_base = 0;
+      gdb_byte buf[sizeof (ULONGEST)];
+
+      if (target_read_memory (SYMBOL_VALUE_ADDRESS (addr_sym), buf, 8) == 0)
+        {
+          nacl_sandbox_base = extract_unsigned_integer (buf, 8, BFD_ENDIAN_LITTLE);
+        }
     }
 
   return nacl_sandbox_base;
