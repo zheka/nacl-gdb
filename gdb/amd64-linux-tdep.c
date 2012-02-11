@@ -32,7 +32,6 @@
 #include "i386-linux-tdep.h"
 #include "linux-tdep.h"
 #include "nacl-tdep.h"
-#include "inferior.h"
 #include "i386-xstate.h"
 
 #include "gdb_string.h"
@@ -1537,22 +1536,12 @@ amd64_linux_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
   set_nacl_solib_ops (gdbarch);
 }
 
-static CORE_ADDR
-amd64_nacl_pointer_to_address (struct gdbarch *gdbarch,
-                               struct type *type,
-                               const gdb_byte *buf)
-{
-  CORE_ADDR addr = unsigned_pointer_to_address (gdbarch, type, buf);
-
-  return nacl_address_to_address (addr);
-}
-
 static void
-amd64_nacl_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
+amd64_nacl_linux_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
 {
   amd64_linux_init_abi (info, gdbarch);
 
-  set_gdbarch_pointer_to_address (gdbarch, amd64_nacl_pointer_to_address);
+  set_gdbarch_nacl_pointer_to_address (gdbarch);
 }
 
 
@@ -1567,7 +1556,7 @@ _initialize_amd64_linux_tdep (void)
 
   gdbarch_register_nacl_osabi_sniffer ();
   gdbarch_register_osabi (bfd_arch_i386, bfd_mach_x86_64,
-			  GDB_OSABI_NACL, amd64_nacl_init_abi);
+			  GDB_OSABI_NACL, amd64_nacl_linux_init_abi);
 
   /* Initialize the Linux target description.  */
   initialize_tdesc_amd64_linux ();
