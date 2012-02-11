@@ -177,39 +177,19 @@ amd64_windows_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
   set_gdbarch_return_value (gdbarch, amd64_windows_return_value);
   set_gdbarch_skip_main_prologue (gdbarch, amd64_skip_main_prologue);
 
-  //set_solib_ops (gdbarch, &solib_target_so_ops);
+  /* set_solib_ops (gdbarch, &solib_target_so_ops);  */
   set_solib_svr4_fetch_link_map_offsets
     (gdbarch, svr4_lp64_fetch_link_map_offsets);
   set_nacl_solib_ops (gdbarch);
 }
 
-static CORE_ADDR
-amd64_nacl_pointer_to_address (struct gdbarch *gdbarch,
-                               struct type *type,
-                               const gdb_byte *buf)
-{
-  CORE_ADDR addr = unsigned_pointer_to_address (gdbarch, type, buf);
-
-  return nacl_address_to_address (addr);
-}
-
 static void
-amd64_nacl_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
+amd64_nacl_windows_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
 {
   amd64_windows_init_abi (info, gdbarch);
 
-  set_gdbarch_pointer_to_address (gdbarch, amd64_nacl_pointer_to_address);
+  set_gdbarch_nacl_pointer_to_address (gdbarch);
 }
-
-static enum gdb_osabi
-amd64_nacl_osabi_sniffer (bfd *abfd)
-{
-  if (nacl_bfd_p (abfd))
-    return GDB_OSABI_NACL;
-
-  return GDB_OSABI_UNKNOWN;
-}
-
 
 void
 _initialize_amd64_windows_tdep (void)
@@ -217,10 +197,9 @@ _initialize_amd64_windows_tdep (void)
   gdbarch_register_osabi (bfd_arch_i386, bfd_mach_x86_64, GDB_OSABI_CYGWIN,
                           amd64_windows_init_abi);
 
-  gdbarch_register_osabi_sniffer (bfd_arch_i386, bfd_target_elf_flavour,
-				  amd64_nacl_osabi_sniffer);
+  gdbarch_register_nacl_osabi_sniffer ();
   gdbarch_register_osabi (bfd_arch_i386, bfd_mach_x86_64,
-			  GDB_OSABI_NACL, amd64_nacl_init_abi);
+			  GDB_OSABI_NACL, amd64_nacl_windows_init_abi);
 
 }
 
