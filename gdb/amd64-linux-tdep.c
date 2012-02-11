@@ -1554,15 +1554,6 @@ amd64_nacl_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
 
   set_gdbarch_pointer_to_address (gdbarch, amd64_nacl_pointer_to_address);
 }
-
-static enum gdb_osabi
-amd64_nacl_osabi_sniffer (bfd *abfd)
-{
-  if (nacl_bfd_p (abfd))
-    return GDB_OSABI_NACL;
-
-  return GDB_OSABI_UNKNOWN;
-}
 
 
 /* Provide a prototype to silence -Wmissing-prototypes.  */
@@ -1574,8 +1565,7 @@ _initialize_amd64_linux_tdep (void)
   gdbarch_register_osabi (bfd_arch_i386, bfd_mach_x86_64,
 			  GDB_OSABI_LINUX, amd64_linux_init_abi);
 
-  gdbarch_register_osabi_sniffer (bfd_arch_i386, bfd_target_elf_flavour,
-				  amd64_nacl_osabi_sniffer);
+  gdbarch_register_nacl_osabi_sniffer ();
   gdbarch_register_osabi (bfd_arch_i386, bfd_mach_x86_64,
 			  GDB_OSABI_NACL, amd64_nacl_init_abi);
 

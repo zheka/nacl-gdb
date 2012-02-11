@@ -22,4 +22,6 @@
 
 extern int nacl_bfd_p (bfd *abfd);
 
+extern void gdbarch_register_nacl_osabi_sniffer (void);
+
 #endif

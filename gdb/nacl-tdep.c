@@ -19,6 +19,7 @@
 
 #include "defs.h"
 #include "elf-bfd.h"
+#include "osabi.h"
 
 int
 nacl_bfd_p (bfd *abfd)
@@ -28,4 +29,20 @@ nacl_bfd_p (bfd *abfd)
     return 1;
 
   return 0;
+}
+
+static enum gdb_osabi
+nacl_osabi_sniffer (bfd *abfd)
+{
+  if (nacl_bfd_p (abfd))
+    return GDB_OSABI_NACL;
+
+  return GDB_OSABI_UNKNOWN;
+}
+
+void
+gdbarch_register_nacl_osabi_sniffer (void)
+{
+  gdbarch_register_osabi_sniffer (bfd_arch_i386, bfd_target_elf_flavour,
+				  nacl_osabi_sniffer);
 }
