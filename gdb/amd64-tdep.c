@@ -2441,6 +2441,157 @@ nacl_syscall_seg_frame_unwind_stop_reason (struct frame_info *this_frame,
   return UNWIND_NO_REASON;
 }
 
+#ifdef _WIN32
+#include "windows.h"
+#include "solib-nacl.h"
+#include "gdbthread.h"
+static int get_nacl_thread_index(struct thread_info *thread)
+{
+  struct minimal_symbol *thread_ids_sym;
+  CORE_ADDR thread_ids;
+  long tid;
+  int i;
+  int nacl_tid;
+  thread_ids_sym = lookup_minimal_symbol("gNaClThreadIds", NULL, NULL);
+  if (!thread_ids_sym) {
+    return -1;
+  }
+  thread_ids = SYMBOL_VALUE_ADDRESS(thread_ids_sym);
+  tid = ptid_get_tid(thread->ptid);
+  for (i = 0; i < 8192; i++) {
+    nacl_tid = read_memory_unsigned_integer(thread_ids + sizeof(DWORD) * i,
+                                            4,
+                                            BFD_ENDIAN_LITTLE);
+    if (nacl_tid == tid) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+static void
+nacl_syscall_seg_frame_this_id (struct frame_info *this_frame,
+                                void **this_cache,
+                                struct frame_id *this_id)
+{
+  CORE_ADDR pc;
+  CORE_ADDR rsp;
+  pc = get_frame_pc (this_frame);
+  rsp = get_frame_register_unsigned(this_frame, AMD64_RSP_REGNUM);
+  (*this_id) = frame_id_build(rsp + 0x8, pc);
+}
+
+static struct value *
+nacl_syscall_seg_frame_prev_register(struct frame_info *this_frame,
+                                     void **this_cache, int regnum)
+{
+  int nacl_thread_index;
+  struct minimal_symbol *nacl_user_sym;
+  CORE_ADDR nacl_user_addr;
+  CORE_ADDR user_context;
+  CORE_ADDR rsp;
+  nacl_thread_index = get_nacl_thread_index(inferior_thread());
+  nacl_user_sym = lookup_minimal_symbol("nacl_user", NULL, NULL);
+  if (!nacl_user_sym)
+    return frame_unwind_got_optimized(this_frame, regnum);
+  nacl_user_addr = SYMBOL_VALUE_ADDRESS(nacl_user_sym);
+  user_context = read_memory_unsigned_integer(
+                   nacl_user_addr + sizeof(CORE_ADDR) * nacl_thread_index,
+                   sizeof(CORE_ADDR),
+                   BFD_ENDIAN_LITTLE);
+  rsp = read_memory_unsigned_integer(
+          user_context + 0x38, 8, BFD_ENDIAN_LITTLE);
+  switch (regnum) {
+    case AMD64_RAX_REGNUM:
+      /* RAX is not saved because it is used for return value */
+      return frame_unwind_got_optimized(this_frame, regnum);
+    case AMD64_RIP_REGNUM:
+      return frame_unwind_got_constant(
+               this_frame, regnum,
+               read_memory_unsigned_integer(
+                 rsp - 0x8, 8, BFD_ENDIAN_LITTLE));
+    case AMD64_RSP_REGNUM:
+      return frame_unwind_got_constant(
+               this_frame, regnum, rsp);
+    case AMD64_R15_REGNUM:
+      return frame_unwind_got_constant(
+               this_frame, regnum, nacl_address_to_address(0));
+    case AMD64_RBX_REGNUM:
+      return frame_unwind_got_constant(
+               this_frame, regnum,
+               read_memory_unsigned_integer(
+                 user_context + 0x8, 8, BFD_ENDIAN_LITTLE));
+    case AMD64_RBP_REGNUM:
+      return frame_unwind_got_constant(
+               this_frame, regnum,
+               read_memory_unsigned_integer(
+                 user_context + 0x20, 8, BFD_ENDIAN_LITTLE));
+    case AMD64_R12_REGNUM:
+      return frame_unwind_got_constant(
+               this_frame, regnum,
+               read_memory_unsigned_integer(
+                 user_context + 0x60, 8, BFD_ENDIAN_LITTLE));
+    case AMD64_R13_REGNUM:
+      return frame_unwind_got_constant(
+               this_frame, regnum,
+               read_memory_unsigned_integer(
+                 user_context + 0x68, 8, BFD_ENDIAN_LITTLE));
+    case AMD64_R14_REGNUM:
+      return frame_unwind_got_constant(
+               this_frame, regnum,
+               read_memory_unsigned_integer(
+                 user_context + 0x70, 8, BFD_ENDIAN_LITTLE));
+    case AMD64_R9_REGNUM:
+      return frame_unwind_got_constant(
+               this_frame, regnum,
+               read_memory_unsigned_integer(
+                 rsp - 0x14, 4, BFD_ENDIAN_LITTLE));
+    case AMD64_R8_REGNUM:
+      return frame_unwind_got_constant(
+               this_frame, regnum,
+               read_memory_unsigned_integer(
+                 rsp - 0x18, 4, BFD_ENDIAN_LITTLE));
+    case AMD64_RCX_REGNUM:
+      return frame_unwind_got_constant(
+               this_frame, regnum,
+               read_memory_unsigned_integer(
+                 rsp - 0x1c, 4, BFD_ENDIAN_LITTLE));
+    case AMD64_RDX_REGNUM:
+      return frame_unwind_got_constant(
+               this_frame, regnum,
+               read_memory_unsigned_integer(
+                 rsp - 0x20, 4, BFD_ENDIAN_LITTLE));
+    case AMD64_RSI_REGNUM:
+      return frame_unwind_got_constant(
+               this_frame, regnum,
+               read_memory_unsigned_integer(
+                 rsp - 0x24, 4, BFD_ENDIAN_LITTLE));
+    case AMD64_RDI_REGNUM:
+      return frame_unwind_got_constant(
+               this_frame, regnum,
+               read_memory_unsigned_integer(
+                 rsp - 0x28, 4, BFD_ENDIAN_LITTLE));
+  }
+  return frame_unwind_got_optimized (this_frame, regnum);
+}
+
+static int
+nacl_syscall_seg_frame_sniffer (const struct frame_unwind *self,
+				struct frame_info *this_frame,
+				void **this_prologue_cache)
+{
+  CORE_ADDR rsp;
+  int nacl_thread_index;
+  rsp = get_frame_register_unsigned (this_frame, AMD64_RSP_REGNUM);
+  if (nacl_sandbox_address_p(rsp)) {
+    return 0;
+  }
+  nacl_thread_index = get_nacl_thread_index(inferior_thread());
+  return nacl_thread_index >= 0;/* 1 */
+}
+
+#else
+
 static void
 nacl_syscall_seg_frame_this_id (struct frame_info *this_frame,
 				void **this_cache,
@@ -2563,6 +2714,7 @@ nacl_syscall_seg_frame_sniffer (const struct frame_unwind *self,
 
   return 0;
 }
+#endif
 
 static const struct frame_unwind nacl_syscall_seg_frame_unwind =
 {
