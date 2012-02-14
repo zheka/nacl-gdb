@@ -20,5 +20,7 @@
 
 extern void windows_set_context_register_offsets (const int *offsets);
 
+extern CORE_ADDR current_process_image_base;
+
 #endif
 

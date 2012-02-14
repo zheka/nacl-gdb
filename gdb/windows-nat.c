@@ -204,6 +204,7 @@ static DEBUG_EVENT current_event;	/* The current debug event from
 static HANDLE current_process_handle;	/* Currently executing process */
 static thread_info *current_thread;	/* Info on currently selected thread */
 static DWORD main_thread_id;		/* Thread ID of the main thread */
+CORE_ADDR current_process_image_base;
 
 /* Counts of things.  */
 static int exception_count = 0;
@@ -1484,12 +1485,13 @@ get_windows_debug_event (struct target_ops *ops,
 		     (unsigned) current_event.dwProcessId,
 		     (unsigned) current_event.dwThreadId,
 		     "CREATE_PROCESS_DEBUG_EVENT"));
-
-      dbghelp_info = retrieve_windows_dbghelp_info (
+      current_process_image_base =
+          (CORE_ADDR)current_event.u.CreateProcessInfo.lpBaseOfImage;
+      /*dbghelp_info = retrieve_windows_dbghelp_info (
           current_event.u.CreateProcessInfo.hProcess,
           current_event.u.CreateProcessInfo.hFile,
           current_event.u.CreateProcessInfo.lpImageName,
-          current_event.u.CreateProcessInfo.lpBaseOfImage);
+          current_event.u.CreateProcessInfo.lpBaseOfImage);*/
 
       CloseHandle (current_event.u.CreateProcessInfo.hFile);
       if (++saw_create != 1)
@@ -1612,7 +1614,7 @@ get_windows_debug_event (struct target_ops *ops,
       current_thread = th ?: thread_rec (current_event.dwThreadId, TRUE);
     }
 
-  add_windows_dbghelp_info (dbghelp_info);
+  /*add_windows_dbghelp_info (dbghelp_info);*/
 
 out:
   return retval;
@@ -2294,6 +2296,8 @@ windows_xfer_memory (CORE_ADDR memaddr, gdb_byte *our, int len,
 		   struct target_ops *target)
 {
   SIZE_T done = 0;
+  DWORD oldProtect;
+  BOOL virtual_protect;
   if (write)
     {
       DEBUG_MEM (("gdb: write target memory, %d bytes at 0x%08lx\n",

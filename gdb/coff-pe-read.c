@@ -230,6 +230,15 @@ read_pe_exported_syms (struct objfile *objfile)
   else
     num_entries = pe_get32 (dll, opthdr_ofs + 92);
 
+  if (is_pe64)
+    {
+      objfile->image_base = pe_get32 (dll, opthdr_ofs + 28);
+      objfile->image_base <<= 32;
+      objfile->image_base += pe_get32(dll,opthdr_ofs + 24);
+    }
+  else
+    objfile->image_base = pe_get32 (dll, opthdr_ofs + 28);
+
   if (num_entries < 1)		/* No exports.  */
     {
       return;
