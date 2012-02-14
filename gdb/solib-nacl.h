@@ -20,6 +20,8 @@
 #ifndef SOLIB_NACL_H
 #define SOLIB_NACL_H
 
+extern int nacl_sandbox_base;
+
 extern int nacl_sandbox_address_p (CORE_ADDR addr);
 
 extern void set_gdbarch_nacl_pointer_to_address (struct gdbarch *gdbarch);

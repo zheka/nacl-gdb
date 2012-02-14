@@ -298,6 +298,8 @@ struct objfile
 
     struct entry_info ei;
 
+    CORE_ADDR image_base;
+
     /* Information about stabs.  Will be filled in with a dbx_symfile_info
        struct by those readers that need it.  */
     /* NOTE: cagney/2004-10-23: This has been replaced by per-objfile
