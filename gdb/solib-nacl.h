@@ -22,7 +22,7 @@
 
 extern int nacl_sandbox_address_p (CORE_ADDR addr);
 
-extern CORE_ADDR nacl_address_to_address (CORE_ADDR addr);
+extern void set_gdbarch_nacl_pointer_to_address (struct gdbarch *gdbarch);
 
 extern CORE_ADDR nacl_entry_point_address (void);
 

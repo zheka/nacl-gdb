@@ -20,6 +20,7 @@
 #include "defs.h"
 #include "breakpoint.h"
 #include "gdbcore.h"
+#include "inferior.h"
 #include "nacl-manifest.h"
 #include "nacl-tdep.h"
 #include "objfiles.h"
@@ -94,13 +95,24 @@ nacl_sandbox_address_p (CORE_ADDR addr)
 }
 
 
-CORE_ADDR
-nacl_address_to_address (CORE_ADDR addr)
+static CORE_ADDR
+nacl_pointer_to_address (struct gdbarch *gdbarch,
+                         struct type *type,
+                         const gdb_byte *buf)
 {
+  CORE_ADDR addr = unsigned_pointer_to_address (gdbarch, type, buf);
+
   if (addr)
     addr = nacl_sandbox_base + (unsigned) addr;
 
   return addr;
+}
+
+
+void
+set_gdbarch_nacl_pointer_to_address (struct gdbarch *gdbarch)
+{
+  set_gdbarch_pointer_to_address (gdbarch, nacl_pointer_to_address);
 }
 
 
