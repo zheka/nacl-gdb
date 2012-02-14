@@ -55,7 +55,7 @@ struct lm_info
 
 /* Start address of Native Client sandbox.  */
 
-static CORE_ADDR nacl_sandbox_base;
+CORE_ADDR nacl_sandbox_base;
 
 
 static CORE_ADDR nacl_entry_point;

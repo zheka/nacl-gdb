@@ -2515,7 +2515,7 @@ nacl_syscall_seg_frame_prev_register(struct frame_info *this_frame,
                this_frame, regnum, rsp);
     case AMD64_R15_REGNUM:
       return frame_unwind_got_constant(
-               this_frame, regnum, nacl_address_to_address(0));
+               this_frame, regnum, nacl_sandbox_base);
     case AMD64_RBX_REGNUM:
       return frame_unwind_got_constant(
                this_frame, regnum,
