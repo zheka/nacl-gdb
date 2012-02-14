@@ -369,11 +369,65 @@ nacl_lookup_lib_symbol (const struct objfile *objfile,
 }
 
 
+#ifdef _WIN32
+static void
+nacl_windows_relocate_main_executable (void)
+{
+  extern void* current_process_image_base;
+
+  bfd *abfd;
+  uint32_t pe_header_offset;
+  uint64_t image_base;
+
+  CORE_ADDR offset;
+
+  if (!symfile_objfile)
+    return;
+
+  abfd = symfile_objfile->obfd;
+  if (!abfd)
+    return;
+
+  if (strcmp (bfd_get_target (abfd), "pe-x86-64") != 0
+      && strcmp (bfd_get_target (abfd), "pei-x86-64") != 0)
+    return;
+
+  /* WARNING! We assume host is little-endian... Worth fixing?  */
+
+  bfd_seek (abfd, (file_ptr) 0x3c, SEEK_SET);
+  bfd_bread (&pe_header_offset, (bfd_size_type) 4, abfd);
+
+  bfd_seek (abfd, (file_ptr) (pe_header_offset + 4 + 20 + 24), SEEK_SET);
+  bfd_bread (&image_base, (bfd_size_type) 8, abfd);
+
+  offset = (CORE_ADDR) current_process_image_base - (CORE_ADDR) image_base;
+  if (offset)
+    {
+      struct section_offsets *new_offsets;
+      int i;
+
+      new_offsets = alloca (symfile_objfile->num_sections
+			    * sizeof (*new_offsets));
+
+      for (i = 0; i < symfile_objfile->num_sections; i++)
+	new_offsets->offsets[i] = offset;
+
+      objfile_relocate (symfile_objfile, new_offsets);
+    }
+}
+#endif
+
+
 static void
 nacl_solib_create_inferior_hook (int from_tty)
 {
   nacl_sandbox_base = 0;
   nacl_entry_point = 0;
+
+#ifdef _WIN32
+  /* GDB does not handle relocated pe executables -- fix this.  */
+  nacl_windows_relocate_main_executable ();
+#endif
 
   /* Call SVR4 hook -- this will re-insert the SVR4 solib breakpoints.  */
   svr4_so_ops.solib_create_inferior_hook (from_tty);

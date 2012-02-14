@@ -203,6 +203,8 @@ static HANDLE current_process_handle;	/* Currently executing process */
 static thread_info *current_thread;	/* Info on currently selected thread */
 static DWORD main_thread_id;		/* Thread ID of the main thread */
 
+void* current_process_image_base;
+
 /* Counts of things.  */
 static int exception_count = 0;
 static int event_count = 0;
@@ -1486,6 +1488,7 @@ get_windows_debug_event (struct target_ops *ops,
 	break;
 
       current_process_handle = current_event.u.CreateProcessInfo.hProcess;
+      current_process_image_base = current_event.u.CreateProcessInfo.lpBaseOfImage;
       if (main_thread_id)
 	windows_delete_thread (ptid_build (current_event.dwProcessId, 0,
 					   main_thread_id));
