@@ -23,6 +23,9 @@
 #include "gdbtypes.h"
 #include "gdbcore.h"
 #include "regcache.h"
+#include "nacl-tdep.h"
+#include "solib-svr4.h"
+#include "solib-nacl.h"
 
 /* The registers used to pass integer arguments during a function call.  */
 static int amd64_windows_dummy_call_integer_regs[] =
@@ -174,7 +177,18 @@ amd64_windows_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
   set_gdbarch_return_value (gdbarch, amd64_windows_return_value);
   set_gdbarch_skip_main_prologue (gdbarch, amd64_skip_main_prologue);
 
-  set_solib_ops (gdbarch, &solib_target_so_ops);
+  /* set_solib_ops (gdbarch, &solib_target_so_ops);  */
+  set_solib_svr4_fetch_link_map_offsets
+    (gdbarch, svr4_lp64_fetch_link_map_offsets);
+  set_nacl_solib_ops (gdbarch);
+}
+
+static void
+amd64_nacl_windows_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
+{
+  amd64_windows_init_abi (info, gdbarch);
+
+  set_gdbarch_nacl_pointer_to_address (gdbarch);
 }
 
 void
@@ -182,5 +196,10 @@ _initialize_amd64_windows_tdep (void)
 {
   gdbarch_register_osabi (bfd_arch_i386, bfd_mach_x86_64, GDB_OSABI_CYGWIN,
                           amd64_windows_init_abi);
+
+  gdbarch_register_nacl_osabi_sniffer ();
+  gdbarch_register_osabi (bfd_arch_i386, bfd_mach_x86_64,
+			  GDB_OSABI_NACL, amd64_nacl_windows_init_abi);
+
 }
 
