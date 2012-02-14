@@ -55,10 +55,30 @@ struct lm_info
 
 /* Start address of Native Client sandbox.  */
 
-static CORE_ADDR nacl_sandbox_base;
+CORE_ADDR nacl_sandbox_base;
 
 
 static CORE_ADDR nacl_entry_point;
+
+#ifdef _WIN32
+#include "objfiles.h"
+#include "windows-nat.h"
+void relocate_main(CORE_ADDR baseaddr) {
+  struct objfile *objfile;
+  struct section_offsets *section_offsets;
+  int i;
+  for (objfile = object_files;objfile != NULL; objfile = objfile->next) {
+    if (objfile->flags & OBJF_MAINLINE) {
+      section_offsets = malloc(sizeof(CORE_ADDR) * objfile->num_sections);
+      for (i = 0; i < objfile->num_sections; i++) {
+        section_offsets->offsets[i] = baseaddr - objfile->image_base;
+      }
+      objfile_relocate(objfile, section_offsets);
+      return;
+    }
+  }
+}
+#endif
 
 
 static CORE_ADDR
@@ -67,7 +87,9 @@ nacl_update_sandbox_base (void)
   struct minimal_symbol *addr_sym;
 
   nacl_sandbox_base = 0;
-
+#ifdef _WIN32
+  relocate_main(current_process_image_base);
+#endif
   addr_sym = lookup_minimal_symbol ("nacl_global_xlate_base", NULL, NULL);
   if (addr_sym)
     {
