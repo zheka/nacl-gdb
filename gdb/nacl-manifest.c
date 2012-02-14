@@ -20,7 +20,6 @@
 #include "defs.h"
 #include "nacl-manifest.h"
 #include "solib.h"
-#include "target.h"
 
 #include "command.h"
 #include "readline/readline.h"
@@ -320,8 +319,7 @@ nacl_file_command (char *args, int from_tty)
     {
       nacl_manifest_free ();
       nacl_program_filename = tilde_expand (args);
-      if (target_has_execution)
-        solib_add (NULL, from_tty, NULL, 1);
+      solib_add (NULL, from_tty, NULL, 1);
     }
 }
 
@@ -333,8 +331,7 @@ nacl_irt_command (char *args, int from_tty)
     {
       xfree (nacl_irt_filename);
       nacl_irt_filename = tilde_expand (args);
-      if (target_has_execution)
-        solib_add (NULL, from_tty, NULL, 1);
+      solib_add (NULL, from_tty, NULL, 1);
     }
 }
 
