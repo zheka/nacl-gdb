@@ -2575,6 +2575,46 @@ static const struct frame_unwind nacl_syscall_seg_frame_unwind =
   nacl_syscall_seg_frame_sniffer
 };
 
+static enum unwind_stop_reason
+nacl_trusted_stack_frame_unwind_stop_reason (struct frame_info *this_frame,
+					     void **this_cache)
+{
+  return UNWIND_NO_REASON;
+}
+
+static void
+nacl_trusted_stack_frame_this_id (struct frame_info *this_frame,
+				  void **this_cache,
+				  struct frame_id *this_id)
+{
+}
+
+static struct value *
+nacl_trusted_stack_frame_prev_register (struct frame_info *this_frame,
+					void **this_cache, int regnum)
+{
+  return frame_unwind_got_optimized (this_frame, regnum);
+}
+
+static int
+nacl_trusted_stack_frame_sniffer (const struct frame_unwind *self,
+				  struct frame_info *this_frame,
+				  void **this_prologue_cache)
+{
+  return 0;
+}
+
+static const struct frame_unwind nacl_trusted_stack_frame_unwind =
+{
+  /* Not a NORMAL_FRAME! Stack switch does not pass frame_id_inner!  */
+  SIGTRAMP_FRAME,
+  nacl_trusted_stack_frame_unwind_stop_reason,
+  nacl_trusted_stack_frame_this_id,
+  nacl_trusted_stack_frame_prev_register,
+  NULL, 
+  nacl_trusted_stack_frame_sniffer
+};
+
 static struct frame_id
 amd64_dummy_id (struct gdbarch *gdbarch, struct frame_info *this_frame)
 {
@@ -2809,7 +2849,12 @@ amd64_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
 
   set_gdbarch_dummy_id (gdbarch, amd64_dummy_id);
 
+  /* TODO: replace this with dynamic check for trusted symbols presence!  */
+#ifdef _WIN32
+  frame_unwind_prepend_unwinder (gdbarch, &nacl_trusted_stack_frame_unwind);
+#else
   frame_unwind_prepend_unwinder (gdbarch, &nacl_syscall_seg_frame_unwind);
+#endif
 
   /* Hook the function epilogue frame unwinder.  This unwinder is
      appended to the list first, so that it supercedes the other
