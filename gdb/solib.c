@@ -867,8 +867,8 @@ libpthread_solib_p (struct so_list *so)
    FROM_TTY and TARGET are as described for update_solib_list, above.  */
 
 void
-solib_add (char *pattern, int from_tty,
-	   struct target_ops *target, int readsyms)
+solib_add_1 (char *pattern, int from_tty,
+	     struct target_ops *target, int readsyms)
 {
   struct so_list *gdb;
 

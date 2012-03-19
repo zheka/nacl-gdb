@@ -473,6 +473,26 @@ nacl_solib_loaded (struct so_list *so)
 }
 
 
+void
+solib_add (char *pattern, int from_tty, struct target_ops *target, int readsyms)
+{
+  extern void solib_add_1 (char *, int, struct target_ops *, int);
+
+  /* Load service runtime symbols.  */
+  solib_add_1 (pattern, from_tty, target, readsyms);
+
+  /* if (nacl_discover_service_runtime ()) { */
+    /* With service runtime, we can locate and load main NaCl executable.  */
+    solib_add_1 (pattern, from_tty, target, readsyms);
+
+    /* if (nacl_discover_ldso ()) { */
+      /* With main NaCl executable, we can locate and load NaCl solibs.  */
+      solib_add_1 (pattern, from_tty, target, readsyms);
+    /* } */
+  /* } */
+}
+
+
 /* Provide a prototype to silence -Wmissing-prototypes.  */
 extern initialize_file_ftype _initialize_nacl_solib;
 
