@@ -22,6 +22,7 @@
 #include "solib.h"
 
 #include "command.h"
+#include "completer.h"
 #include "readline/readline.h"
 
 #include <stdio.h>
@@ -373,10 +374,17 @@ nacl_manifest_command (char *args, int from_tty)
 void
 _initialize_nacl_manifest (void)
 {
-  add_com ("nacl-file", class_files, nacl_file_command,
-	   _("Use FILE as Native Client program to be debugged."));
-  add_com ("nacl-irt", class_files, nacl_irt_command,
-	   _("Use FILE as Native Client IRT to be debugged."));
-  add_com ("nacl-manifest", class_files, nacl_manifest_command,
-	   _("Use FILE as Native Client manifest for the program to be debugged."));
+  struct cmd_list_element *c;
+
+  c = add_com ("nacl-file", class_files, nacl_file_command,
+	       _("Use FILE as Native Client program to be debugged."));
+  set_cmd_completer (c, filename_completer);
+
+  c = add_com ("nacl-irt", class_files, nacl_irt_command,
+	       _("Use FILE as Native Client IRT to be debugged."));
+  set_cmd_completer (c, filename_completer);
+
+  c = add_com ("nacl-manifest", class_files, nacl_manifest_command,
+	       _("Use FILE as Native Client manifest for the program to be debugged."));
+  set_cmd_completer (c, filename_completer);
 }
