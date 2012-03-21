@@ -2570,7 +2570,7 @@ nacl_syscall_seg_frame_sniffer (const struct frame_unwind *self,
 static const struct frame_unwind nacl_syscall_seg_frame_unwind =
 {
   /* Not a NORMAL_FRAME! Stack switch does not pass frame_id_inner!  */
-  SIGTRAMP_FRAME,
+  ARCH_FRAME,
   nacl_syscall_seg_frame_unwind_stop_reason,
   nacl_syscall_seg_frame_this_id,
   nacl_syscall_seg_frame_prev_register,
@@ -2755,7 +2755,7 @@ nacl_trusted_stack_frame_sniffer (const struct frame_unwind *self,
 static const struct frame_unwind nacl_trusted_stack_frame_unwind =
 {
   /* Not a NORMAL_FRAME! Stack switch does not pass frame_id_inner!  */
-  SIGTRAMP_FRAME,
+  ARCH_FRAME,
   nacl_trusted_stack_frame_unwind_stop_reason,
   nacl_trusted_stack_frame_this_id,
   nacl_trusted_stack_frame_prev_register,
