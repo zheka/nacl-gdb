@@ -377,7 +377,11 @@ struct displaced_step_closure *get_displaced_step_closure_by_addr (CORE_ADDR add
    - RT
    If you disable this, you need to decrement
    START_INFERIOR_TRAPS_EXPECTED in tm.h.  */
+#if defined(_WIN32) && !defined(__CYGWIN__)
+#define STARTUP_WITH_SHELL 0
+#else
 #define STARTUP_WITH_SHELL 1
+#endif
 #if !defined(START_INFERIOR_TRAPS_EXPECTED)
 #define START_INFERIOR_TRAPS_EXPECTED	2
 #endif
