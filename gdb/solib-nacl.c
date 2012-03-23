@@ -339,14 +339,22 @@ nacl_current_sos (void)
 static void
 nacl_enable_break (void)
 {
-  struct minimal_symbol *solib_event_sym;
+  struct minimal_symbol *sym;
 
-  solib_event_sym = lookup_minimal_symbol ("_ovly_debug_event", NULL, NULL);
-  if (solib_event_sym)
+  sym = lookup_minimal_symbol ("nacl_global_xlate_base", NULL, NULL);
+  if (!sym)
+    {
+      warning (_("Failed to find Native Client service runtime.\n"
+                 "GDB will be unable to debug Native Client code."));
+      return;
+    }
+
+  sym = lookup_minimal_symbol ("_ovly_debug_event", NULL, NULL);
+  if (sym)
     {
       CORE_ADDR addr;
 
-      addr = SYMBOL_VALUE_ADDRESS (solib_event_sym);
+      addr = SYMBOL_VALUE_ADDRESS (sym);
       addr = gdbarch_convert_from_func_ptr_addr (target_gdbarch,
                                                  addr,
                                                  &current_target);
