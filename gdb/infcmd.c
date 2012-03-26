@@ -265,7 +265,88 @@ show_args_command (struct ui_file *file, int from_tty,
   deprecated_show_value_hack (file, from_tty, c, get_inferior_args ());
 }
 
-
+#if defined(_WIN32) && !defined(__CYGWIN__)
+/* Backward search for number of consequent slashes at the end of the string.
+   String must start with non-slash. Parameter cmd points to symbol after
+   the end of the string.  */
+static int
+previous_slashes(const char *cmd)
+{
+  int result = 0;
+  cmd--;
+  while (*cmd == '\\')
+    {
+      cmd--;
+      result++;
+    }
+  return result;
+}
+
+/* Compute command-line string given argument vector.
+   Link to command-line escaping rules:
+   http://msdn.microsoft.com/en-us/library/17w5ykft(v=vs.85).aspx  */
+char *
+construct_inferior_arguments (int argc, char **argv)
+{
+  char *result;
+  char *out;
+  char *in;
+  int length = 1;
+  int i, j;
+  int slashes;
+  for (i = 0; i < argc; i++)
+    length += 2 * strlen(argv[i]) + 3;
+  result = xmalloc(length);
+  out = result;
+  for (i = 0; i < argc; i++)
+    {
+      if (i != 0)
+        {
+          *out = ' ';
+          out++;
+        }
+      if (!strchr(argv[i], ' ') && !strchr(argv[i], '\n') &&
+          !strchr(argv[i], '\t') && !strchr(argv[i], '"'))
+        {
+          strcpy(out, argv[i]);
+          out += strlen(argv[i]);
+          continue;
+        }
+      *out = '"';
+      out++;
+      in = argv[i];
+      while (*in != '\0')
+        {
+          if (*in != '"') {
+            *out = *in;
+            out++;
+            in++;
+            continue;
+          }
+          slashes = previous_slashes(out);
+          slashes++; /* One more slash to escape '"' symbol */
+          for (j = 0; j < slashes; j++)
+            {
+              *out = '\\';
+              out++;
+            }
+          *out = *in;
+          out++;
+          in++;          
+        }
+      slashes = previous_slashes(out);
+      for (j = 0; j < slashes; j++)
+        {
+          *out = '\\';
+          out++;
+        }
+      *out = '"';
+      out++;
+    }
+  *out = '\0';
+  return result;
+}
+#else
 /* Compute command-line string given argument vector.  This does the
    same shell processing as fork_inferior.  */
 char *
@@ -357,7 +438,7 @@ construct_inferior_arguments (int argc, char **argv)
 
   return result;
 }
-
+#endif
 
 /* This function detects whether or not a '&' character (indicating
    background execution) has been added as *the last* of the arguments ARGS
