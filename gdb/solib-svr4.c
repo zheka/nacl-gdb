@@ -47,6 +47,8 @@
 #include "auxv.h"
 #include "exceptions.h"
 
+#include "nacl-manifest.h"
+
 static struct link_map_offsets *svr4_fetch_link_map_offsets (void);
 static int svr4_have_link_map_offsets (void);
 static void svr4_relocate_main_executable (void);
@@ -1180,6 +1182,7 @@ svr4_read_so_list (CORE_ADDR lm, struct so_list ***link_ptr_ptr,
       struct cleanup *old_chain;
       int errcode;
       char *buffer;
+      const char *mapped_name;
 
       new = XZALLOC (struct so_list);
       old_chain = make_cleanup_free_so (new);
@@ -1227,7 +1230,8 @@ svr4_read_so_list (CORE_ADDR lm, struct so_list ***link_ptr_ptr,
 	  continue;
 	}
 
-      strncpy (new->so_name, buffer, SO_NAME_MAX_PATH_SIZE - 1);
+      mapped_name = nacl_manifest_find(buffer);
+      strncpy (new->so_name, mapped_name, SO_NAME_MAX_PATH_SIZE - 1);
       new->so_name[SO_NAME_MAX_PATH_SIZE - 1] = '\0';
       strcpy (new->so_original_name, new->so_name);
       xfree (buffer);
@@ -1284,7 +1288,8 @@ svr4_current_sos (void)
 
   /* Assume that everything is a library if the dynamic loader was loaded
      late by a static executable.  */
-  if (exec_bfd && bfd_get_section_by_name (exec_bfd, ".dynamic") == NULL)
+  /* if (exec_bfd && bfd_get_section_by_name (exec_bfd, ".dynamic") == NULL) */
+  if (exec_bfd && find_program_interpreter() == NULL)
     ignore_first = 0;
   else
     ignore_first = 1;
